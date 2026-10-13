@@ -1,0 +1,46 @@
+# ── BMAD ───────────────────────────────────────────────
+# Generated planning artifacts — regenerate, don't track
+_bmad-output/
+
+# Installer-managed + per-user answers
+_bmad/config.user.toml
+_bmad/custom/*.user.toml
+
+# Rendered skill output (already self-ignoring, kept explicit)
+_bmad/render/
+
+# ── Tool scratch ───────────────────────────────────────
+.playwright-mcp/
+.playwright/
+node_modules/
+
+# ── Android / Kotlin / Gradle / IntelliJ ───────────────
+.gradle/
+.kotlin/
+**/build/
+local.properties
+captures/
+.externalNativeBuild/
+.cxx/
+
+*.iml
+.idea/
+*.ipr
+*.iws
+
+*.apk
+*.aab
+*.ap_
+*.dex
+
+# Secrets — never commit
+*.jks
+*.keystore
+keystore.properties
+signing.properties
+google-services.json
+
+# ── OS / editor ────────────────────────────────────────
+.DS_Store
+Thumbs.db
+desktop.ini
