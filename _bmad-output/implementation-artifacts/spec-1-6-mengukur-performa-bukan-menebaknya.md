@@ -84,6 +84,12 @@ deferred: []
 
 The `epic-1-context.md` append is the "recorded as baseline in the epic document" half of the AC — the test prints the number; the context file records it so it is diffable across commits and the between-commit comparison the epic's Notes ask for.
 
+**Implementer's record (Story 1.6, 2026-10-13).**
+- `CI_THRESHOLD_MS = 500` chosen and set in `BenchmarkTest.kt`; the KDoc there carries the justification above.
+- Measured baseline on the build machine (host `IOT04`, JVM 17 target, post-warm-up): **14 ms** for the full NFR-1-scale recompute (2,000 allocation rows). Recorded in `epic-1-context.md`'s `## Performance Baseline` section; re-record there on any later commit that changes the figure.
+- To reach exactly 500 charge days total at 25 per contract, the fixture period (28 calendar days, 25 Feb – 24 Mar) drops its first three days via `serviceExceptions`.
+- No threshold change and no engine change; this record is the "explicit, not silent" half of NFR-1 for this run.
+
 ## Verification
 
 **Commands:**
