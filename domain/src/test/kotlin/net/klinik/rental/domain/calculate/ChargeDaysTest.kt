@@ -283,9 +283,11 @@ class ChargeDaysTest {
 
     @Test
     fun `a Sunday is not a charge day, and the next day is`() {
-        // FR-10 case 2 in part: 1 Mar 2026 is a Sunday, so it is not charged. The money
-        // is still credited — Story 1.3 allocates it to Mon 2 Mar. This story only
-        // decides which days are chargeable and must not encode the fix itself.
+        // FR-10 case 2 in part: 1 Mar 2026 is a Sunday, so it is not charged. The money is
+        // still credited, and Story 1.3 allocates it to the *oldest open* charge day rather
+        // than to Mon 2 Mar — allocation is chronological, and this fixture leaves 25 Feb
+        // unpaid ahead of it. That story owns the rule; this one only decides which days are
+        // chargeable and must not encode the fix itself.
         val days = chargeDaysIn(
             period,
             ChargeSchedule(contractStart = longAgo, restDay = DayOfWeek.SUNDAY),

@@ -33,8 +33,19 @@ data class ChargeSchedule(
  *
  * Returns the days rather than a count because the list costs nothing extra over a
  * count and is exactly what Story 1.3's allocator iterates. The result is ascending
- * and gap-free, which is what the allocator's "nearest charge day" rule depends on
- * (`filter { it <= paymentDate }.maxOrNull()` is only correct on a sorted list).
+ * and gap-free, and that is a precondition rather than a convenience:
+ * `allocatePayments` walks the list once filling the oldest open day first, and rejects a
+ * list that is not strictly ascending — a repeated or out-of-order day would let one
+ * payment write two rows for the same `(paymentId, chargeDate)`, the exact duplicate
+ * `UNIQUE(paymentId, chargeDate)` exists to forbid.
+ *
+ * There is deliberately **no "nearest charge day" rule** anywhere in the allocator. Money
+ * arriving on a rest day, on a service exception, or before the contract started still
+ * closes the *oldest open* day, because allocation is chronological: `verify-fr10.md`
+ * case 1 pins Rp 500.000 received 20 Mar onto 25 + 26 Feb, not onto 19 + 20 Mar. An earlier
+ * draft of this KDoc claimed the allocator used `filter { it <= paymentDate }.maxOrNull()`
+ * and justified the sort order by it; that sentence was wrong, and it is the one a
+ * maintainer would read before "fixing" the allocator to match.
  *
  * Note the deliberate omission: `contract.endDate` is *not* honoured. No acceptance
  * criterion covers a contract ending mid-period, and the correct rule has at least
