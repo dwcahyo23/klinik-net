@@ -3,7 +3,7 @@ title: 'Story 1.6: Mengukur performa, bukan menebaknya'
 type: 'feature'
 created: '2026-10-13'
 baseline_revision: 5d472351f28732150f021283272976b643b21a7e
-status: 'done'
+status: 'in-progress'
 review_loop_iteration: 0
 followup_review_recommended: false
 context:
