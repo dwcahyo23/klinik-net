@@ -1,0 +1,24 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 52 52" width="52" height="52" role="img" aria-label="Klinik Net">
+  <title>Klinik Net</title>
+  <defs>
+    <linearGradient id="kn-coral" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#FF385C"/>
+      <stop offset="100%" stop-color="#C01336"/>
+    </linearGradient>
+  </defs>
+  <rect width="52" height="52" rx="15" fill="url(#kn-coral)"/>
+  <!--
+    lucide car-front (ISC), native 24-unit grid.
+    Stroke bounds: x 2-22, y 4-21 → centre (12, 12.5).
+    At scale 1.6 the glyph box is 32 x 27.2, so translate(6.8 6) lands it on
+    the squircle's optical centre at (26, 26) with 10px horizontal padding.
+  -->
+  <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+    <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+    <path d="M7 14h.01"/>
+    <path d="M17 14h.01"/>
+    <rect width="18" height="8" x="3" y="10" rx="2"/>
+    <path d="M5 18v2"/>
+    <path d="M19 18v2"/>
+  </g>
+</svg>

@@ -1,0 +1,31 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 200 56" width="100%" height="100%" role="img" aria-label="Klinik Net">
+  <title>Klinik Net</title>
+  <!--
+    Mono: tile and wordmark are currentColor. The car-front glyph reverses via
+    the custom property "mark-bg"; when loaded through <img> no custom property
+    can cross the document boundary, so the fallback keeps it legible on the
+    default ink tile.
+  -->
+  <g transform="translate(2 2)">
+    <rect width="52" height="52" rx="15" fill="currentColor"/>
+    <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="var(--mark-bg, #FFFFFF)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+      <path d="M7 14h.01"/>
+      <path d="M17 14h.01"/>
+      <rect width="18" height="8" x="3" y="10" rx="2"/>
+      <path d="M5 18v2"/>
+      <path d="M19 18v2"/>
+    </g>
+  </g>
+  <g transform="translate(66 0)" fill="currentColor" fill-rule="nonzero" aria-hidden="true">
+    <path transform="translate(0.00 39.40) scale(0.03 -0.03)" d="M66 0V745H221V372L178 387L476 745H670L375 389L384 499L676 0H495L313 315L221 204V0Z"/>
+    <path transform="translate(19.81 39.40) scale(0.03 -0.03)" d="M55 0V757H205V0Z"/>
+    <path transform="translate(26.81 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+    <path transform="translate(33.81 39.40) scale(0.03 -0.03)" d="M55 0V546H195V438L187 462Q206 511 248.5 534.5Q291 558 348 558Q410 558 456.5 532Q503 506 529 459.5Q555 413 555 350.7V0H405V319Q405 351 392.5 374Q380 397 357.41 410Q334.81 423 305.41 423Q276 423 253 410Q230 397 217.5 374Q205 351 205 319V0Z"/>
+    <path transform="translate(50.98 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+    <path transform="translate(57.98 39.40) scale(0.03 -0.03)" d="M55 0V757H205V272L149 290L390 546H575L377 326L574 0H404L239 277L326 299L159 117L205 204V0Z"/>
+    <path transform="translate(79.36 39.40) scale(0.03 -0.03)" d="M66 0V745H185L585 218L521 203V745H676V0H556L163 531L221 546V0Z"/>
+    <path transform="translate(100.82 39.40) scale(0.03 -0.03)" d="M318 -12Q231 -12 167 26.5Q103 65 68 130Q33 195 33 274Q33 356 69.5 420Q106 484 168 521Q230 558 308 558Q373 558 423 537.5Q473 517 507.5 480Q542 443 560 394.5Q578 346 578 289Q578 273 576.5 257.5Q575 242 571 231H162V341H486L415 289Q425 332 414 365.5Q403 399 375.5 418.5Q348 438 308 438Q269 438 241 419Q213 400 199 363Q185 326 188 273Q184 227 199 192Q214 157 245 137.5Q276 118 320 118Q360 118 388.5 134Q417 150 433 178L553 121Q537 81 502.5 51Q468 21 421 4.5Q374 -12 318 -12Z"/>
+    <path transform="translate(118.35 39.40) scale(0.03 -0.03)" d="M318 -6Q219 -6 164.5 47.5Q110 101 110 197V416H18V546H23Q65 546 87.5 567Q110 588 110 630V670H260V546H388V416H260V207Q260 179 270 160.5Q280 142 301 133Q322 124 353 124Q360 124 369 125Q378 126 388 127V0Q373 -2 354 -4Q335 -6 318 -6Z"/>
+  </g>
+</svg>

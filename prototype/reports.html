@@ -1,0 +1,286 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Laporan — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Laporan</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <button class="btn btn-secondary" id="btn-pdf">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" style="width:18px;height:18px"><path d="M7 9V3h10v6"/><rect x="3" y="9" width="18" height="7" rx="2"/><path d="M7 16h10v5H7z"/></svg>
+              Cetak / PDF
+            </button>
+            <button class="btn btn-primary" id="btn-csv">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:18px;height:18px"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg>
+              Ekspor CSV
+            </button>
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <!-- Period selector -->
+          <div class="card card-pad-lg mb-5">
+            <div class="row-between wrap gap-4 mb-4">
+              <div>
+                <div class="card-title">Periode laporan</div>
+                <div class="card-sub" id="period-label"></div>
+              </div>
+              <span class="badge badge-brand" id="period-badge"></span>
+            </div>
+
+            <div class="chips mb-4" id="period-chips">
+              <button class="chip active" data-period="current">Periode berjalan</button>
+              <button class="chip" data-period="prev">Periode sebelumnya</button>
+              <button class="chip" data-period="custom">Custom</button>
+            </div>
+
+            <div class="row gap-4 wrap" id="custom-picker" style="display:none">
+              <div class="field" style="flex:1;min-width:180px">
+                <label class="field-label">Dari</label><input type="date" class="input" id="rp-from" />
+              </div>
+              <div class="field" style="flex:1;min-width:180px">
+                <label class="field-label">Sampai</label><input type="date" class="input" id="rp-to" />
+              </div>
+              <div class="field" style="justify-content:flex-end">
+                <button class="btn btn-primary" id="rp-apply">Terapkan</button>
+              </div>
+            </div>
+
+            <!-- Period history -->
+            <div class="divider"></div>
+            <div class="card-title mb-4" style="font-size:var(--fs-sm)">Riwayat periode</div>
+            <div class="col gap-2" id="period-history"></div>
+          </div>
+
+          <!-- Summary -->
+          <div class="kpi-grid mb-5" id="report-kpis"></div>
+
+          <!-- Breakdown table -->
+          <div class="table-wrap mb-5">
+            <div class="row-between" style="padding:var(--sp-4) var(--sp-5);border-bottom:1px solid var(--border)">
+              <div class="card-title">Rekap per penyewa &amp; mobil</div>
+              <span class="text-xs text-tertiary" id="row-count"></span>
+            </div>
+            <table class="data">
+              <thead><tr>
+                <th>Penyewa</th><th>Plat</th><th>Merek</th><th class="num">Hari sewa</th>
+                <th class="num">Dtagih</th><th class="num">Diterima</th>
+                <th class="num">Tunggakan</th><th>Status</th>
+              </tr></thead>
+              <tbody id="report-rows"></tbody>
+              <tfoot id="report-foot"></tfoot>
+            </table>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  const TODAY = "2026-03-29";
+  let mode = "current";
+  let custom = { from: "2026-03-01", to: TODAY };
+
+  window.Shell.render("reports", { title: "Laporan", subtitle: "Rekap per periode cut off" });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  function periods() {
+    const cd = store.getSettings().cutoffDay || 25;
+    // Periode berjalan: 1 Mar – 29 Mar 2026 (cutoff 25 → periode 25 Feb–24 Mar adalah sebelumnya)
+    return {
+      current: { from: "2026-03-01", to: TODAY, label: "1 Mar – 29 Mar 2026", cut: cd },
+      prev: { from: "2026-02-01", to: "2026-02-28", label: "1 Feb – 28 Feb 2026", cut: cd }
+    };
+  }
+
+  function active() { return mode === "custom" ? { ...custom, label: fmt.dateShort(custom.from) + " – " + fmt.dateShort(custom.to), cut: store.getSettings().cutoffDay } : periods()[mode]; }
+
+  function renderPeriodMeta() {
+    const p = active();
+    document.getElementById("period-label").textContent = p.label;
+    const badge = document.getElementById("period-badge");
+    badge.textContent = mode === "current" ? "Periode berjalan" : mode === "prev" ? "Periode sebelumnya" : "Rentang custom";
+    document.getElementById("custom-picker").style.display = mode === "custom" ? "flex" : "none";
+    document.getElementById("rp-from").value = custom.from;
+    document.getElementById("rp-to").value = custom.to;
+
+    const hist = [
+      { label: "1 Mar – 24 Mar 2026", total: 62400000, status: "Ditutup" },
+      { label: "1 Feb – 24 Feb 2026", total: 58900000, status: "Ditutup" },
+      { label: "1 Jan – 24 Jan 2026", total: 51200000, status: "Ditutup" }
+    ];
+    document.getElementById("period-history").innerHTML = hist.map(h => `
+      <div class="row-between list-row" style="cursor:default;padding:var(--sp-3)">
+        <div class="lr-main"><div class="lr-title">${h.label}</div><div class="lr-sub">Periode cut off ${store.getSettings().cutoffDay}</div></div>
+        <div class="lr-right">
+          <div class="num-display" style="font-size:var(--fs-sm)">${fmt.rpShort(h.total)}</div>
+          <div class="mt-2"><span class="badge badge-neutral">${h.status}</span></div>
+        </div>
+      </div>`).join("");
+  }
+
+  function periodData() {
+    const p = active();
+    const payInRange = store.getPayments().filter(x => x.status === "confirmed" && x.date >= p.from && x.date <= p.to);
+    const rows = store.getContracts().map(c => {
+      const renter = store.getRenterById(c.renterId);
+      const car = store.getCarById(c.carId);
+      const pays = payInRange.filter(x => x.contractId === c.id);
+      const received = pays.reduce((s, x) => s + x.amount, 0);
+      // Estimasi hari ditagih dalam periode
+      const days = Math.max(1, Math.round((new Date(p.to) - new Date(p.from > c.startDate ? p.from : c.startDate)) / 86400000));
+      const billed = days * c.dailyRate;
+      const arrears = Math.max(0, billed - received);
+      return { c, renter, car, days, billed, received, arrears, count: pays.length };
+    });
+    return { p, payInRange, rows };
+  }
+
+  function renderKpis() {
+    const { payInRange, rows } = periodData();
+    const income = payInRange.reduce((s, x) => s + x.amount, 0);
+    const billed = rows.reduce((s, r) => s + r.billed, 0);
+    const arrears = rows.reduce((s, r) => s + r.arrears, 0);
+    const rate = billed ? Math.round((income / billed) * 100) : 100;
+    const collectible = rows.filter(r => r.arrears > 0).length;
+
+    document.getElementById("report-kpis").innerHTML = `
+      <div class="kpi"><div class="kpi-label">Total pendapatan</div><div class="kpi-value">${fmt.rpShort(income)}</div>
+        <div class="kpi-meta trend-up">${I.trendUp} <span>${payInRange.length} transaksi</span></div>
+        <div class="kpi-icon" style="background:var(--brand-50);color:var(--brand-500)">${I.wallet}</div></div>
+      <div class="kpi"><div class="kpi-label">Total ditagihkan</div><div class="kpi-value">${fmt.rpShort(billed)}</div>
+        <div class="kpi-meta text-tertiary">Kewajiban periode</div>
+        <div class="kpi-icon" style="background:var(--info-bg);color:var(--info)">${I.report}</div></div>
+      <div class="kpi"><div class="kpi-label">Tunggakan periode</div><div class="kpi-value text-danger">${fmt.rpShort(arrears)}</div>
+        <div class="kpi-meta ${collectible > 0 ? "text-danger" : "trend-up"}">${collectible} penyewa</div>
+        <div class="kpi-icon" style="background:var(--danger-bg);color:var(--danger)">${I.alert}</div></div>
+      <div class="kpi"><div class="kpi-label">Tingkat penagihan</div><div class="kpi-value">${rate}%</div>
+        <div class="kpi-meta trend-up">${I.trendUp} <span>dibayar / ditagih</span></div>
+        <div class="kpi-icon" style="background:var(--success-bg);color:var(--success)">${I.checkCircle}</div></div>`;
+  }
+
+  function renderTable() {
+    const { rows } = periodData();
+    const sum = rows.reduce((a, r) => ({ billed: a.billed + r.billed, received: a.received + r.received, arrears: a.arrears + r.arrears }), { billed: 0, received: 0, arrears: 0 });
+
+    document.getElementById("row-count").textContent = rows.length + " baris";
+    document.getElementById("report-rows").innerHTML = rows.map(r => `
+      <tr>
+        <td><div class="row gap-2"><span class="avatar avatar-sm">${r.renter.avatar}</span><b>${r.renter.name}</b></div></td>
+        <td>${r.car.plate}</td>
+        <td class="text-tertiary">${r.car.brand} ${r.car.model}</td>
+        <td class="num">${r.days}</td>
+        <td class="num">${fmt.rp(r.billed)}</td>
+        <td class="num text-success">${fmt.rp(r.received)}</td>
+        <td class="num ${r.arrears > 0 ? "text-danger" : "text-tertiary"}">${fmt.rp(r.arrears)}</td>
+        <td>${r.arrears > 0 ? `<span class="badge badge-danger">Tunggak</span>` : `<span class="badge badge-success">Lunas</span>`}</td>
+      </tr>`).join("");
+
+    document.getElementById("report-foot").innerHTML = `
+      <tr style="background:var(--bg-sunken);font-weight:800">
+        <td colspan="4">TOTAL ${rows.length} PENYEWA</td>
+        <td class="num">${fmt.rp(sum.billed)}</td>
+        <td class="num text-success">${fmt.rp(sum.received)}</td>
+        <td class="num text-danger">${fmt.rp(sum.arrears)}</td>
+        <td></td>
+      </tr>`;
+  }
+
+  document.getElementById("period-chips").addEventListener("click", e => {
+    const chip = e.target.closest("[data-period]");
+    if (!chip) return;
+    mode = chip.getAttribute("data-period");
+    document.querySelectorAll("#period-chips .chip").forEach(c => c.classList.toggle("active", c === chip));
+    renderPeriodMeta(); renderKpis(); renderTable();
+  });
+  document.getElementById("rp-apply").addEventListener("click", () => {
+    custom.from = document.getElementById("rp-from").value;
+    custom.to = document.getElementById("rp-to").value;
+    renderPeriodMeta(); renderKpis(); renderTable();
+    window.UI.toast("Rentang laporan diterapkan");
+  });
+
+  /* ---------- Export ---------- */
+  document.getElementById("btn-csv").addEventListener("click", () => {
+    const { p, rows } = periodData();
+    const csv = [
+      ["LAPORAN SETORAN — PT KLINIK NET RENT CAR"],
+      ["Periode", p.label],
+      ["Dicetak", new Date().toLocaleString("id-ID")],
+      [],
+      ["Penyewa", "Plat", "Merek", "Tipe", "Hari", "Ditagihkan", "Diterima", "Tunggakan", "Status"]
+    ];
+    rows.forEach(r => csv.push([r.renter.name, r.car.plate, r.car.brand, r.car.model, r.days, r.billed, r.received, r.arrears, r.arrears > 0 ? "Tunggak" : "Lunas"]));
+    csv.push([]);
+    csv.push(["TOTAL", "", "", "", "", sum(rows, "billed"), sum(rows, "received"), sum(rows, "arrears"), ""]);
+    window.CSV.download("laporan-" + p.from + "-sd-" + p.to + ".csv", csv);
+  });
+
+  function sum(rows, key) { return rows.reduce((s, r) => s + r[key], 0); }
+
+  document.getElementById("btn-pdf").addEventListener("click", () => {
+    const { p, rows } = periodData();
+    const html = `
+<html><head><meta charset="utf-8"><title>Laporan ${p.label}</title>
+<style>
+body{font-family:'Segoe UI',Arial,sans-serif;padding:32px;color:#1a1715}
+h1{font-size:22px;margin:0 0 4px}
+h2{font-size:13px;color:#78716c;margin:0 0 20px;font-weight:600}
+table{width:100%;border-collapse:collapse;font-size:12px}
+th{background:#f4f1ec;text-align:left;padding:9px 8px;font-size:10px;text-transform:uppercase;letter-spacing:.5px;border-bottom:2px solid #d6cfc4}
+td{padding:8px;border-bottom:1px solid #e8e3db}
+.num{text-align:right;font-variant-numeric:tabular-nums}
+tfoot td{font-weight:800;background:#f9f7f4}
+.meta{margin-bottom:16px;font-size:12px;color:#57514b}
+</style></head><body>
+<h1>Laporan Setoran Harian</h1>
+<h2>PT KLINIK NET RENT CAR</h2>
+<div class="meta">Periode: <b>${p.label}</b> · Cut off tanggal ${p.cut} · Dicetak ${new Date().toLocaleString("id-ID")}</div>
+<table><thead><tr><th>Penyewa</th><th>Plat</th><th>Mobil</th><th class="num">Hari</th><th class="num">Ditagihkan</th><th class="num">Diterima</th><th class="num">Tunggakan</th><th>Status</th></tr></thead>
+<tbody>${rows.map(r => `<tr><td>${r.renter.name}</td><td>${r.car.plate}</td><td>${r.car.brand} ${r.car.model}</td><td class="num">${r.days}</td><td class="num">${fmt.rp(r.billed)}</td><td class="num">${fmt.rp(r.received)}</td><td class="num">${fmt.rp(r.arrears)}</td><td>${r.arrears > 0 ? "Tunggak" : "Lunas"}</td></tr>`).join("")}</tbody>
+<tfoot><tr><td colspan="4">TOTAL</td><td class="num">${fmt.rp(sum(rows, "billed"))}</td><td class="num">${fmt.rp(sum(rows, "received"))}</td><td class="num">${fmt.rp(sum(rows, "arrears"))}</td><td></td></tr></tfoot></table>
+</body></html>`;
+    const win = window.open("", "_blank");
+    if (win) { win.document.write(html); win.document.close(); setTimeout(() => win.print(), 400); }
+    window.UI.toast("Jendela cetak dibuka — pilih 'Save as PDF'");
+  });
+
+  renderPeriodMeta();
+  renderKpis();
+  renderTable();
+  window.addEventListener("klinik_data_changed", () => { renderKpis(); renderTable(); });
+})();
+</script>
+</body>
+</html>

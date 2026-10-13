@@ -1,0 +1,539 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Setoran — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Setoran</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="chips">
+              <button class="chip active" data-tab="input">Input Setoran</button>
+              <button class="chip" data-tab="history">Riwayat Transaksi</button>
+            </div>
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body" style="padding:0;display:flex;flex-direction:column;overflow:hidden">
+
+          <!-- ============ INPUT TAB ============ -->
+          <div id="tab-input" class="grow input-split">
+            <div class="split-form col gap-4">
+              <!-- Step 1: pilih penyewa -->
+              <div class="card card-pad-lg mb-4">
+                <div class="card-header">
+                  <div><div class="card-title">1 · Pilih Penyewa & Mobil</div>
+                  <div class="card-sub">Hanya kontrak aktif yang bisa dipilih</div></div>
+                  <span class="badge badge-brand" id="active-count"></span>
+                </div>
+                <div class="field mb-4">
+                  <label class="field-label" for="renter-select">Penyewa</label>
+                  <select class="select" id="renter-select">
+                    <option value="">— Pilih penyewa —</option>
+                  </select>
+                </div>
+                <div id="contract-preview"></div>
+              </div>
+
+              <!-- Step 2: detail pembayaran -->
+              <div class="card card-pad-lg" id="detail-card" style="display:none">
+                <div class="card-header">
+                  <div><div class="card-title">2 · Detail Pembayaran</div>
+                  <div class="card-sub">Nominal sudah divalidasi di internet banking</div></div>
+                </div>
+                <div class="form-grid">
+                  <div class="field">
+                    <label class="field-label" for="pay-date">Tanggal setoran *</label>
+                    <input type="date" class="input" id="pay-date" value="2026-03-24" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label" for="pay-bank">Metode / bank *</label>
+                    <select class="select" id="pay-bank">
+                      <option>BCA 0882199001</option>
+                      <option>Mandiri 12400998811</option>
+                      <option>BRI 03410199881</option>
+                      <option>BNI 021998822</option>
+                      <option>Tunai Kasir</option>
+                    </select>
+                  </div>
+                  <div class="field">
+                    <label class="field-label" for="pay-ref">Nomor referensi (opsional)</label>
+                    <input class="input" id="pay-ref" placeholder="TRX / MDR / QRIS code" />
+                  </div>
+                  <div class="field">
+                    <label class="field-label" for="pay-notes">Catatan</label>
+                    <input class="input" id="pay-notes" placeholder="Setoran rutin, bayar 2 hari, dll" />
+                  </div>
+                </div>
+                <div class="divider"></div>
+                <div class="row gap-3 wrap">
+                  <span class="text-xs text-tertiary font-bold">CEK CEPAT:</span>
+                  <button class="chip" data-quick="exact">Nominal pas</button>
+                  <button class="chip" data-quick="half">Bayar sebagian 50%</button>
+                  <button class="chip" data-quick="double">Bayar 2 hari (kredit)</button>
+                  <button class="chip" data-quick="arrears">Tutup tunggakan</button>
+                </div>
+              </div>
+
+              <!-- Riwayat mini -->
+              <div class="card card-pad-lg">
+                <div class="row-between wrap gap-3 mb-4">
+                  <div><div class="card-title">Transaksi penyewa terpilih</div>
+                    <div class="card-sub" id="recent-sub">—</div></div>
+                  <button class="btn btn-ghost btn-sm" data-tab-jump="history">Lihat semua →</button>
+                </div>
+                <div id="mini-history" class="col gap-2">
+                  <div class="text-sm text-tertiary">Pilih penyewa untuk melihat riwayat.</div>
+                </div>
+              </div>
+            </div>
+
+            <!-- Numpad -->
+            <div class="numpad-shell">
+              <div class="numpad-display">
+                <div class="amount" id="numpad-amount"><span class="rp">Rp</span> 0</div>
+                <div class="meta" id="numpad-meta">Ketik nominal untuk mencatat setoran</div>
+              </div>
+              <div class="numpad-grid" id="numpad-grid">
+                <button class="numpad-key" data-key="7">7</button>
+                <button class="numpad-key" data-key="8">8</button>
+                <button class="numpad-key" data-key="9">9</button>
+                <button class="numpad-key fn" data-key="del" aria-label="Hapus satu digit">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="M20 5H9.5a2 2 0 0 0-1.4.6L3 12l5.1 6.4a2 2 0 0 0 1.4.6H20a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1Z"/><path d="m17 9-4 6M13 9l4 6"/></svg>
+                </button>
+
+                <button class="numpad-key" data-key="4">4</button>
+                <button class="numpad-key" data-key="5">5</button>
+                <button class="numpad-key" data-key="6">6</button>
+                <button class="numpad-key fn" data-key="clear" aria-label="Hapus semua">C</button>
+
+                <button class="numpad-key" data-key="1">1</button>
+                <button class="numpad-key" data-key="2">2</button>
+                <button class="numpad-key" data-key="3">3</button>
+                <button class="numpad-key fn" data-key="000">000</button>
+
+                <button class="numpad-key" data-key="0">0</button>
+                <button class="numpad-key save" data-key="save" aria-label="Simpan setoran">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-linecap="round" stroke-linejoin="round"><path d="m4.5 12.5 5 5 10-11"/></svg>
+                  SIMPAN
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- ============ HISTORY TAB ============ -->
+          <div id="tab-history" class="grow hidden" style="overflow-y:auto;padding:var(--sp-6)">
+            <div class="row gap-4 wrap mb-5">
+              <div class="search-bar" style="max-width:320px">
+                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                <input type="search" id="hist-search" placeholder="Cari nama, plat, referensi…" />
+              </div>
+              <div class="chips" id="hist-filter">
+                <button class="chip active" data-hfilter="all">Semua</button>
+                <button class="chip" data-hfilter="confirmed">Aktif</button>
+                <button class="chip" data-hfilter="canceled">Dibatalkan</button>
+                <button class="chip" data-hfilter="partial">Sebagian</button>
+              </div>
+              <button class="btn btn-secondary" id="btn-export-csv"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" style="width:18px;height:18px"><path d="M12 3v12M8 11l4 4 4-4"/><path d="M4 17v2a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2v-2"/></svg> Ekspor CSV</button>
+            </div>
+
+            <div class="kpi-grid mb-5" id="hist-summary"></div>
+
+            <div class="table-wrap">
+              <table class="data">
+                <thead><tr>
+                  <th>Tanggal</th><th>Penyewa</th><th>Plat</th><th>Bank</th><th>Referensi</th>
+                  <th class="num">Nominal</th><th>Status</th><th></th>
+                </tr></thead>
+                <tbody id="hist-rows"></tbody>
+              </table>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- CONFIRM DIALOG -->
+    <div class="modal" id="confirm-modal">
+      <div class="modal-header">
+        <div>
+          <div class="card-title">Konfirmasi Simpan Setoran</div>
+          <div class="card-sub">Periksa kembali sebelum disimpan</div>
+        </div>
+        <button class="btn btn-ghost btn-icon" data-close="confirm-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="confirm-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="confirm-modal">Kembali</button>
+        <button class="btn btn-primary" id="confirm-save">Ya, Simpan Setoran</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  const TODAY = window.SIM_TODAY;
+  let selectedContract = null;
+  let pendingAmount = 0;
+  let histFilter = "all";
+  let histQuery = "";
+
+  window.Shell.render("payments", { title: "Setoran", subtitle: "Input setoran harian penyewa" });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  /* ---------- Renter select ---------- */
+  function fillRenters() {
+    const sel = document.getElementById("renter-select");
+    const contracts = store.getContracts().filter(c => c.status === "active");
+    sel.innerHTML = `<option value="">— Pilih penyewa —</option>` +
+      contracts.map(c => {
+        const r = store.getRenterById(c.renterId);
+        const car = store.getCarById(c.carId);
+        return `<option value="${c.id}">${r.avatar} ${r.name} — ${car.plate} (${car.brand} ${car.model})</option>`;
+      }).join("");
+    document.getElementById("active-count").textContent = contracts.length + " kontrak aktif";
+  }
+
+  document.getElementById("renter-select").addEventListener("change", e => {
+    selectedContract = e.target.value ? store.getContractById(e.target.value) : null;
+    renderContractPreview();
+    renderDetailCard();
+    renderMiniHistory();
+  });
+
+  function renderContractPreview() {
+    const host = document.getElementById("contract-preview");
+    if (!selectedContract) { host.innerHTML = ""; return; }
+    const c = selectedContract;
+    const car = store.getCarById(c.carId);
+    const arrears = store.calculateArrears().find(a => a.contract.id === c.id);
+
+    host.innerHTML = `
+      <div class="card card-outlined" style="background:var(--bg-sunken);box-shadow:none">
+        <div class="row gap-4 wrap">
+          <div class="avatar">${store.getRenterById(c.renterId).avatar}</div>
+          <div class="grow" style="min-width:180px">
+            <div class="font-bold">${store.getRenterById(c.renterId).name}</div>
+            <div class="text-xs text-tertiary">${store.getRenterById(c.renterId).phone} · Mulai ${fmt.date(c.startDate)}</div>
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold">PLAT</div>
+            <div class="font-bold">${car.plate}</div>
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold">TARIF</div>
+            <div class="num-display">${fmt.rp(c.dailyRate)}<span class="text-tertiary font-normal">/hari</span></div>
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold">JADWAL</div>
+            <div class="font-bold">${c.workSchedule === "7days" ? "7 hari / minggu" : "6 hari kerja"}</div>
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold">TUNGGAKAN</div>
+            <div class="num-display ${arrears && arrears.arrearsAmount > 0 ? "text-danger" : "text-success"}">${fmt.rpShort(arrears ? arrears.arrearsAmount : 0)}</div>
+          </div>
+        </div>
+      </div>`;
+  }
+
+  function renderDetailCard() {
+    document.getElementById("detail-card").style.display = selectedContract ? "block" : "none";
+  }
+
+  function renderMiniHistory() {
+    const host = document.getElementById("mini-history");
+    if (!selectedContract) {
+      host.innerHTML = `<div class="text-sm text-tertiary">Pilih penyewa untuk melihat riwayat.</div>`;
+      document.getElementById("recent-sub").textContent = "—";
+      return;
+    }
+    const pays = store.getPayments()
+      .filter(p => p.contractId === selectedContract.id)
+      .slice(0, 4);
+    document.getElementById("recent-sub").textContent = selectedContract.id + " · " + pays.length + " transaksi terakhir";
+    host.innerHTML = pays.map(p => `
+      <div class="row-between list-row" style="padding:var(--sp-3);cursor:default">
+        <div class="lr-main">
+          <div class="lr-title">${fmt.date(p.date)} ${p.status === "canceled" ? '<span class="badge badge-danger">Dibatalkan</span>' : ""}</div>
+          <div class="lr-sub">${p.bank} · ${p.referenceNo}${p.notes ? " · " + p.notes : ""}</div>
+        </div>
+        <div class="lr-right num-display" style="${p.status === "canceled" ? "text-decoration:line-through;color:var(--text-tertiary)" : "color:var(--success)"}">${fmt.rp(p.amount)}</div>
+      </div>`).join("") || `<div class="text-sm text-tertiary">Belum ada transaksi.</div>`;
+  }
+
+  /* ---------- Numpad ---------- */
+  const numpad = window.UI.createNumpad({
+    container: document.getElementById("numpad-grid"),
+    display: document.getElementById("numpad-amount"),
+    meta: document.getElementById("numpad-meta"),
+    metaText: (v) => {
+      if (!selectedContract) return "Pilih penyewa terlebih dahulu";
+      const c = selectedContract;
+      const diff = v - c.dailyRate;
+      if (v === 0) return "Tarif harian: " + fmt.rp(c.dailyRate);
+      if (diff === 0) return "✓ Pas dengan tarif harian";
+      if (diff > 0) return "Kredit " + fmt.rp(diff) + " (" + (diff / c.dailyRate).toFixed(1).replace(".0", "") + " hari)";
+      return "Kurang " + fmt.rp(-diff) + " (bayar sebagian)";
+    },
+    onSave: (v) => { pendingAmount = v; openConfirm(v); }
+  });
+
+  /* ---------- Quick amounts ---------- */
+  document.querySelectorAll("[data-quick]").forEach(btn => btn.addEventListener("click", () => {
+    if (!selectedContract) { window.UI.toast("Pilih penyewa terlebih dahulu", "error"); return; }
+    const rate = selectedContract.dailyRate;
+    const arrears = store.calculateArrears().find(a => a.contract.id === selectedContract.id);
+    const map = { exact: rate, half: Math.round(rate / 2 / 1000) * 1000, double: rate * 2, arrears: (arrears ? arrears.arrearsAmount : rate) };
+    numpad.set(map[btn.getAttribute("data-quick")]);
+    window.UI.toast("Nominal diisi: " + fmt.rp(map[btn.getAttribute("data-quick")]));
+  }));
+
+  /* ---------- Confirm dialog ---------- */
+  function openConfirm(amount) {
+    if (!selectedContract) { window.UI.toast("Pilih penyewa terlebih dahulu", "error"); return; }
+    const c = selectedContract;
+    const r = store.getRenterById(c.renterId);
+    const car = store.getCarById(c.carId);
+    const arrears = store.calculateArrears().find(a => a.contract.id === c.id);
+    const arrearsBefore = arrears ? arrears.arrearsAmount : 0;
+    const arrearsAfter = Math.max(0, arrearsBefore - amount);
+    const credit = amount - arrearsBefore;
+    const isPartial = amount < c.dailyRate;
+    const isCredit = credit > 0;
+    const isArrears = arrearsBefore > 0 && amount <= arrearsBefore;
+
+    document.getElementById("confirm-body").innerHTML = `
+      <div class="col gap-4">
+        <div class="row gap-4">
+          <div class="avatar avatar-lg">${r.avatar}</div>
+          <div>
+            <div class="display-font" style="font-size:var(--fs-lg);font-weight:700">${r.name}</div>
+            <div class="text-sm text-secondary">${car.plate} · ${car.brand} ${car.model}</div>
+            <div class="text-xs text-tertiary">${document.getElementById("pay-date").value} · ${document.getElementById("pay-bank").value}</div>
+          </div>
+          <div class="grow" style="text-align:right">
+            <div class="num-display" style="font-size:var(--fs-2xl);color:var(--brand-600)">${fmt.rp(amount)}</div>
+            <div class="text-xs text-tertiary">Tarif harian ${fmt.rp(c.dailyRate)}</div>
+          </div>
+        </div>
+
+        <div class="row gap-2 wrap">
+          ${isArrears ? `<span class="badge badge-danger">${I.alert} Membayar tunggakan (${fmt.rp(arrearsBefore)})</span>` : ""}
+          ${isPartial ? `<span class="badge badge-warning">Bayar sebagian</span>` : ""}
+          ${isCredit ? `<span class="badge badge-success">${I.checkCircle} Kredit ${fmt.rp(credit)}</span>` : ""}
+          ${amount === c.dailyRate && !isArrears ? `<span class="badge badge-success">${I.checkCircle} Nominal pas</span>` : ""}
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="col gap-2 text-sm">
+          <div class="row-between"><span class="text-secondary">Tunggakan sebelum</span><b class="num-display">${fmt.rp(arrearsBefore)}</b></div>
+          <div class="row-between"><span class="text-secondary">Tunggakan sesudah</span><b class="num-display ${arrearsAfter === 0 ? "text-success" : "text-danger"}">${fmt.rp(arrearsAfter)}</b></div>
+          ${isCredit ? `<div class="row-between"><span class="text-secondary">Kredit tersimpan</span><b class="num-display text-success">${fmt.rp(credit)}</b></div>` : ""}
+        </div>
+
+        ${document.getElementById("pay-ref").value || document.getElementById("pay-notes").value ? `
+          <div class="divider"></div>
+          <div class="col gap-1 text-xs">
+            ${document.getElementById("pay-ref").value ? `<div><span class="text-tertiary">Referensi:</span> <b>${document.getElementById("pay-ref").value}</b></div>` : ""}
+            ${document.getElementById("pay-notes").value ? `<div><span class="text-tertiary">Catatan:</span> ${document.getElementById("pay-notes").value}</div>` : ""}
+          </div>` : ""}
+      </div>`;
+
+    window.UI.openModal("confirm-modal");
+  }
+
+  document.querySelectorAll("[data-close='confirm-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("confirm-modal")));
+
+  document.getElementById("confirm-save").addEventListener("click", () => {
+    if (!selectedContract) return;
+    try {
+      const p = store.addPayment({
+        contractId: selectedContract.id,
+        date: document.getElementById("pay-date").value || TODAY,
+        amount: pendingAmount,
+        bank: document.getElementById("pay-bank").value,
+        referenceNo: document.getElementById("pay-ref").value.trim() || undefined,
+        notes: document.getElementById("pay-notes").value.trim()
+      });
+      window.UI.closeModal("confirm-modal");
+      numpad.set(0);
+      document.getElementById("pay-ref").value = "";
+      document.getElementById("pay-notes").value = "";
+      renderMiniHistory();
+      renderHistory();
+      fillRenters();
+      const car = store.getCarById(selectedContract.carId);
+      window.UI.toast("Urungkan — setoran " + fmt.rp(pendingAmount) + " dari " + car.plate + " tersimpan", "success", "Lihat riwayat", () => switchTab("history"));
+    } catch (e) {
+      window.UI.toast(e.message, "error");
+    }
+  });
+
+  /* ---------- History ---------- */
+  function switchTab(tab) {
+    document.querySelectorAll("[data-tab]").forEach(b => b.classList.toggle("active", b.getAttribute("data-tab") === tab));
+    document.getElementById("tab-input").classList.toggle("hidden", tab !== "input");
+    document.getElementById("tab-history").classList.toggle("hidden", tab !== "history");
+    if (tab === "history") renderHistory();
+  }
+
+  document.querySelectorAll("[data-tab]").forEach(b => b.addEventListener("click", () => switchTab(b.getAttribute("data-tab"))));
+  document.querySelectorAll("[data-tab-jump]").forEach(b => b.addEventListener("click", () => switchTab(b.getAttribute("data-tab-jump"))));
+
+  function renderHistory() {
+    const all = store.getPayments();
+    let rows = all.slice();
+
+    if (histFilter === "confirmed") rows = rows.filter(p => p.status === "confirmed");
+    else if (histFilter === "canceled") rows = rows.filter(p => p.status === "canceled");
+    else if (histFilter === "partial") {
+      rows = rows.filter(p => {
+        const c = store.getContractById(p.contractId);
+        return c && p.status === "confirmed" && p.amount < c.dailyRate;
+      });
+    }
+
+    const q = histQuery.trim().toLowerCase();
+    if (q) {
+      rows = rows.filter(p => {
+        const c = store.getContractById(p.contractId);
+        const r = c ? store.getRenterById(c.renterId) : null;
+        const car = c ? store.getCarById(c.carId) : null;
+        return [r && r.name, car && car.plate, p.referenceNo, p.bank].join(" ").toLowerCase().includes(q);
+      });
+    }
+
+    const active = all.filter(p => p.status === "confirmed");
+    const canceled = all.filter(p => p.status === "canceled");
+    const today = active.filter(p => p.date === TODAY).reduce((s, p) => s + p.amount, 0);
+
+    document.getElementById("hist-summary").innerHTML = `
+      <div class="kpi"><div class="kpi-label">Total transaksi</div><div class="kpi-value">${all.length}</div>
+        <div class="kpi-meta text-tertiary">${active.length} aktif · ${canceled.length} dibatalkan</div>
+        <div class="kpi-icon" style="background:var(--brand-50);color:var(--brand-500)">${I.wallet}</div></div>
+      <div class="kpi"><div class="kpi-label">Diterima hari ini</div><div class="kpi-value">${fmt.rpShort(today)}</div>
+        <div class="kpi-meta trend-up">${I.trendUp} <span>${active.filter(p => p.date === TODAY).length} setoran</span></div>
+        <div class="kpi-icon" style="background:var(--success-bg);color:var(--success)">${I.checkCircle}</div></div>
+      <div class="kpi"><div class="kpi-label">Nilai total</div><div class="kpi-value">${fmt.rpShort(active.reduce((s, p) => s + p.amount, 0))}</div>
+        <div class="kpi-meta text-tertiary">Seumur akun</div>
+        <div class="kpi-icon" style="background:var(--info-bg);color:var(--info)">${I.report}</div></div>`;
+
+    document.getElementById("hist-rows").innerHTML = rows.slice(0, 60).map(p => {
+      const c = store.getContractById(p.contractId);
+      const r = c ? store.getRenterById(c.renterId) : null;
+      const car = c ? store.getCarById(c.carId) : null;
+      const isPartial = c && p.status === "confirmed" && p.amount < c.dailyRate;
+      return `<tr style="${p.status === "canceled" ? "opacity:.55" : ""}">
+        <td><b>${fmt.dateShort(p.date)}</b></td>
+        <td>${r ? r.name : "—"}</td>
+        <td>${car ? car.plate : "—"}</td>
+        <td class="text-tertiary">${p.bank.split(" ")[0]}</td>
+        <td class="text-tertiary text-xs">${p.referenceNo}</td>
+        <td class="num ${p.status === "canceled" ? "text-decoration:line-through" : ""}">${fmt.rp(p.amount)}
+          ${isPartial ? '<span class="badge badge-warning" style="margin-left:6px">Sebagian</span>' : ""}</td>
+        <td>${p.status === "canceled"
+          ? `<span class="badge badge-danger" data-tip="${(p.cancelReason||"").replace(/"/g,"")}">Dibatalkan</span>`
+          : `<span class="badge badge-success">Aktif</span>`}</td>
+        <td><div class="row-actions">
+          ${p.status === "confirmed" ? `<button class="btn btn-ghost btn-icon btn-sm" data-cancel="${p.id}" data-tip="Batalkan" aria-label="Batalkan">${I.xCircle}</button>` : ""}
+          ${p.status === "canceled" ? `<button class="btn btn-ghost btn-icon btn-sm" data-restore="${p.id}" data-tip="Pulihkan" aria-label="Pulihkan">${I.undo}</button>` : ""}
+        </div></td>
+      </tr>`;
+    }).join("") || `<tr><td colspan="8"><div class="empty-state"><div class="es-icon">${I.empty}</div><h3>Belum ada transaksi</h3><p>Transaksi akan muncul di sini setelah Anda mencatat setoran.</p></div></td></tr>`;
+
+    document.querySelectorAll("[data-cancel]").forEach(btn => btn.addEventListener("click", async () => {
+      const p = store.getPayments().find(x => x.id === btn.getAttribute("data-cancel"));
+      const c = store.getContractById(p.contractId);
+      const car = c ? store.getCarById(c.carId) : null;
+      const ok = await window.UI.confirm({
+        title: "Batalkan transaksi " + fmt.rp(p.amount) + "?",
+        subtitle: "Data tidak dihapus permanen — ditandai dibatalkan dengan alasan",
+        message: `${store.getRenterById(c.renterId).name} · ${car.plate} · ${fmt.date(p.date)}<br><br>Transaksi tetap muncul di riwayat dengan status <b>Dibatalkan</b> dan tunggakan penyewa dihitung ulang.`,
+        okLabel: "Batalkan transaksi",
+        danger: true,
+        reason: true
+      });
+      if (!ok) return;
+      try {
+        const reason = window.UI.lastConfirmReason || "Tidak diberi alasan";
+        store.cancelPayment(p.id, reason);
+        renderHistory();
+        fillRenters();
+        window.UI.toast("Transaksi dibatalkan, jejak audit tersimpan", "success", "Urungkan", async () => {
+          store.restorePayment(p.id);
+          renderHistory();
+          fillRenters();
+          window.UI.toast("Transaksi dipulihkan");
+        });
+      } catch (e) { window.UI.toast(e.message, "error"); }
+    }));
+
+    document.querySelectorAll("[data-restore]").forEach(btn => btn.addEventListener("click", () => {
+      store.restorePayment(btn.getAttribute("data-restore"));
+      renderHistory();
+      fillRenters();
+      window.UI.toast("Transaksi dipulihkan");
+    }));
+  }
+
+  document.getElementById("hist-filter").addEventListener("click", e => {
+    const chip = e.target.closest("[data-hfilter]");
+    if (!chip) return;
+    histFilter = chip.getAttribute("data-hfilter");
+    document.querySelectorAll("#hist-filter .chip").forEach(c => c.classList.toggle("active", c === chip));
+    renderHistory();
+  });
+  document.getElementById("hist-search").addEventListener("input", e => { histQuery = e.target.value; renderHistory(); });
+
+  document.getElementById("btn-export-csv").addEventListener("click", () => {
+    const rows = [["Tanggal", "Penyewa", "Plat", "Merek", "Tipe", "Bank", "Referensi", "Nominal", "Status", "Alasan Pembatalan", "Catatan"]];
+    store.getPayments().forEach(p => {
+      const c = store.getContractById(p.contractId);
+      const r = c ? store.getRenterById(c.renterId) : null;
+      const car = c ? store.getCarById(c.carId) : null;
+      rows.push([p.date, r ? r.name : "", car ? car.plate : "", car ? car.brand : "", car ? car.model : "", p.bank, p.referenceNo, p.amount, p.status === "confirmed" ? "Aktif" : "Dibatalkan", p.cancelReason || "", p.notes || ""]);
+    });
+    window.CSV.download("transaksi-klinik-net-2026-03.csv", rows);
+  });
+
+  /* ---------- Boot ---------- */
+  document.getElementById("pay-date").value = TODAY;
+  fillRenters();
+  renderMiniHistory();
+  renderHistory();
+  window.addEventListener("klinik_data_changed", () => { fillRenters(); renderContractPreview(); renderMiniHistory(); renderHistory(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,240 @@
+<!doctype html>
+<html lang="id">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Logo Klinik Net — wordmark di-outline</title>
+<style>
+  :root {
+    --bg:      #F9F7F4;
+    --surface: #FFFFFF;
+    --fg:      #1A1715;
+    --muted:   #79726A;
+    --border:  #E8E3DB;
+    --accent:  #FF385C;
+    --accent-soft: color-mix(in oklch, var(--accent) 12%, transparent);
+    --stage-dark: #262220;
+    --stage-dark-ink: #FDFCFB;
+    --font-display: "Fraunces", Georgia, "Times New Roman", serif;
+    --font-body:    "Plus Jakarta Sans", -apple-system, "Segoe UI", system-ui, sans-serif;
+    --font-mono:    ui-monospace, "JetBrains Mono", "SF Mono", Menlo, monospace;
+    --fs-h1: clamp(38px, 5vw, 60px);
+    --fs-h2: clamp(28px, 3.4vw, 40px);
+    --fs-h3: 19px;
+    --fs-lead: 18px;
+    --fs-body: 16px;
+    --fs-meta: 13px;
+    --gap-xs: 8px; --gap-sm: 12px; --gap-md: 20px; --gap-lg: 32px; --gap-xl: 56px; --gap-2xl: 88px;
+    --container: 1080px; --gutter: 32px;
+    --radius: 10px; --radius-lg: 16px;
+  }
+  *, *::before, *::after { box-sizing: border-box; }
+  html { -webkit-text-size-adjust: 100%; }
+  body {
+    margin: 0; background: var(--bg); color: var(--fg);
+    font-family: var(--font-body); font-size: var(--fs-body); line-height: 1.55;
+    text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased;
+  }
+  img, svg { display: block; max-width: 100%; }
+  p { text-wrap: pretty; } h1, h2, h3 { text-wrap: balance; }
+
+  .container { max-width: var(--container); margin-inline: auto; padding-inline: var(--gutter); }
+  .section { padding-block: clamp(44px, 7vw, var(--gap-2xl)); }
+  .section + .section { border-top: 1px solid var(--border); }
+  .h1, h1 { font-family: var(--font-display); font-size: var(--fs-h1); line-height: 1.08; letter-spacing: -0.02em; margin: 0; }
+  .h2, h2 { font-family: var(--font-display); font-size: var(--fs-h2); line-height: 1.14; letter-spacing: -0.015em; margin: 0 0 var(--gap-md); }
+  .h3, h3 { font-size: var(--fs-h3); font-weight: 700; letter-spacing: -0.005em; margin: 0 0 var(--gap-xs); }
+  .lead { font-size: var(--fs-lead); color: var(--muted); max-width: 64ch; margin: 0; line-height: 1.55; }
+  .eyebrow { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.09em; text-transform: uppercase; color: var(--accent); margin: 0 0 var(--gap-sm); }
+  .meta { font-family: var(--font-mono); font-size: var(--fs-meta); color: var(--muted); }
+  code { font-family: var(--font-mono); font-size: 0.9em; }
+
+  .card { background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); padding: 28px; }
+  .card p { margin: 0; color: var(--muted); font-size: 15px; }
+  .grid-2 { display: grid; grid-template-columns: 1fr 1fr; gap: var(--gap-lg); }
+  .grid-3 { display: grid; grid-template-columns: repeat(3, 1fr); gap: var(--gap-lg); }
+  @media (max-width: 920px) { .grid-2, .grid-3 { grid-template-columns: 1fr; } }
+
+  .hero { padding-block: clamp(60px, 9vw, 120px); }
+  .stage { padding: 44px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-lg); display: flex; align-items: center; gap: 32px; flex-wrap: wrap; }
+  .stage > img { height: 64px; width: auto; }
+
+  .pill { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; background: var(--accent-soft);
+          color: var(--accent); border-radius: 999px; font-family: var(--font-mono); font-size: 11px;
+          letter-spacing: 0.05em; text-transform: uppercase; }
+
+  .ds-table { width: 100%; border-collapse: collapse; font-size: 14px; }
+  .ds-table th, .ds-table td { padding: 11px 14px; text-align: left; border-bottom: 1px solid var(--border); vertical-align: top; }
+  .ds-table th { color: var(--muted); font-weight: 500; font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.06em; text-transform: uppercase; }
+  .ds-table td.n { font-family: var(--font-mono); font-variant-numeric: tabular-nums; text-align: right; white-space: nowrap; }
+
+  .swatch { height: 92px; border-radius: var(--radius); display: grid; align-content: end; gap: 2px; padding: 10px 12px;
+            font-family: var(--font-mono); font-size: 11px; letter-spacing: 0.06em; }
+
+  .scale-strip { display: flex; align-items: flex-end; gap: 34px; flex-wrap: wrap; }
+  .scale-item { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+
+  .dark-stage { background: var(--stage-dark); border-color: transparent; color: var(--stage-dark-ink); }
+  .dark-stage h3 { color: var(--stage-dark-ink); }
+  .dark-stage p { color: #A8A096; }
+  .dark-stage > img { filter: none; }
+
+  .pagefoot { padding-block: var(--gap-lg); color: var(--muted); font-size: 13px; border-top: 1px solid var(--border); }
+</style>
+</head>
+<body>
+
+<header data-od-id="topnav" style="position:sticky;top:0;z-index:10;background:color-mix(in oklch, var(--bg) 92%, transparent);backdrop-filter:blur(12px);border-bottom:1px solid var(--border)">
+  <div class="container" style="display:flex;align-items:center;justify-content:space-between;padding-block:14px">
+    <span style="font-family:var(--font-display);font-size:19px;font-weight:600;letter-spacing:-0.01em">Klinik Net · Logo</span>
+    <nav style="display:flex;gap:var(--gap-lg);font-size:14px">
+      <a href="#perbaikan">Perbaikan</a><a href="#mark">Mark</a><a href="#lockup">Lockup</a><a href="#warna">Warna</a>
+    </nav>
+  </div>
+</header>
+
+<main id="content">
+
+  <section class="section hero" data-od-id="hero">
+    <div class="container">
+      <p class="eyebrow">Identitas visual · perbaikan wordmark</p>
+      <h1>Tulisan “Klinik Net” sekarang terkunci di outline.</h1>
+      <p class="lead" style="margin-top:var(--gap-md)">Hurufnya dicetak dari Plus Jakarta Sans ExtraBold lalu dikonversi jadi path, bukan lagi <code>&lt;text&gt;</code> hidup. Hasilnya: logo tampil sama persis di mana pun — inline, <code>&lt;img&gt;</code>, ekspor PNG, atau cetak — tanpa bergantung pada font yang kebetulan terpasang.</p>
+      <div class="stage" style="margin-top:var(--gap-xl)">
+        <img src="assets/logo.svg" alt="Logo Klinik Net" />
+        <span class="pill">Logo primer</span>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="perbaikan" data-od-id="perbaikan">
+    <div class="container">
+      <p class="eyebrow">Yang diperbaiki</p>
+      <h2>Kenapa tulisan sebelumnya tidak cocok.</h2>
+      <p class="lead" style="margin-bottom:var(--gap-lg)">File SVG yang dimuat lewat <code>&lt;img src="assets/logo.svg"&gt;</code> adalah dokumen sendiri. Font web yang di-<code>@import</code> di <code>shared.css</code> tidak pernah masuk ke sana, jadi <code>&lt;text&gt;</code> jatuh ke fallback <code>system-ui</code> — wordmark berubah bentuk, berubah lebar, dan menggeser seluruh lockup.</p>
+
+      <div class="grid-2" style="margin-bottom:var(--gap-lg)">
+        <div class="card">
+          <h3>Sebelum</h3>
+          <p style="margin-bottom:18px">Live <code>&lt;text&gt;</code>, bergantung font</p>
+          <svg style="height:44px;width:auto" viewBox="0 0 200 56" role="img" aria-label="Versi lama">
+            <rect x="2" y="2" width="52" height="52" rx="15" fill="#FF385C"/>
+            <text x="66" y="37" font-family="'Plus Jakarta Sans', system-ui, sans-serif" font-size="30" font-weight="800" fill="#1A1715" letter-spacing="-0.8">Klinik Net</text>
+          </svg>
+          <p style="margin-top:16px;font-size:14px">Saat font gagal dimuat, baris ini bergeser dan lebarnya tidak lagi cocok dengan kotaknya.</p>
+        </div>
+        <div class="card">
+          <h3>Sesudah</h3>
+          <p style="margin-bottom:18px">Path di-outline, hasil tetap</p>
+          <img src="assets/logo.svg" alt="Logo Klinik Net" style="height:44px;width:auto" />
+          <p style="margin-top:16px;font-size:14px">Bentuk terkunci di dalam file — identik di semua browser, offline, dan di ekspor bitmap.</p>
+        </div>
+      </div>
+
+      <table class="ds-table">
+        <thead><tr><th>Properti</th><th>Nilai</th><th class="n">Angka</th></tr></thead>
+        <tbody>
+          <tr><td>Sumber huruf</td><td>Plus Jakarta Sans ExtraBold (SIL OFL 1.1)</td><td class="n">wght 800</td></tr>
+          <tr><td>Bentuk</td><td>Path, 10 glif — bukan <code>&lt;text&gt;</code></td><td class="n">10 path</td></tr>
+          <tr><td>Cap height</td><td>745 unit × 0.03</td><td class="n">22.35 px</td></tr>
+          <tr><td>Baseline</td><td>Cap box di-center pada y = 28 (pusat mark)</td><td class="n">39.40 px</td></tr>
+          <tr><td>Tracking</td><td>−0.8 px per celah, tetap seperti desain</td><td class="n">−0.8 px</td></tr>
+          <tr><td>Lebar wordmark</td><td>Konium natural dengan tracking</td><td class="n">131.78 px</td></tr>
+          <tr><td>Jarak mark → huruf</td><td>Tile berakhir x54, huruf mulai x66</td><td class="n">12 px</td></tr>
+          <tr><td>Viewbox lockup</td><td>2 + 52 + 12 + 131.78, dengan napas kanan</td><td class="n">200 × 56</td></tr>
+        </tbody>
+      </table>
+      <p class="meta" style="margin-top:var(--gap-md)">Koordinat glyph di <code>logo.svg</code> bisa dibaca langsung — tidak ada yang perlu diubah kecuali ukuran wordmark.</p>
+    </div>
+  </section>
+
+  <section class="section" id="mark" data-od-id="mark">
+    <div class="container">
+      <p class="eyebrow">Mark</p>
+      <h2>Satu tile untuk rail, favicon, dan avatar.</h2>
+      <p class="lead" style="margin-bottom:var(--gap-lg)">Batas stroke glyph <code>car-front</code> berada di x 2–22 dan y 4–21, jadi pusatnya (12, 12.5). Pada skala 1.6, <code>translate(6.8 6)</code> menaruhnya tepat di pusat optik squircle dengan napas 10 px.</p>
+      <div class="card">
+        <div class="scale-strip">
+          <div class="scale-item"><img src="assets/logo-mark.svg" alt="Mark 16 px" width="16" height="16" /><span class="meta">16</span></div>
+          <div class="scale-item"><img src="assets/logo-mark.svg" alt="Mark 24 px" width="24" height="24" /><span class="meta">24</span></div>
+          <div class="scale-item"><img src="assets/logo-mark.svg" alt="Mark 32 px" width="32" height="32" /><span class="meta">32 · rail</span></div>
+          <div class="scale-item"><img src="assets/logo-mark.svg" alt="Mark 44 px" width="44" height="44" /><span class="meta">44</span></div>
+          <div class="scale-item"><img src="assets/logo-mark.svg" alt="Mark 140 px" width="140" height="140" /><span class="meta">140</span></div>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="lockup" data-od-id="lockup">
+    <div class="container">
+      <p class="eyebrow">Lockup</p>
+      <h2>Primer dan mono, di terang dan gelap.</h2>
+      <p class="lead" style="margin-bottom:var(--gap-lg)">Keduanya memakai wordmark outline yang sama persis — yang berubah hanya warna. Mono mengikuti <code>currentColor</code> untuk tile dan huruf; glyph mobilnya dibalik lewat <code>--mark-bg</code>. Karena keduanya berbasis <code>currentColor</code>, varian mono harus di-<strong>inline</strong>, bukan dimuat lewat <code>&lt;img&gt;</code> — SVG di <code>&lt;img&gt;</code> adalah dokumen terpisah dan tidak mewarisi warna halaman.</p>
+      <div class="grid-2">
+        <div class="card">
+          <h3>Primer</h3>
+          <p style="margin-bottom:20px"><code>logo.svg</code> — header, splash, halaman terang</p>
+          <img src="assets/logo.svg" alt="Logo primer" style="height:44px;width:auto" />
+        </div>
+        <div class="card dark-stage">
+          <h3>Mono reverse</h3>
+          <p style="margin-bottom:20px"><code>logo-mono.svg</code> — footer gelap, cetak satu warna</p>
+          <!-- Inlined, not <img>: an SVG loaded through <img> is its own document,
+               so neither currentColor nor --mark-bg reaches it and the tile would
+               always render black. Inline it and both resolve from this page. -->
+          <svg style="height:44px;width:auto;color:#FDFCFB;--mark-bg:#262220" viewBox="0 0 200 56" role="img" aria-label="Logo mono">
+            <g transform="translate(2 2)">
+              <rect width="52" height="52" rx="15" fill="currentColor"/>
+              <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="var(--mark-bg, #FFFFFF)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+                <path d="M7 14h.01"/><path d="M17 14h.01"/>
+                <rect width="18" height="8" x="3" y="10" rx="2"/>
+                <path d="M5 18v2"/><path d="M19 18v2"/>
+              </g>
+            </g>
+            <g transform="translate(66 0)" fill="currentColor" fill-rule="nonzero" aria-hidden="true">
+              <path transform="translate(0.00 39.40) scale(0.03 -0.03)" d="M66 0V745H221V372L178 387L476 745H670L375 389L384 499L676 0H495L313 315L221 204V0Z"/>
+              <path transform="translate(19.81 39.40) scale(0.03 -0.03)" d="M55 0V757H205V0Z"/>
+              <path transform="translate(26.81 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+              <path transform="translate(33.81 39.40) scale(0.03 -0.03)" d="M55 0V546H195V438L187 462Q206 511 248.5 534.5Q291 558 348 558Q410 558 456.5 532Q503 506 529 459.5Q555 413 555 350.7V0H405V319Q405 351 392.5 374Q380 397 357.41 410Q334.81 423 305.41 423Q276 423 253 410Q230 397 217.5 374Q205 351 205 319V0Z"/>
+              <path transform="translate(50.98 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+              <path transform="translate(57.98 39.40) scale(0.03 -0.03)" d="M55 0V757H205V272L149 290L390 546H575L377 326L574 0H404L239 277L326 299L159 117L205 204V0Z"/>
+              <path transform="translate(79.36 39.40) scale(0.03 -0.03)" d="M66 0V745H185L585 218L521 203V745H676V0H556L163 531L221 546V0Z"/>
+              <path transform="translate(100.82 39.40) scale(0.03 -0.03)" d="M318 -12Q231 -12 167 26.5Q103 65 68 130Q33 195 33 274Q33 356 69.5 420Q106 484 168 521Q230 558 308 558Q373 558 423 537.5Q473 517 507.5 480Q542 443 560 394.5Q578 346 578 289Q578 273 576.5 257.5Q575 242 571 231H162V341H486L415 289Q425 332 414 365.5Q403 399 375.5 418.5Q348 438 308 438Q269 438 241 419Q213 400 199 363Q185 326 188 273Q184 227 199 192Q214 157 245 137.5Q276 118 320 118Q360 118 388.5 134Q417 150 433 178L553 121Q537 81 502.5 51Q468 21 421 4.5Q374 -12 318 -12Z"/>
+              <path transform="translate(118.35 39.40) scale(0.03 -0.03)" d="M318 -6Q219 -6 164.5 47.5Q110 101 110 197V416H18V546H23Q65 546 87.5 567Q110 588 110 630V670H260V546H388V416H260V207Q260 179 270 160.5Q280 142 301 133Q322 124 353 124Q360 124 369 125Q378 126 388 127V0Q373 -2 354 -4Q335 -6 318 -6Z"/>
+            </g>
+          </svg>
+        </div>
+      </div>
+    </div>
+  </section>
+
+  <section class="section" id="warna" data-od-id="warna">
+    <div class="container">
+      <p class="eyebrow">Warna</p>
+      <h2>Coral adalah satu-satunya aksen.</h2>
+      <p class="lead" style="margin-bottom:var(--gap-lg)">Semua nilai diambil apa adanya dari token <code>shared.css</code> — tidak ada warna baru yang diperkenalkan untuk accommodate logo ini.</p>
+      <div class="grid-3">
+        <div class="swatch" style="background:#FF385C;color:#fff">brand-500<br />#FF385C</div>
+        <div class="swatch" style="background:#C01336;color:#fff">brand-700<br />#C01336</div>
+        <div class="swatch" style="background:#1A1715;color:#fff">warm-900<br />#1A1715</div>
+      </div>
+      <div class="grid-3" style="margin-top:var(--gap-md)">
+        <div class="swatch" style="background:#F9F7F4;border:1px solid #E8E3DB">warm-50<br />#F9F7F4</div>
+        <div class="swatch" style="background:#79726A;color:#fff">warm-500<br />#79726A</div>
+        <div class="swatch" style="background:#262220;color:#FDFCFB">warm-800<br />#262220</div>
+      </div>
+    </div>
+  </section>
+
+</main>
+
+<footer class="pagefoot" data-od-id="footer">
+  <div class="container" style="display:flex;align-items:center;justify-content:space-between;gap:var(--gap-md);flex-wrap:wrap">
+    <span>© Klinik Net · PT Klinik Net Rent Car</span>
+    <span class="meta">Glyph: Lucide car-front (ISC) · Wordmark: Plus Jakarta Sans (SIL OFL)</span>
+  </div>
+</footer>
+
+</body>
+</html>

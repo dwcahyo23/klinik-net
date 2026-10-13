@@ -1,0 +1,476 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mobil — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Mobil</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="search-bar" style="max-width:260px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="car-search" placeholder="Cari plat, merek, warna…" />
+            </div>
+            <button class="btn btn-primary" id="btn-add-car">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+              Tambah Mobil
+            </button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <!-- Status summary -->
+          <div class="kpi-grid mb-5" id="car-summary"></div>
+
+          <!-- Filter chips -->
+          <div class="row-between mb-5 wrap gap-3">
+            <div class="chips" id="status-chips">
+              <button class="chip active" data-status="all">Semua <span class="count" id="c-all"></span></button>
+              <button class="chip" data-status="rented">Disewa <span class="count" id="c-rented"></span></button>
+              <button class="chip" data-status="available">Tersedia <span class="count" id="c-available"></span></button>
+              <button class="chip" data-status="maintenance">Servis <span class="count" id="c-maintenance"></span></button>
+            </div>
+          </div>
+
+          <!-- Master-detail -->
+          <div class="master-detail">
+            <div class="md-list" id="car-list"></div>
+            <div class="md-detail" id="car-detail"></div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- ADD / EDIT MODAL -->
+    <div class="modal" id="car-modal">
+      <div class="modal-header">
+        <div>
+          <div class="card-title" id="car-modal-title">Tambah Mobil</div>
+          <div class="card-sub">Plat nomor wajib unik · format <b>B 1235 TF</b></div>
+        </div>
+        <button class="btn btn-ghost btn-icon" data-close="car-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <form id="car-form" class="form-grid" novalidate>
+          <div class="field span-2">
+            <label class="field-label" for="f-plate">Kode plat nomor *</label>
+            <input class="input" id="f-plate" name="plate" placeholder="B 1235 TF" autocomplete="off" maxlength="14" />
+            <div class="field-hint">Otomatis kapital + spasi setelah huruf pertama</div>
+            <div class="field-error" id="e-plate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 16h.01"/></svg><span id="e-plate-text"></span></div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-brand">Merek *</label>
+            <input class="input" id="f-brand" name="brand" placeholder="Toyota" />
+            <div class="field-error" id="e-brand"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 16h.01"/></svg>Merek wajib diisi</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-model">Tipe / varian *</label>
+            <input class="input" id="f-model" name="model" placeholder="Agya 1.2 G" />
+            <div class="field-error" id="e-model"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 16h.01"/></svg>Tipe wajib diisi</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-year">Tahun *</label>
+            <input class="input" id="f-year" name="year" type="number" min="2015" max="2027" placeholder="2022" />
+            <div class="field-error" id="e-year"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 16h.01"/></svg>Tahun 2015–2027</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-color">Warna</label>
+            <input class="input" id="f-color" name="color" placeholder="Silver Metalik" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-rate">Tarif sewa harian (Rp) *</label>
+            <input class="input" id="f-rate" name="dailyRate" type="number" min="50000" step="10000" placeholder="250000" />
+            <div class="field-error" id="e-rate"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 8v5M12 16h.01"/></svg>Tarif minimal Rp 50.000</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="f-status">Status</label>
+            <select class="select" id="f-status" name="status">
+              <option value="available">Tersedia</option>
+              <option value="rented">Disewa</option>
+              <option value="maintenance">Servis</option>
+            </select>
+            <div class="field-hint">Status "Disewa" biasanya follows kontrak</div>
+          </div>
+          <div class="field span-2">
+            <label class="field-label" for="f-notes">Catatan</label>
+            <textarea class="input" id="f-notes" name="notes" placeholder="Kondisi, jadwal servis, catatanfranchise…"></textarea>
+          </div>
+        </form>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="car-modal">Batal</button>
+        <button class="btn btn-primary" id="car-save">Simpan Mobil</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  let filter = "all";
+  let query = "";
+  let selectedId = null;
+  let editingId = null;
+
+  window.Shell.render("cars", { title: "Mobil", subtitle: store.getCars().length + " unit dalam armada" });
+  const t2 = document.getElementById("theme-toggle-2"); // (not present on this page)
+
+  /* ---------- Summary ---------- */
+  function renderSummary() {
+    const cars = store.getCars();
+    const rented = cars.filter(c => c.status === "rented").length;
+    const avail = cars.filter(c => c.status === "available").length;
+    const maint = cars.filter(c => c.status === "maintenance").length;
+    const avgRate = Math.round(cars.reduce((s, c) => s + c.dailyRate, 0) / (cars.length || 1));
+    const potential = cars.filter(c => c.status !== "maintenance").reduce((s, c) => s + c.dailyRate, 0);
+
+    document.getElementById("car-summary").innerHTML = `
+      <div class="kpi"><div class="kpi-label">Total armada</div><div class="kpi-value">${cars.length}</div>
+        <div class="kpi-meta text-tertiary">${cars.length} unit terdaftar</div>
+        <div class="kpi-icon" style="background:var(--brand-50);color:var(--brand-500)">${I.car}</div></div>
+      <div class="kpi"><div class="kpi-label">Disewa</div><div class="kpi-value">${rented}</div>
+        <div class="kpi-meta text-tertiary">${Math.round(rented/cars.length*100)}% utilisasi</div>
+        <div class="kpi-icon" style="background:var(--success-bg);color:var(--success)">${I.users}</div></div>
+      <div class="kpi"><div class="kpi-label">Tersedia</div><div class="kpi-value">${avail}</div>
+        <div class="kpi-meta text-tertiary">Siap disewa</div>
+        <div class="kpi-icon" style="background:var(--info-bg);color:var(--info)">${I.checkCircle}</div></div>
+      <div class="kpi"><div class="kpi-label">Potensi harian</div><div class="kpi-value">${fmt.rpShort(potential)}</div>
+        <div class="kpi-meta text-tertiary">Rata-rata ${fmt.rp(avgRate)}/hari</div>
+        <div class="kpi-icon" style="background:var(--warning-bg);color:var(--warning)">${I.wallet}</div></div>`;
+
+    document.getElementById("c-all").textContent = cars.length;
+    document.getElementById("c-rented").textContent = rented;
+    document.getElementById("c-available").textContent = avail;
+    document.getElementById("c-maintenance").textContent = maint;
+  }
+
+  /* ---------- List ---------- */
+  function statusBadge(status) {
+    if (status === "rented") return `<span class="badge badge-success"><span class="dot dot-success"></span>Disewa</span>`;
+    if (status === "available") return `<span class="badge badge-info"><span class="dot" style="background:var(--info)"></span>Tersedia</span>`;
+    return `<span class="badge badge-warning">${I.wrench} Servis</span>`;
+  }
+
+  function renderList() {
+    const cars = store.getCars().filter(c => {
+      const okStatus = filter === "all" || c.status === filter;
+      const q = query.trim().toLowerCase();
+      const okQuery = !q || [c.plate, c.brand, c.model, c.color].join(" ").toLowerCase().includes(q);
+      return okStatus && okQuery;
+    });
+
+    const host = document.getElementById("car-list");
+    if (!cars.length) {
+      host.innerHTML = `<div class="empty-state" style="grid-column:1/-1">
+        <div class="es-icon">${I.empty}</div>
+        <h3>Tidak ada mobil</h3>
+        <p>${query ? "Tidak ditemukan untuk pencarian \"" + query + "\"." : "Belum ada mobil yang cocok dengan filter ini."}</p>
+        <button class="btn btn-primary mt-4" onclick="document.getElementById('btn-add-car').click()">Tambah Mobil</button>
+      </div>`;
+      document.getElementById("car-detail").innerHTML = "";
+      return;
+    }
+
+    if (!selectedId || !cars.find(c => c.id === selectedId)) selectedId = cars[0].id;
+
+    host.innerHTML = cars.map(c => {
+      const renter = c.currentRenterId ? store.getRenterById(c.currentRenterId) : null;
+      return `<div class="list-row ${c.id === selectedId ? "active" : ""}" data-car="${c.id}">
+        <div class="avatar" style="background:${statusColorBg(c.status)};border-color:transparent;color:${statusColorFg(c.status)}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" style="width:22px;height:22px"><path d="M5 17h14M3 17v-4l2-5a3 3 0 0 1 2.8-2h8.4A3 3 0 0 1 19 8l2 5v4"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M4 12h16"/></svg>
+        </div>
+        <div class="lr-main">
+          <div class="lr-title">${c.plate} <span class="text-tertiary font-normal text-xs">${c.brand} ${c.model}</span></div>
+          <div class="lr-sub">${c.color} · ${c.year} · ${renter ? "Sewa " + renter.name : (c.status === "maintenance" ? c.notes : "Belum disewa")}</div>
+        </div>
+        <div class="lr-right">
+          <div class="num-display" style="font-size:var(--fs-sm)">${fmt.rp(c.dailyRate)}</div>
+          <div class="mt-2">${statusBadge(c.status)}</div>
+        </div>
+      </div>`;
+    }).join("");
+
+    host.querySelectorAll("[data-car]").forEach(el =>
+      el.addEventListener("click", () => { selectedId = el.getAttribute("data-car"); renderList(); renderDetail(); })
+    );
+
+    renderDetail();
+  }
+
+  function statusColorBg(s) {
+    return s === "rented" ? "var(--success-bg)" : s === "available" ? "var(--info-bg)" : "var(--warning-bg)";
+  }
+  function statusColorFg(s) {
+    return s === "rented" ? "var(--success)" : s === "available" ? "var(--info)" : "var(--warning)";
+  }
+
+  /* ---------- Detail ---------- */
+  function renderDetail() {
+    const c = store.getCarById(selectedId);
+    const host = document.getElementById("car-detail");
+    if (!c) { host.innerHTML = ""; return; }
+
+    const contract = store.getContractByCarId(c.id);
+    const renter = c.currentRenterId ? store.getRenterById(c.currentRenterId) : null;
+    const carPayments = contract
+      ? store.getPayments().filter(p => p.contractId === contract.id && p.status === "confirmed")
+      : [];
+    const totalPaid = carPayments.reduce((s, p) => s + p.amount, 0);
+
+    host.innerHTML = `
+      <div class="card card-pad-lg card-hover">
+        <div class="row-between wrap gap-4 mb-5">
+          <div class="row gap-4">
+            <div class="avatar avatar-lg" style="background:${statusColorBg(c.status)};border-color:transparent;color:${statusColorFg(c.status)}">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.6" style="width:32px;height:32px"><path d="M5 17h14M3 17v-4l2-5a3 3 0 0 1 2.8-2h8.4A3 3 0 0 1 19 8l2 5v4"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M4 12h16"/></svg>
+            </div>
+            <div>
+              <div class="display-font" style="font-size:var(--fs-xl);font-weight:700;letter-spacing:-.8px">${c.plate}</div>
+              <div class="text-sm text-secondary font-bold">${c.brand} ${c.model}</div>
+              <div class="text-xs text-tertiary">${c.color} · Tahun ${c.year}</div>
+            </div>
+          </div>
+          <div class="row gap-2">
+            <button class="btn btn-secondary btn-sm" id="btn-edit">${I.edit} Edit</button>
+            <button class="btn btn-ghost btn-icon" id="btn-del" aria-label="Hapus">${I.trash}</button>
+          </div>
+        </div>
+
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);gap:var(--sp-3)">
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Tarif harian</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg)">${fmt.rp(c.dailyRate)}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Total diterima</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg);color:var(--success)">${fmt.rpShort(totalPaid)}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Transaksi</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg)">${carPayments.length}</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <div class="row-between wrap gap-4">
+          <div>
+            <div class="text-xs text-tertiary font-bold mb-2">STATUS SAAT INI</div>
+            ${statusBadge(c.status)}
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold mb-2">PENYEWA</div>
+            ${renter ? `<div class="row gap-2"><span class="avatar avatar-sm">${renter.avatar}</span><div><div class="text-sm font-bold">${renter.name}</div><div class="text-xs text-tertiary">${renter.phone}</div></div></div>` : `<span class="text-sm text-tertiary">—</span>`}
+          </div>
+          <div>
+            <div class="text-xs text-tertiary font-bold mb-2">CATATAN</div>
+            <div class="text-sm text-secondary" style="max-width:260px">${c.notes || "—"}</div>
+          </div>
+        </div>
+
+        ${contract ? `
+        <div class="divider"></div>
+        <div class="row-between wrap gap-3 mb-4">
+          <div class="card-title">Transaksi terakhir</div>
+          <a class="btn btn-ghost btn-sm" href="payments.html">Buka setoran →</a>
+        </div>
+        <div class="col gap-2">
+          ${carPayments.slice(0, 5).map(p => `
+            <div class="row-between list-row" style="padding:var(--sp-3);cursor:default">
+              <div class="lr-main">
+                <div class="lr-title">${fmt.date(p.date)}</div>
+                <div class="lr-sub">${p.bank} · ${p.referenceNo}</div>
+              </div>
+              <div class="lr-right num-display" style="color:var(--success)">${fmt.rp(p.amount)}</div>
+            </div>`).join("")}
+        </div>` : ""}
+      </div>`;
+
+    document.getElementById("btn-edit").addEventListener("click", () => openModalForEdit(c));
+    document.getElementById("btn-del").addEventListener("click", async () => {
+      const ok = await window.UI.confirm({
+        title: "Hapus mobil " + c.plate + "?",
+        subtitle: "Tindakan ini dicatat pada jejak audit",
+        message: "Mobil akan dihapus dari daftar armada. Riwayat transaksi lama tetap tersimpan.",
+        okLabel: "Hapus mobil",
+        danger: true,
+        reason: true
+      });
+      if (!ok) return;
+      try {
+        store.deleteCar(c.id);
+        selectedId = null;
+        renderAll();
+        window.UI.toast("Mobil " + c.plate + " dihapus");
+      } catch (e) {
+        window.UI.toast(e.message, "error");
+      }
+    });
+  }
+
+  /* ---------- Form ---------- */
+  const form = document.getElementById("car-form");
+  const plateInput = document.getElementById("f-plate");
+
+  function formatPlate(v) {
+    let s = v.toUpperCase().replace(/[^A-Z0-9]/g, "");
+    const m = s.match(/^([A-Z]{0,3})(\d{0,4})([A-Z]{0,3})$/);
+    if (!m) return s.slice(0, 10);
+    let [, letters, nums, suffix] = m;
+    let out = letters;
+    if (nums) out += " " + nums;
+    if (suffix) out += " " + suffix;
+    return out.trim();
+  }
+
+  plateInput.addEventListener("input", () => {
+    const pos = plateInput.value.length;
+    plateInput.value = formatPlate(plateInput.value);
+    clearError("plate");
+  });
+
+  function showError(field, msg) {
+    const box = document.getElementById("e-" + field);
+    const inp = document.getElementById("f-" + field);
+    if (inp) inp.classList.add("is-error");
+    if (box) {
+      if (msg) {
+        let span = box.querySelector("span");
+        if (!span) { span = document.createElement("span"); box.appendChild(span); }
+        span.textContent = msg;
+      }
+      box.classList.add("show");
+    }
+  }
+  function clearError(field) {
+    const box = document.getElementById("e-" + field);
+    if (box) box.classList.remove("show");
+    const inp = document.getElementById("f-" + field);
+    if (inp) inp.classList.remove("is-error");
+  }
+  ["plate", "brand", "model", "year", "rate"].forEach(f => {
+    const el = document.getElementById("f-" + f);
+    if (el) el.addEventListener("input", () => clearError(f));
+  });
+
+  function validate() {
+    let ok = true;
+    const plate = plateInput.value.trim().toUpperCase();
+    if (!plate) { showError("plate", "Plat nomor wajib diisi"); ok = false; }
+    else if (!/^[A-Z]{1,3}\s?\d{1,4}\s?[A-Z]{0,3}$/.test(plate)) { showError("plate", "Format tidak valid. Contoh: B 1235 TF"); ok = false; }
+    else if (store.isPlateNumberDuplicate(plate, editingId)) { showError("plate", "Plat nomor " + plate + " sudah dipakai unit lain"); ok = false; }
+    if (!document.getElementById("f-brand").value.trim()) { showError("brand"); ok = false; }
+    if (!document.getElementById("f-model").value.trim()) { showError("model"); ok = false; }
+    const yr = parseInt(document.getElementById("f-year").value, 10);
+    if (!yr || yr < 2015 || yr > 2027) { showError("year"); ok = false; }
+    const rate = parseInt(document.getElementById("f-rate").value, 10);
+    if (!rate || rate < 50000) { showError("rate"); ok = false; }
+    return ok;
+  }
+
+  function openModalForAdd() {
+    editingId = null;
+    form.reset();
+    ["plate","brand","model","year","rate"].forEach(clearError);
+    document.getElementById("car-modal-title").textContent = "Tambah Mobil";
+    document.getElementById("car-save").textContent = "Simpan Mobil";
+    document.getElementById("f-year").value = 2024;
+    document.getElementById("f-status").value = "available";
+    window.UI.openModal("car-modal");
+    setTimeout(() => plateInput.focus(), 200);
+  }
+
+  function openModalForEdit(c) {
+    editingId = c.id;
+    form.reset();
+    ["plate","brand","model","year","rate"].forEach(clearError);
+    document.getElementById("car-modal-title").textContent = "Edit Mobil " + c.plate;
+    document.getElementById("car-save").textContent = "Simpan Perubahan";
+    document.getElementById("f-plate").value = c.plate;
+    document.getElementById("f-brand").value = c.brand;
+    document.getElementById("f-model").value = c.model;
+    document.getElementById("f-year").value = c.year;
+    document.getElementById("f-color").value = c.color;
+    document.getElementById("f-rate").value = c.dailyRate;
+    document.getElementById("f-status").value = c.status;
+    document.getElementById("f-notes").value = c.notes || "";
+    window.UI.openModal("car-modal");
+  }
+
+  document.getElementById("btn-add-car").addEventListener("click", openModalForAdd);
+  document.querySelectorAll("[data-close='car-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("car-modal")));
+
+  document.getElementById("car-save").addEventListener("click", () => {
+    if (!validate()) return;
+    const data = {
+      plate: plateInput.value.trim().toUpperCase(),
+      brand: document.getElementById("f-brand").value.trim(),
+      model: document.getElementById("f-model").value.trim(),
+      year: document.getElementById("f-year").value,
+      color: document.getElementById("f-color").value.trim() || "—",
+      dailyRate: document.getElementById("f-rate").value,
+      status: document.getElementById("f-status").value,
+      notes: document.getElementById("f-notes").value.trim()
+    };
+    try {
+      if (editingId) {
+        store.updateCar(editingId, data);
+        window.UI.toast("Mobil " + data.plate + " diperbarui");
+      } else {
+        const newCar = store.addCar(data);
+        selectedId = newCar.id;
+        window.UI.toast("Mobil " + data.plate + " ditambahkan");
+      }
+      window.UI.closeModal("car-modal");
+      renderAll();
+    } catch (e) {
+      showError("plate", e.message);
+      window.UI.toast(e.message, "error");
+    }
+  });
+
+  /* ---------- Filters ---------- */
+  document.getElementById("status-chips").addEventListener("click", e => {
+    const chip = e.target.closest("[data-status]");
+    if (!chip) return;
+    filter = chip.getAttribute("data-status");
+    document.querySelectorAll("#status-chips .chip").forEach(c => c.classList.toggle("active", c === chip));
+    renderList();
+  });
+  document.getElementById("car-search").addEventListener("input", e => { query = e.target.value; renderList(); });
+
+  function renderAll() { renderSummary(); renderList(); }
+  renderAll();
+  window.addEventListener("klinik_data_changed", () => { renderSummary(); renderList(); });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,446 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Penyewa — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Penyewa</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="search-bar" style="max-width:250px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" id="r-search" placeholder="Cari nama, HP…" />
+            </div>
+            <button class="btn btn-primary" id="btn-add-renter">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+              Penyewa Baru
+            </button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+          <div class="master-detail">
+            <div class="md-list" id="renter-list"></div>
+            <div class="md-detail" id="renter-detail"></div>
+          </div>
+        </main>
+      </div>
+    </div>
+
+    <!-- CONTRACT MODAL -->
+    <div class="modal" id="contract-modal">
+      <div class="modal-header">
+        <div>
+          <div class="card-title" id="cm-title">Kontrak Sewa Baru</div>
+          <div class="card-sub">Jadwal setoran 6 hari kerja atau 7 hari</div>
+        </div>
+        <button class="btn btn-ghost btn-icon" data-close="contract-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field span-2">
+            <label class="field-label" for="cm-renter">Penyewa *</label>
+            <select class="select" id="cm-renter"></select>
+          </div>
+          <div class="field span-2">
+            <label class="field-label" for="cm-car">Mobil *</label>
+            <select class="select" id="cm-car"></select>
+            <div class="field-hint">Hanya mobil berstatus Tersedia yang bisa disewa</div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="cm-start">Tanggal mulai *</label>
+            <input type="date" class="input" id="cm-start" value="2026-03-30" />
+          </div>
+          <div class="field">
+            <label class="field-label" for="cm-rate">Tarif harian (Rp) *</label>
+            <input type="number" class="input" id="cm-rate" min="50000" step="10000" />
+            <div class="field-hint">Default dari tarif mobil</div>
+          </div>
+          <div class="field span-2">
+            <label class="field-label">Jadwal setoran *</label>
+            <div class="segmented" id="cm-schedule">
+              <button type="button" data-sched="6days" class="active">6 Hari Kerja</button>
+              <button type="button" data-sched="7days">7 Hari / Minggu</button>
+            </div>
+            <div class="field-hint">Pada mode 6 hari, pilih hari libur. Hari Minggu tidak ditagih.</div>
+          </div>
+          <div class="field span-2 hidden" id="cm-offdays-wrap">
+            <label class="field-label">Hari libur per minggu</label>
+            <div class="day-toggle" id="cm-offdays">
+              <button type="button" class="day-chip" data-day="1">Sen</button>
+              <button type="button" class="day-chip" data-day="2">Sel</button>
+              <button type="button" class="day-chip" data-day="3">Rab</button>
+              <button type="button" class="day-chip" data-day="4">Kam</button>
+              <button type="button" class="day-chip" data-day="5">Jum</button>
+              <button type="button" class="day-chip" data-day="6">Sab</button>
+              <button type="button" class="day-chip off" data-day="0">Min</button>
+            </div>
+          </div>
+          <div class="field span-2">
+            <label class="field-label" for="cm-notes">Catatan kontrak</label>
+            <textarea class="input" id="cm-notes" placeholder="Syarat khusus, jam pengembalian, dll"></textarea>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="contract-modal">Batal</button>
+        <button class="btn btn-primary" id="cm-save">Buat Kontrak</button>
+      </div>
+    </div>
+
+    <!-- EXCEPTION MODAL -->
+    <div class="modal" id="exception-modal">
+      <div class="modal-header">
+        <div>
+          <div class="card-title">Hari Libur / Pengecualian</div>
+          <div class="card-sub">Tanggal tanpa tagihan (mis. mobil servis)</div>
+        </div>
+        <button class="btn btn-ghost btn-icon" data-close="exception-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="form-grid">
+          <div class="field span-2">
+            <label class="field-label" for="ex-date">Pilih tanggal *</label>
+            <input type="date" class="input" id="ex-date" value="2026-04-02" />
+          </div>
+          <div class="field span-2">
+            <label class="field-label" for="ex-reason">Alasan pengecualian *</label>
+            <input class="input" id="ex-reason" placeholder="Contoh: mobil servisscheduled overhaul" />
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="exception-modal">Batal</button>
+        <button class="btn btn-primary" id="ex-save">Tambah Pengecualian</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  let query = "";
+  let selectedId = null;
+
+  window.Shell.render("renters", { title: "Penyewa", subtitle: store.getRenters().length + " penyewa terdaftar" });
+
+  function fillRenterList() {
+    const host = document.getElementById("renter-list");
+    const q = query.trim().toLowerCase();
+    const items = store.getRenters().filter(r =>
+      !q || [r.name, r.phone, r.address].join(" ").toLowerCase().includes(q)
+    );
+
+    if (!items.length) {
+      host.innerHTML = `<div class="empty-state"><div class="es-icon">${I.users}</div><h3>Belum ada penyewa</h3><p>Tambahkan penyewa pertama untuk memulai kontrak sewa.</p>
+        <button class="btn btn-primary mt-4" id="empty-add">Tambah Penyewa</button></div>`;
+      const b = document.getElementById("empty-add");
+      if (b) b.addEventListener("click", openRenterModal);
+      document.getElementById("renter-detail").innerHTML = "";
+      return;
+    }
+
+    if (!selectedId || !items.find(r => r.id === selectedId)) selectedId = items[0].id;
+
+    const arrearsMap = {};
+    store.calculateArrears().forEach(a => { arrearsMap[a.contract.id] = a; });
+
+    host.innerHTML = items.map(r => {
+      const c = store.getContractByRenterId(r.id);
+      const car = c ? store.getCarById(c.carId) : null;
+      const a = c ? arrearsMap[c.id] : null;
+      const overdue = a && a.arrearsAmount > 0;
+      return `<div class="list-row ${r.id === selectedId ? "active" : ""}" data-renter="${r.id}">
+        <div class="avatar">${r.avatar}</div>
+        <div class="lr-main">
+          <div class="lr-title">${r.name}</div>
+          <div class="lr-sub">${car ? car.plate + " · " + car.brand + " " + car.model : "Belum ada kontrak"}</div>
+        </div>
+        <div class="lr-right">
+          ${overdue
+            ? `<span class="badge badge-danger">${fmt.rpShort(a.arrearsAmount)}</span>`
+            : c ? `<span class="badge badge-success">Lancar</span>` : `<span class="badge badge-neutral">Tidak aktif</span>`}
+          <div class="text-xs text-tertiary mt-2">${r.phone}</div>
+        </div>
+      </div>`;
+    }).join("");
+
+    host.querySelectorAll("[data-renter]").forEach(el =>
+      el.addEventListener("click", () => { selectedId = el.getAttribute("data-renter"); fillRenterList(); renderDetail(); })
+    );
+    renderDetail();
+  }
+
+  function renderDetail() {
+    const r = store.getRenterById(selectedId);
+    const host = document.getElementById("renter-detail");
+    if (!r) { host.innerHTML = ""; return; }
+
+    const c = store.getContractByRenterId(r.id);
+    const car = c ? store.getCarById(c.carId) : null;
+    const pays = c ? store.getPayments().filter(p => p.contractId === c.id) : [];
+    const activePays = pays.filter(p => p.status === "confirmed");
+    const arrears = c ? store.calculateArrears().find(a => a.contract.id === c.id) : null;
+
+    host.innerHTML = `
+      <div class="card card-pad-lg">
+        <div class="row-between wrap gap-4 mb-5">
+          <div class="row gap-4">
+            <div class="avatar avatar-lg">${r.avatar}</div>
+            <div>
+              <div class="display-font" style="font-size:var(--fs-xl);font-weight:700">${r.name}</div>
+              <div class="text-sm text-secondary">${r.phone}</div>
+              <div class="text-xs text-tertiary">Bergabung ${fmt.date(r.joinDate)}</div>
+            </div>
+          </div>
+          <div class="row gap-2 wrap">
+            <a class="btn btn-secondary btn-sm" href="tel:${r.phone}">${I.phone} Telepon</a>
+            <button class="btn btn-secondary btn-sm" id="btn-edit-renter">${I.edit} Edit</button>
+          </div>
+        </div>
+
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);gap:var(--sp-3)">
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Total setoran</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg);color:var(--success)">${fmt.rpShort(activePays.reduce((s, p) => s + p.amount, 0))}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Tunggakan</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg);${arrears && arrears.arrearsAmount > 0 ? "color:var(--danger)" : "color:var(--success)"}">${fmt.rpShort(arrears ? arrears.arrearsAmount : 0)}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Transaksi</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg)">${activePays.length}</div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- CONTRACT -->
+        <div class="row-between wrap gap-3 mb-4">
+          <div class="card-title">Kontrak sewa ${c ? "aktif" : "(tidak ada)"}</div>
+          ${c ? "" : `<button class="btn btn-primary btn-sm" id="btn-new-contract">+ Buat Kontrak</button>`}
+        </div>
+
+        ${c ? `
+        <div class="card card-outlined" style="box-shadow:none;background:var(--bg-sunken)">
+          <div class="row gap-4 wrap mb-4">
+            <div>
+              <div class="text-xs text-tertiary font-bold">MOBIL</div>
+              <div class="font-bold">${car.plate}</div>
+              <div class="text-xs text-tertiary">${car.brand} ${car.model}</div>
+            </div>
+            <div>
+              <div class="text-xs text-tertiary font-bold">TARIF</div>
+              <div class="num-display">${fmt.rp(c.dailyRate)}<span class="text-tertiary font-normal">/hari</span></div>
+            </div>
+            <div>
+              <div class="text-xs text-tertiary font-bold">MULAI</div>
+              <div class="font-bold">${fmt.date(c.startDate)}</div>
+            </div>
+            <div>
+              <div class="text-xs text-tertiary font-bold">JADWAL</div>
+              <div class="font-bold">${c.workSchedule === "7days" ? "7 hari" : "6 hari kerja"}</div>
+            </div>
+          </div>
+          <div class="row gap-2 wrap">
+            <span class="badge badge-brand">${I.calendar} Aktif sejak ${fmt.dateShort(c.startDate)}</span>
+            ${c.serviceExemptions && c.serviceExemptions.length ? `<span class="badge badge-warning">${I.wrench} ${c.serviceExemptions.length} pengecualian</span>` : ""}
+          </div>
+          ${c.notes ? `<div class="text-sm text-secondary mt-4" style="line-height:1.6">${c.notes}</div>` : ""}
+        </div>
+
+        <!-- Exceptions -->
+        <div class="row-between wrap gap-3 mt-5 mb-4">
+          <div class="card-title">Hari libur / pengecualian</div>
+          <button class="btn btn-secondary btn-sm" id="btn-add-exception">+ Tambah Tanggal</button>
+        </div>
+        <div class="col gap-2" id="exception-list">
+          ${(c.serviceExemptions || []).map(d => `
+            <div class="row-between list-row" style="padding:var(--sp-3);cursor:default">
+              <div class="lr-main">
+                <div class="lr-title">${fmt.date(d)} · ${fmt.dayName(d)}</div>
+                <div class="lr-sub">Tidak ditagih</div>
+              </div>
+              <span class="badge badge-warning">Libur</span>
+            </div>`).join("") || `<div class="text-sm text-tertiary">Belum ada pengecualian.</div>`}
+        </div>
+
+        <!-- Payment history -->
+        <div class="row-between wrap gap-3 mt-5 mb-4">
+          <div class="card-title">Riwayat setoran</div>
+          <a class="btn btn-ghost btn-sm" href="payments.html">Catat setoran →</a>
+        </div>
+        <div class="col gap-2">
+          ${pays.slice(0, 6).map(p => `
+            <div class="row-between list-row" style="padding:var(--sp-3);cursor:default">
+              <div class="lr-main">
+                <div class="lr-title">${fmt.date(p.date)} ${p.status === "canceled" ? '<span class="badge badge-danger">Dibatalkan</span>' : ""}</div>
+                <div class="lr-sub">${p.bank} · ${p.referenceNo}</div>
+              </div>
+              <div class="lr-right num-display" style="${p.status === "canceled" ? "text-decoration:line-through;color:var(--text-tertiary)" : "color:var(--success)"}">${fmt.rp(p.amount)}</div>
+            </div>`).join("") || `<div class="text-sm text-tertiary">Belum ada setoran.</div>`}
+        </div>
+
+        ` : `<div class="empty-state" style="padding:var(--sp-8) 0">
+          <div class="es-icon">${I.file}</div><h3>Belum ada kontrak</h3>
+          <p>Penyewa ini belum menyewa mobil. Buat kontrak untuk memulai penagihan harian.</p>
+        </div>`}
+      </div>`;
+
+    const nb = document.getElementById("btn-new-contract");
+    if (nb) nb.addEventListener("click", () => openContractModal(r.id));
+    const be = document.getElementById("btn-add-exception");
+    if (be) be.addEventListener("click", () => openExceptionModal(c.id));
+    const ed = document.getElementById("btn-edit-renter");
+    if (ed) ed.addEventListener("click", () => openRenterModal(r));
+  }
+
+  /* ---------- Renter modal (simple prompt-free form) ---------- */
+  function openRenterModal(existing) {
+    // Reuse a lightweight custom modal
+    const box = document.createElement("div");
+    box.className = "modal show";
+    box.style.width = "min(520px, calc(100% - 48px))";
+    box.innerHTML = `
+      <div class="modal-header">
+        <div><div class="card-title">${existing ? "Edit Penyewa" : "Penyewa Baru"}</div>
+        <div class="card-sub">Data kontak untuk pengingat WhatsApp</div></div>
+        <button class="btn btn-ghost btn-icon" data-x aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></button>
+      </div>
+      <div class="modal-body"><div class="form-grid">
+        <div class="field span-2"><label class="field-label" for="nr-name">Nama lengkap *</label><input class="input" id="nr-name" placeholder="Nama sesuai KTP" value="${existing ? existing.name : ""}"/></div>
+        <div class="field"><label class="field-label" for="nr-phone">No. HP (WhatsApp) *</label><input class="input" id="nr-phone" placeholder="0812-xxxx-xxxx" value="${existing ? existing.phone : ""}"/></div>
+        <div class="field"><label class="field-label" for="nr-avatar">Avatar</label><input class="input" id="nr-avatar" placeholder="Emoji" value="${existing ? existing.avatar : "🧑🏻"}"/></div>
+        <div class="field span-2"><label class="field-label" for="nr-address">Alamat</label><input class="input" id="nr-address" placeholder="Kecamatan, Kota" value="${existing ? existing.address : ""}"/></div>
+      </div></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-x>Batal</button>
+        <button class="btn btn-primary" id="nr-save">Simpan</button>
+      </div>`;
+    document.getElementById("device-frame").appendChild(box);
+    const close = () => box.remove();
+    box.querySelectorAll("[data-x]").forEach(b => b.addEventListener("click", close));
+    box.querySelector("#nr-save").addEventListener("click", () => {
+      const name = box.querySelector("#nr-name").value.trim();
+      const phone = box.querySelector("#nr-phone").value.trim();
+      if (!name || !phone) { window.UI.toast("Nama dan no. HP wajib diisi", "error"); return; }
+      if (existing) {
+        existing.name = name; existing.phone = phone;
+        existing.avatar = box.querySelector("#nr-avatar").value.trim() || "🧑";
+        existing.address = box.querySelector("#nr-address").value.trim();
+        store.save();
+      } else {
+        const nr = { id: "renter-" + Date.now(), name, phone, ktp: "", address: box.querySelector("#nr-address").value.trim(), avatar: box.querySelector("#nr-avatar").value.trim() || "🧑", joinDate: "2026-03-29", emergencyContact: "" };
+        store.getRenters().unshift(nr);
+        store.save();
+        selectedId = nr.id;
+      }
+      close();
+      fillRenterList();
+      window.UI.toast(existing ? "Data penyewa diperbarui" : "Penyewa ditambahkan");
+    });
+  }
+
+  document.getElementById("btn-add-renter").addEventListener("click", () => openRenterModal(null));
+  document.getElementById("r-search").addEventListener("input", e => { query = e.target.value; fillRenterList(); });
+
+  /* ---------- Contract modal ---------- */
+  let sched = "6days";
+  function openContractModal(presetRenterId) {
+    const rs = document.getElementById("cm-renter");
+    rs.innerHTML = `<option value="">— Pilih —</option>` + store.getRenters().map(r => `<option value="${r.id}">${r.avatar} ${r.name}</option>`).join("");
+    if (presetRenterId) rs.value = presetRenterId;
+    const cs = document.getElementById("cm-car");
+    cs.innerHTML = `<option value="">— Pilih —</option>` + store.getCars().filter(c => c.status === "available").map(c => `<option value="${c.id}" data-rate="${c.dailyRate}">${c.plate} · ${c.brand} ${c.model} · ${fmt.rp(c.dailyRate)}/hari</option>`).join("");
+    cs.addEventListener("change", () => {
+      const opt = cs.selectedOptions[0];
+      document.getElementById("cm-rate").value = opt ? opt.getAttribute("data-rate") : "";
+    });
+    document.getElementById("cm-schedule").querySelectorAll("button").forEach(b => {
+      b.classList.toggle("active", b.getAttribute("data-sched") === sched);
+    });
+    document.getElementById("cm-offdays-wrap").classList.toggle("hidden", sched === "7days");
+    window.UI.openModal("contract-modal");
+  }
+
+  document.getElementById("cm-schedule").addEventListener("click", e => {
+    const b = e.target.closest("[data-sched]");
+    if (!b) return;
+    sched = b.getAttribute("data-sched");
+    document.querySelectorAll("#cm-schedule button").forEach(x => x.classList.toggle("active", x === b));
+    document.getElementById("cm-offdays-wrap").classList.toggle("hidden", sched === "7days");
+  });
+  document.getElementById("cm-offdays").addEventListener("click", e => {
+    const chip = e.target.closest("[data-day]");
+    if (chip) chip.classList.toggle("off");
+  });
+  document.querySelectorAll("[data-close='contract-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("contract-modal")));
+
+  document.getElementById("cm-save").addEventListener("click", () => {
+    const rId = document.getElementById("cm-renter").value;
+    const cId = document.getElementById("cm-car").value;
+    const rate = parseInt(document.getElementById("cm-rate").value, 10);
+    if (!rId || !cId || !rate) { window.UI.toast("Penyewa, mobil, dan tarif wajib diisi", "error"); return; }
+    const offDays = [...document.querySelectorAll("#cm-offdays .day-chip.off")].map(ch => parseInt(ch.getAttribute("data-day"), 10));
+    store.getContracts().unshift({ id: "cont-" + Date.now(), renterId: rId, carId: cId, startDate: document.getElementById("cm-start").value, dailyRate: rate, workSchedule: sched, offDays, serviceExemptions: [], status: "active", notes: document.getElementById("cm-notes").value.trim() });
+    const car = store.getCarById(cId);
+    store.updateCar(cId, { status: "rented", currentRenterId: rId });
+    window.UI.closeModal("contract-modal");
+    fillRenterList();
+    window.UI.toast("Kontrak dibuat untuk " + car.plate);
+  });
+
+  /* ---------- Exception modal ---------- */
+  let excContract = null;
+  function openExceptionModal(contractId) {
+    excContract = store.getContractById(contractId);
+    document.getElementById("ex-reason").value = "";
+    window.UI.openModal("exception-modal");
+  }
+  document.querySelectorAll("[data-close='exception-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("exception-modal")));
+  document.getElementById("ex-save").addEventListener("click", () => {
+    const d = document.getElementById("ex-date").value;
+    const reason = document.getElementById("ex-reason").value.trim();
+    if (!d || !reason) { window.UI.toast("Tanggal dan alasan wajib diisi", "error"); return; }
+    excContract.serviceExemptions = excContract.serviceExemptions || [];
+    excContract.serviceExemptions.push(d);
+    store.save();
+    window.UI.closeModal("exception-modal");
+    renderDetail();
+    window.UI.toast(fmt.date(d) + " ditandai tidak ditagih");
+  });
+
+  fillRenterList();
+})();
+</script>
+</body>
+</html>

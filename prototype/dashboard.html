@@ -1,0 +1,364 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Dashboard — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Dashboard</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="segmented" id="period-filter">
+              <button data-period="today" class="active">Hari ini</button>
+              <button data-period="week">Minggu</button>
+              <button data-period="period">Cut off</button>
+              <button data-period="custom">Custom</button>
+            </div>
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <!-- Custom range (hidden by default) -->
+          <div class="card mb-5 hidden" id="custom-range">
+            <div class="row gap-4 wrap">
+              <div class="field" style="flex:1;min-width:180px">
+                <label class="field-label">Dari tanggal</label>
+                <input type="date" class="input" id="range-from" value="2026-03-01" />
+              </div>
+              <div class="field" style="flex:1;min-width:180px">
+                <label class="field-label">Sampai tanggal</label>
+                <input type="date" class="input" id="range-to" value="2026-03-29" />
+              </div>
+              <div class="field" style="justify-content:flex-end">
+                <button class="btn btn-primary" id="apply-range">Terapkan</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- KPI GRID -->
+          <div class="kpi-grid" id="kpi-grid"></div>
+
+          <!-- CHARTS ROW -->
+          <div class="row gap-4 mt-6 wrap" style="align-items:stretch">
+            <div class="card card-pad-lg grow" style="min-width:420px">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Tren pendapatan harian</div>
+                  <div class="card-sub" id="trend-sub">14 hari terakhir</div>
+                </div>
+                <span class="badge badge-brand" id="trend-badge"></span>
+              </div>
+              <div class="chart-box"><svg class="chart-line" id="line-chart" viewBox="0 0 640 220" preserveAspectRatio="none"></svg></div>
+              <div class="chart-legend">
+                <span class="legend-item"><span class="legend-swatch" style="background:var(--brand-500)"></span>Realisasi</span>
+                <span class="legend-item"><span class="legend-swatch" style="background:var(--warm-300)"></span>Target harian</span>
+              </div>
+            </div>
+
+            <div class="card card-pad-lg" style="flex:1;min-width:340px">
+              <div class="card-header">
+                <div><div class="card-title">Target vs realisasi</div><div class="card-sub">Per minggu berjalan</div></div>
+              </div>
+              <div id="weekly-bars" class="bars"></div>
+            </div>
+          </div>
+
+          <!-- SECOND ROW -->
+          <div class="row gap-4 mt-4 wrap" style="align-items:stretch">
+            <div class="card card-pad-lg" style="flex:1;min-width:330px">
+              <div class="card-header">
+                <div><div class="card-title">Pendapatan per mobil</div><div class="card-sub">Kontribusi 6 armada teratas</div></div>
+              </div>
+              <div class="donut-wrap">
+                <div class="donut" id="donut">
+                  <div class="donut-center"><div><div class="dc-val" id="donut-val"></div><div class="dc-lbl">Total</div></div></div>
+                </div>
+                <div class="grow col gap-2" id="donut-legend"></div>
+              </div>
+            </div>
+
+            <div class="card card-pad-lg grow" style="min-width:380px">
+              <div class="card-header">
+                <div><div class="card-title">Perbandingan periode</div><div class="card-sub">Periode cut off berjalan vs sebelumnya</div></div>
+              </div>
+              <div id="compare-rows" class="col gap-4"></div>
+            </div>
+          </div>
+
+          <!-- RECENT PAYMENTS -->
+          <div class="table-wrap mt-4">
+            <div class="row-between" style="padding:var(--sp-4) var(--sp-5);border-bottom:1px solid var(--border)">
+              <div class="card-title">Transaksi terakhir</div>
+              <a class="btn btn-ghost btn-sm" href="payments.html">Lihat semua →</a>
+            </div>
+            <table class="data">
+              <thead><tr><th>Tanggal</th><th>Penyewa</th><th>Plat</th><th>Bank</th><th>Referensi</th><th class="num">Nominal</th></tr></thead>
+              <tbody id="recent-rows"></tbody>
+            </table>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <a class="fab" href="payments.html">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6"><path d="M12 5v14M5 12h14"/></svg>
+      Catat Setoran
+    </a>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  const TODAY = window.SIM_TODAY;
+  let period = "today";
+  let custom = { from: "2026-03-01", to: TODAY };
+
+  window.Shell.render("dashboard", {
+    title: "Dashboard",
+    subtitle: "Periode cut off: " + store.getCurrentCutoffPeriod().label
+  });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  function range() {
+    const p = store.getCurrentCutoffPeriod();
+    if (period === "today") return { from: TODAY, to: TODAY, label: "Hari ini · " + fmt.date(TODAY) };
+    if (period === "week") return { from: shiftDays(TODAY, -6), to: TODAY, label: "7 hari terakhir" };
+    if (period === "period") return { from: p.startDateStr, to: TODAY, label: "Periode cut off berjalan" };
+    return { ...custom, label: `${fmt.dateShort(custom.from)} – ${fmt.dateShort(custom.to)}` };
+  }
+
+  function shiftDays(iso, n) {
+    const d = new Date(iso + "T00:00:00");
+    d.setDate(d.getDate() + n);
+    return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  }
+
+  function payInRange(from, to) {
+    return store.getPayments().filter(p => p.status === "confirmed" && p.date >= from && p.date <= to);
+  }
+
+  /* ---------- KPIs ---------- */
+  function renderKpis() {
+    const m = store.getDashboardMetrics();
+    const r = range();
+    const inRange = payInRange(r.from, r.to);
+    const sum = inRange.reduce((s, p) => s + p.amount, 0);
+
+    const cards = [
+      { label: "Pendapatan " + (period === "today" ? "hari ini" : period === "week" ? "7 hari" : "periode"),
+        value: fmt.rpShort(sum), meta: `${inRange.length} transaksi`, icon: I.wallet,
+        bg: "var(--brand-50)", color: "var(--brand-500)", trend: "up" },
+      { label: "Periode cut off berjalan", value: fmt.rpShort(m.cutoffIncome),
+        meta: `sejak ${fmt.dateShort(m.periodStart)}`, icon: I.calendar, bg: "var(--info-bg)", color: "var(--info)", trend: "up" },
+      { label: "Total tunggakan", value: fmt.rpShort(m.totalArrears),
+        meta: `${m.criticalArrearsCount} kasus kritis`, icon: I.alert, bg: "var(--danger-bg)", color: "var(--danger)", trend: "down" },
+      { label: "Tingkat penagihan", value: m.collectionRate + "%",
+        meta: `${m.rentedCars} disewa · ${m.availableCars} tersedia`, icon: I.report, bg: "var(--success-bg)", color: "var(--success)", trend: "up" }
+    ];
+
+    document.getElementById("kpi-grid").innerHTML = cards.map(c => `
+      <div class="kpi stagger">
+        <div class="kpi-label">${c.label}</div>
+        <div class="kpi-value">${c.value}</div>
+        <div class="kpi-meta ${c.trend === "up" ? "trend-up" : "trend-down"}">
+          ${c.trend === "up" ? I.trendUp : I.trendDown}<span>${c.meta}</span>
+        </div>
+        <div class="kpi-icon" style="background:${c.bg};color:${c.color}">${c.icon}</div>
+      </div>`).join("");
+  }
+
+  /* ---------- Line chart (SVG, pure) ---------- */
+  function renderLine() {
+    const days = [];
+    for (let i = 13; i >= 0; i--) {
+      const d = new Date(new Date(TODAY).getTime() - i * 86400000);
+      days.push(d.toISOString().split("T")[0]);
+    }
+    const data = days.map(d => payInRange(d, d).reduce((s, p) => s + p.amount, 0));
+    const target = store.getContracts().filter(c => c.status === "active")
+      .reduce((s, c) => s + c.dailyRate, 0);
+
+    const W = 640, H = 220, padL = 8, padR = 8, padT = 18, padB = 30;
+    const max = Math.max(...data, target) * 1.15;
+    const x = i => padL + (i * (W - padL - padR)) / (days.length - 1);
+    const y = v => H - padB - (v / max) * (H - padT - padB);
+
+    // Grid lines
+    let grid = "";
+    for (let g = 0; g <= 4; g++) {
+      const gy = padT + (g * (H - padT - padB)) / 4;
+      grid += `<line x1="0" y1="${gy}" x2="${W}" y2="${gy}" stroke="var(--border)" stroke-width="1" stroke-dasharray="3 5"/>`;
+    }
+
+    // Target line (dashed)
+    const tY = y(target);
+    const targetLine = `<line x1="0" y1="${tY}" x2="${W}" y2="${tY}" stroke="var(--warm-300)" stroke-width="2" stroke-dasharray="6 5"/>`;
+
+    // Area path
+    const pts = data.map((v, i) => `${x(i)},${y(v)}`).join(" ");
+    const area = `M ${x(0)},${H - padB} L ${pts.split(" ").join(" L ")} L ${x(data.length-1)},${H - padB} Z`;
+
+    // Line + dots
+    const dots = data.map((v, i) =>
+      `<circle cx="${x(i)}" cy="${y(v)}" r="4" fill="var(--bg-card)" stroke="var(--brand-500)" stroke-width="2.5"><title>${fmt.dateShort(days[i])}: ${fmt.rp(v)}</title></circle>`
+    ).join("");
+
+    // X labels (every other day)
+    const labels = days.map((d, i) =>
+      (i % 2 === 0 ? `<text x="${x(i)}" y="${H - 8}" font-size="11" font-weight="700" fill="var(--text-tertiary)" text-anchor="middle">${fmt.dateShort(d)}</text>` : "")
+    ).join("");
+
+    document.getElementById("line-chart").innerHTML = `
+      <defs><linearGradient id="areaGrad" x1="0" y1="0" x2="0" y2="1">
+        <stop offset="0%" stop-color="var(--brand-500)" stop-opacity="0.22"/>
+        <stop offset="100%" stop-color="var(--brand-500)" stop-opacity="0"/>
+      </linearGradient></defs>
+      ${grid}${targetLine}
+      <path d="${area}" fill="url(#areaGrad)"/>
+      <polyline points="${pts}" fill="none" stroke="var(--brand-500)" stroke-width="3" stroke-linecap="round" stroke-linejoin="round"/>
+      ${dots}${labels}`;
+
+    const total = data.reduce((a, b) => a + b, 0);
+    document.getElementById("trend-sub").textContent = `14 hari · total ${fmt.rp(total)}`;
+    const badge = document.getElementById("trend-badge");
+    badge.textContent = data[data.length - 1] >= target ? "Di atas target" : "Di bawah target " + fmt.rpShort(target - data[data.length-1]);
+    badge.className = "badge " + (data[data.length - 1] >= target ? "badge-success" : "badge-warning");
+  }
+
+  /* ---------- Weekly bars ---------- */
+  function renderBars() {
+    const weeks = [
+      { label: "M-3", from: shiftDays(TODAY, -27), to: shiftDays(TODAY, -21) },
+      { label: "M-2", from: shiftDays(TODAY, -20), to: shiftDays(TODAY, -14) },
+      { label: "M-1", from: shiftDays(TODAY, -13), to: shiftDays(TODAY, -7) },
+      { label: "M-0", from: shiftDays(TODAY, -6), to: TODAY }
+    ];
+    const values = weeks.map(w => payInRange(w.from, w.to).reduce((s, p) => s + p.amount, 0));
+    const targetWeek = store.getContracts().filter(c => c.status === "active").reduce((s, c) => s + c.dailyRate, 0) * 7;
+    const max = Math.max(...values, targetWeek) * 1.1;
+
+    document.getElementById("weekly-bars").innerHTML = weeks.map((w, i) => {
+      const pctH = (values[i] / max) * 100;
+      const hit = values[i] >= targetWeek;
+      return `<div class="bar-col" title="${fmt.rp(values[i])}">
+        <div class="bar-value">${fmt.rpShort(values[i])}</div>
+        <div class="bar ${i === weeks.length - 1 ? "" : "alt"}" style="height:${Math.max(pctH, 3)}%;${hit ? "" : "background:var(--brand-300)"}"></div>
+        <div class="bar-label">${w.label}</div>
+      </div>`;
+    }).join("");
+
+    const rows = weeks.map((w, i) => `
+      <div class="row-between text-sm">
+        <span class="text-secondary font-bold">${w.label} <span class="text-tertiary font-normal">(${fmt.dateShort(w.from)}–${fmt.dateShort(w.to)})</span></span>
+        <span class="num-display" style="font-size:var(--fs-sm)">${fmt.rp(values[i])}</span>
+      </div>
+      <div class="progress" style="margin-top:6px">
+        <div class="progress-fill ${values[i] >= targetWeek ? "success" : "warning"}" style="width:${Math.min(100, (values[i]/targetWeek)*100)}%"></div>
+      </div>`).join("");
+    document.getElementById("compare-rows").innerHTML = `
+      <div class="text-xs text-tertiary font-bold" style="letter-spacing:.6px;text-transform:uppercase">Target mingguan ${fmt.rp(targetWeek)}</div>
+      ${rows}`;
+  }
+
+  /* ---------- Donut ---------- */
+  function renderDonut() {
+    const palette = ["#FF385C", "#FF6C8E", "#FF9FB5", "#D97706", "#0E9F6E", "#2563EB", "#79726A", "#FFC7D4"];
+    const byCar = {};
+    payInRange(store.getCurrentCutoffPeriod().startDateStr, TODAY).forEach(p => {
+      const c = store.getContractById(p.contractId);
+      if (!c) return;
+      byCar[c.carId] = (byCar[c.carId] || 0) + p.amount;
+    });
+    const entries = Object.entries(byCar).sort((a, b) => b[1] - a[1]);
+    const total = entries.reduce((s, e) => s + e[1], 0);
+    if (!total) { document.getElementById("donut").style.background = "var(--bg-sunken)"; return; }
+
+    let acc = 0;
+    const stops = entries.map(([carId, val], i) => {
+      const start = (acc / total) * 360;
+      acc += val;
+      const end = (acc / total) * 360;
+      return `${palette[i % palette.length]} ${start}deg ${end}deg`;
+    }).join(", ");
+
+    document.getElementById("donut").style.background = `conic-gradient(${stops})`;
+    document.getElementById("donut-val").textContent = fmt.rpShort(total);
+    document.getElementById("donut-legend").innerHTML = entries.slice(0, 6).map(([carId, val], i) => {
+      const car = store.getCarById(carId);
+      return `<div class="row-between text-xs">
+        <span class="row gap-2"><span class="legend-swatch" style="background:${palette[i % palette.length]}"></span>
+        <b>${car ? car.plate : "—"}</b></span>
+        <span class="num-display" style="font-size:var(--fs-xs)">${fmt.rpShort(val)}</span>
+      </div>`;
+    }).join("");
+  }
+
+  /* ---------- Recent table ---------- */
+  function renderRecent() {
+    const rows = store.getPayments().filter(p => p.status === "confirmed").slice(0, 8).map(p => {
+      const c = store.getContractById(p.contractId);
+      const r = c ? store.getRenterById(c.renterId) : null;
+      const car = c ? store.getCarById(c.carId) : null;
+      return `<tr>
+        <td><b>${fmt.dateShort(p.date)}</b></td>
+        <td>${r ? r.name : "—"}</td>
+        <td>${car ? car.plate : "—"}</td>
+        <td class="text-tertiary">${p.bank.split(" ")[0]}</td>
+        <td class="text-tertiary text-xs">${p.referenceNo}</td>
+        <td class="num">${fmt.rp(p.amount)}</td>
+      </tr>`;
+    }).join("");
+    document.getElementById("recent-rows").innerHTML = rows;
+  }
+
+  /* ---------- Filters ---------- */
+  document.getElementById("period-filter").addEventListener("click", e => {
+    const btn = e.target.closest("[data-period]");
+    if (!btn) return;
+    period = btn.getAttribute("data-period");
+    document.querySelectorAll("#period-filter button").forEach(b => b.classList.toggle("active", b === btn));
+    document.getElementById("custom-range").classList.toggle("hidden", period !== "custom");
+    renderAll();
+  });
+  document.getElementById("apply-range").addEventListener("click", () => {
+    custom.from = document.getElementById("range-from").value;
+    custom.to = document.getElementById("range-to").value;
+    renderAll();
+    window.UI.toast("Rentang kustom diterapkan");
+  });
+
+  function renderAll() { renderKpis(); renderLine(); renderBars(); renderDonut(); renderRecent(); }
+  renderAll();
+  window.addEventListener("klinik_data_changed", renderAll);
+  window.addEventListener("orientation_changed", renderAll);
+})();
+</script>
+</body>
+</html>

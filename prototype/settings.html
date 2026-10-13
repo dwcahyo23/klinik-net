@@ -1,0 +1,449 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Pengaturan — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Pengaturan</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <!-- Company profile -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Profil perusahaan</div><div class="card-sub">Ditampilkan di kop laporan &amp; pesan pengingat</div></div>
+              <img src="assets/logo.svg" alt="Logo" style="height:40px;width:auto" />
+            </div>
+            <div class="form-grid">
+              <div class="field span-2">
+                <label class="field-label" for="s-company">Nama perusahaan</label>
+                <input class="input" id="s-company" />
+              </div>
+              <div class="field span-2">
+                <label class="field-label" for="s-address">Alamat</label>
+                <textarea class="input" id="s-address" style="min-height:70px"></textarea>
+              </div>
+              <div class="field">
+                <label class="field-label" for="s-phone">Telepon / WhatsApp</label>
+                <input class="input" id="s-phone" />
+              </div>
+            </div>
+          </div>
+
+          <!-- Cutoff -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Cut off bulanan</div>
+                <div class="card-sub">Menentukan periode penagihan dan laporan</div></div>
+              <span class="badge badge-brand" id="period-preview"></span>
+            </div>
+
+            <div class="row gap-4 wrap mb-4">
+              <div class="field" style="width:180px;flex:0 0 180px">
+                <label class="field-label" for="s-cutoff">Tanggal cut off</label>
+                <select class="select" id="s-cutoff"></select>
+              </div>
+              <div class="grow" style="min-width:220px">
+                <div class="text-xs text-tertiary font-bold mb-2">PERIODE HASIL PENGATURAN</div>
+                <div class="card card-outlined" style="box-shadow:none;background:var(--bg-sunken);padding:var(--sp-4)">
+                  <div class="row gap-3">
+                    <span style="color:var(--brand-500)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><rect x="3" y="5" width="18" height="16" rx="3"/><path d="M8 3v4M16 3v4M3 10h18"/></svg></span>
+                    <div>
+                      <div class="font-bold" id="period-range"></div>
+                      <div class="text-xs text-tertiary">Periode berikutnya akan dihitung otomatis</div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="divider"></div>
+            <div class="row-between wrap gap-3">
+              <div>
+                <div class="setting-info">
+                  <div class="si-title">Pratinjau dampak perubahan</div>
+                  <div class="si-desc">Lihat berapa transaksi &amp; nilai yang akan berpindah periode sebelum menyimpan</div>
+                </div>
+              </div>
+              <button class="btn btn-secondary" id="btn-impact">Pratinjau Dampak</button>
+            </div>
+          </div>
+
+          <!-- Work days -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Jadwal kerja default</div>
+                <div class="card-sub">Dipakai saat membuat kontrak baru</div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="si-title">Mode penagihan</div>
+                <div class="si-desc">6 hari kerja = ada hari libur mingguan. 7 hari = harian penuh.</div>
+              </div>
+              <div class="segmented" id="s-workmode">
+                <button data-wm="6days" class="active">6 Hari Kerja</button>
+                <button data-wm="7days">7 Hari</button>
+              </div>
+            </div>
+            <div class="setting-row" id="s-offday-row">
+              <div class="setting-info">
+                <div class="si-title">Hari libur default</div>
+                <div class="si-desc">Hari yang tidak ditagih pada mode 6 hari kerja</div>
+              </div>
+              <div class="day-toggle" id="s-offdays" style="flex:0 0 auto">
+                <button class="day-chip" data-day="1">Sen</button>
+                <button class="day-chip" data-day="2">Sel</button>
+                <button class="day-chip" data-day="3">Rab</button>
+                <button class="day-chip" data-day="4">Kam</button>
+                <button class="day-chip" data-day="5">Jum</button>
+                <button class="day-chip" data-day="6">Sab</button>
+                <button class="day-chip off" data-day="0">Min</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- Security -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Keamanan</div><div class="card-sub">Perlindungan data lokal di perangkat</div></div>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="si-title">Kunci aplikasi dengan PIN</div>
+                <div class="si-desc">Minta PIN 4 digit setiap membuka aplikasi</div>
+              </div>
+              <label class="switch"><input type="checkbox" id="s-pin" /><span class="switch-track"><span class="switch-thumb"></span></span></label>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="si-title">Auto-lock</div>
+                <div class="si-desc">Kunci otomatis setelah tidak ada aktivitas</div>
+              </div>
+              <select class="select" id="s-autolock" style="width:150px;flex:0 0 150px">
+                <option value="1">1 menit</option><option value="5">5 menit</option>
+                <option value="15">15 menit</option><option value="30">30 menit</option>
+              </select>
+            </div>
+            <div class="setting-row">
+              <div class="setting-info">
+                <div class="si-title">Biometrik</div>
+                <div class="si-desc">Gunakan sidik jari / pengenalan wajah bila tersedia</div>
+              </div>
+              <label class="switch"><input type="checkbox" id="s-bio" checked /><span class="switch-track"><span class="switch-thumb"></span></span></label>
+            </div>
+          </div>
+
+          <!-- Data & backup -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Data &amp; cadangan</div><div class="card-sub">Semua data tersimpan lokal (SQLite/Room)</div></div>
+              <span class="badge badge-success" id="db-size"></span>
+            </div>
+            <div class="kpi-grid mb-5" style="grid-template-columns:repeat(3,1fr)">
+              <div class="kpi" style="padding:var(--sp-4)">
+                <div class="kpi-label" style="font-size:11px">Mobil</div>
+                <div class="kpi-value" style="font-size:var(--fs-lg)" id="stat-cars">0</div>
+              </div>
+              <div class="kpi" style="padding:var(--sp-4)">
+                <div class="kpi-label" style="font-size:11px">Penyewa</div>
+                <div class="kpi-value" style="font-size:var(--fs-lg)" id="stat-renters">0</div>
+              </div>
+              <div class="kpi" style="padding:var(--sp-4)">
+                <div class="kpi-label" style="font-size:11px">Transaksi</div>
+                <div class="kpi-value" style="font-size:var(--fs-lg)" id="stat-pays">0</div>
+              </div>
+            </div>
+            <div class="row gap-3 wrap">
+              <button class="btn btn-primary" id="btn-backup">Cadangkan Data</button>
+              <button class="btn btn-secondary" id="btn-restore">Pulihkan</button>
+              <button class="btn btn-secondary" id="btn-export-all">Ekspor Semua (CSV)</button>
+              <button class="btn btn-ghost" id="btn-reset" style="margin-left:auto;color:var(--danger)">Reset ke Data Demo</button>
+            </div>
+          </div>
+
+          <!-- About -->
+          <div class="card card-pad-lg">
+            <div class="row gap-4 wrap">
+              <!-- logo-mono.svg di-inline, bukan <img>: SVG yang dimuat lewat <img> adalah
+                   dokumen terpisah, jadi currentColor / --mark-bg tidak pernah
+                   mencapai tile dan hurufnya. -->
+              <svg viewBox="0 0 200 56" role="img" aria-label="Klinik Net" style="height:48px;width:auto;flex:0 0 auto;color:var(--text-primary);--mark-bg:#FFFFFF">
+                <g transform="translate(2 2)">
+                  <rect width="52" height="52" rx="15" fill="currentColor"/>
+                  <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="var(--mark-bg, #FFFFFF)" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+                    <path d="M7 14h.01"/><path d="M17 14h.01"/>
+                    <rect width="18" height="8" x="3" y="10" rx="2"/>
+                    <path d="M5 18v2"/><path d="M19 18v2"/>
+                  </g>
+                </g>
+                <g transform="translate(66 0)" fill="currentColor" fill-rule="nonzero" aria-hidden="true">
+                  <path transform="translate(0.00 39.40) scale(0.03 -0.03)" d="M66 0V745H221V372L178 387L476 745H670L375 389L384 499L676 0H495L313 315L221 204V0Z"/>
+                  <path transform="translate(19.81 39.40) scale(0.03 -0.03)" d="M55 0V757H205V0Z"/>
+                  <path transform="translate(26.81 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+                  <path transform="translate(33.81 39.40) scale(0.03 -0.03)" d="M55 0V546H195V438L187 462Q206 511 248.5 534.5Q291 558 348 558Q410 558 456.5 532Q503 506 529 459.5Q555 413 555 350.7V0H405V319Q405 351 392.5 374Q380 397 357.41 410Q334.81 423 305.41 423Q276 423 253 410Q230 397 217.5 374Q205 351 205 319V0Z"/>
+                  <path transform="translate(50.98 39.40) scale(0.03 -0.03)" d="M55 0V546H205V0ZM55 595V745H205V595Z"/>
+                  <path transform="translate(57.98 39.40) scale(0.03 -0.03)" d="M55 0V757H205V272L149 290L390 546H575L377 326L574 0H404L239 277L326 299L159 117L205 204V0Z"/>
+                  <path transform="translate(79.36 39.40) scale(0.03 -0.03)" d="M66 0V745H185L585 218L521 203V745H676V0H556L163 531L221 546V0Z"/>
+                  <path transform="translate(100.82 39.40) scale(0.03 -0.03)" d="M318 -12Q231 -12 167 26.5Q103 65 68 130Q33 195 33 274Q33 356 69.5 420Q106 484 168 521Q230 558 308 558Q373 558 423 537.5Q473 517 507.5 480Q542 443 560 394.5Q578 346 578 289Q578 273 576.5 257.5Q575 242 571 231H162V341H486L415 289Q425 332 414 365.5Q403 399 375.5 418.5Q348 438 308 438Q269 438 241 419Q213 400 199 363Q185 326 188 273Q184 227 199 192Q214 157 245 137.5Q276 118 320 118Q360 118 388.5 134Q417 150 433 178L553 121Q537 81 502.5 51Q468 21 421 4.5Q374 -12 318 -12Z"/>
+                  <path transform="translate(118.35 39.40) scale(0.03 -0.03)" d="M318 -6Q219 -6 164.5 47.5Q110 101 110 197V416H18V546H23Q65 546 87.5 567Q110 588 110 630V670H260V546H388V416H260V207Q260 179 270 160.5Q280 142 301 133Q322 124 353 124Q360 124 369 125Q378 126 388 127V0Q373 -2 354 -4Q335 -6 318 -6Z"/>
+                </g>
+              </svg>
+              <div class="grow">
+                <div class="card-title">Klinik Net v1.0 (Prototype)</div>
+                <div class="card-sub">Offline-first · Target Android 11+ · Room + Jetpack Compose</div>
+              </div>
+              <span class="badge badge-neutral">100% offline</span>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- Impact preview -->
+    <div class="modal" id="impact-modal">
+      <div class="modal-header">
+        <div><div class="card-title">Pratinjau Dampak Cut Off</div><div class="card-sub">Perubahan belum disimpan</div></div>
+        <button class="btn btn-ghost btn-icon" data-close="impact-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body" id="impact-body"></div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="impact-modal">Batal</button>
+        <button class="btn btn-primary" id="impact-apply">Terapkan Cut Off Baru</button>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  const S = store.getSettings();
+
+  window.Shell.render("settings", { title: "Pengaturan", subtitle: "Cut off, keamanan & cadangan data" });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  /* ---------- Load values ---------- */
+  document.getElementById("s-company").value = S.companyName || "";
+  document.getElementById("s-address").value = S.companyAddress || "";
+  document.getElementById("s-phone").value = S.companyPhone || "";
+  document.getElementById("s-pin").checked = !!S.pinEnabled;
+  document.getElementById("s-autolock").value = String(S.autoLockMinutes || 5);
+  document.getElementById("s-bio").checked = true;
+
+  const cutoffSel = document.getElementById("s-cutoff");
+  cutoffSel.innerHTML = Array.from({ length: 28 }, (_, i) => `<option value="${i + 1}" ${i + 1 === S.cutoffDay ? "selected" : ""}>Tanggal ${i + 1}</option>`).join("");
+
+  document.querySelectorAll("#s-workmode button").forEach(b => b.classList.toggle("active", b.getAttribute("data-wm") === S.workDaysMode));
+  document.querySelectorAll("#s-offdays .day-chip").forEach(ch => ch.classList.toggle("off", parseInt(ch.getAttribute("data-day"), 10) === S.defaultOffDay));
+  document.getElementById("s-offday-row").style.display = S.workDaysMode === "7days" ? "none" : "flex";
+
+  function renderPeriodPreview(day) {
+    const d = day || S.cutoffDay;
+    const today = new Date("2026-03-29");
+    let start, end;
+    if (today.getDate() >= d) {
+      start = new Date(2026, 2, d); end = new Date(2026, 3, d - 1);
+    } else {
+      start = new Date(2026, 1, d); end = new Date(2026, 2, d - 1);
+    }
+    const names = ["Januari","Februari","Maret","April","Mei","Juni","Juli","Agustus","September","Oktober","November","Desember"];
+    document.getElementById("period-range").textContent = `${start.getDate()} ${names[start.getMonth()]} – ${end.getDate()} ${names[end.getMonth()]} ${end.getFullYear()}`;
+    document.getElementById("period-preview").textContent = `Cut off tanggal ${d}`;
+  }
+  renderPeriodPreview();
+
+  cutoffSel.addEventListener("change", () => renderPeriodPreview(parseInt(cutoffSel.value, 10)));
+
+  /* ---------- Work mode ---------- */
+  document.getElementById("s-workmode").addEventListener("click", e => {
+    const b = e.target.closest("[data-wm]");
+    if (!b) return;
+    const wm = b.getAttribute("data-wm");
+    S.workDaysMode = wm;
+    document.querySelectorAll("#s-workmode button").forEach(x => x.classList.toggle("active", x === b));
+    document.getElementById("s-offday-row").style.display = wm === "7days" ? "none" : "flex";
+    store.save();
+    window.UI.toast("Mode penagihan default: " + (wm === "7days" ? "7 hari" : "6 hari kerja"));
+  });
+  document.getElementById("s-offdays").addEventListener("click", e => {
+    const ch = e.target.closest("[data-day]");
+    if (!ch) return;
+    const wasOff = ch.classList.contains("off");
+    document.querySelectorAll("#s-offdays .day-chip").forEach(x => { if (x !== ch) x.classList.remove("off"); });
+    ch.classList.toggle("off", !wasOff);
+    S.defaultOffDay = wasOff ? null : parseInt(ch.getAttribute("data-day"), 10);
+    store.save();
+  });
+
+  /* ---------- Company profile ---------- */
+  ["s-company", "s-address", "s-phone"].forEach(id => {
+    document.getElementById(id).addEventListener("input", () => {
+      S.companyName = document.getElementById("s-company").value;
+      S.companyAddress = document.getElementById("s-address").value;
+      S.companyPhone = document.getElementById("s-phone").value;
+      store.save();
+    });
+  });
+
+  /* ---------- Security ---------- */
+  document.getElementById("s-pin").addEventListener("change", e => {
+    S.pinEnabled = e.target.checked;
+    store.save();
+    window.UI.toast(e.target.checked ? "Kunci PIN diaktifkan" : "Kunci PIN dinonaktifkan");
+  });
+  document.getElementById("s-autolock").addEventListener("change", e => {
+    S.autoLockMinutes = parseInt(e.target.value, 10);
+    store.save();
+  });
+
+  /* ---------- Impact preview ---------- */
+  document.getElementById("btn-impact").addEventListener("click", () => {
+    const newDay = parseInt(cutoffSel.value, 10);
+    const cur = store.getCurrentCutoffPeriod();
+    const pays = store.getPayments().filter(p => p.status === "confirmed");
+    const inCur = pays.filter(p => p.date >= cur.startDateStr && p.date <= cur.endDateStr);
+    // Simulasi: dengan cut off baru, beberapa transaksi awal bulan masuk ke periode berikutnya
+    const shift = newDay - cur.cutoffDay;
+    const shifted = pays.filter(p => {
+      const d = new Date(p.date);
+      if (shift > 0) return d.getDate() <= shift && d.getMonth() === 2;
+      return d.getDate() > newDay && d.getMonth() === 2;
+    });
+    const shiftedSum = shifted.reduce((s, p) => s + p.amount, 0);
+    const curSum = inCur.reduce((s, p) => s + p.amount, 0);
+
+    document.getElementById("impact-body").innerHTML = `
+      <div class="col gap-4">
+        <div class="card card-outlined" style="box-shadow:none;background:var(--bg-sunken)">
+          <div class="row gap-3 mb-2"><span style="color:var(--brand-500)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><circle cx="12" cy="12" r="9"/><path d="M12 11v5M12 8h.01"/></svg></span> <b>Periode berjalan (cut off ${cur.cutoffDay})</b></div>
+          <div class="text-sm text-secondary">${cur.label}</div>
+          <div class="num-display text-brand mt-2">${fmt.rpShort(curSum)} · ${inCur.length} transaksi</div>
+        </div>
+        <div class="card card-outlined" style="box-shadow:none;background:var(--bg-sunken)">
+          <div class="row gap-3 mb-2"><span style="color:var(--warning)"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:20px;height:20px"><path d="M10.3 3.9 2.4 17.5A2 2 0 0 0 4.1 20.5h15.8a2 2 0 0 0 1.7-3L13.7 3.9a2 2 0 0 0-3.4 0Z"/><path d="M12 9v4.5M12 17h.01"/></svg></span> <b>Dengan cut off ${newDay}</b></div>
+          <div class="text-sm text-secondary">${shifted.length} transaksi (${fmt.rpShort(shiftedSum)}) akan berpindah ke periode berikutnya</div>
+          <div class="num-display text-warning mt-2">${shifted.length ? "Periode ini turun " + fmt.rpShort(shiftedSum) : "Tidak ada transaksi yang berpindah"}</div>
+        </div>
+        ${shifted.length ? `<div class="col gap-2">
+          <div class="text-xs text-tertiary font-bold">TRANSAKSI YANG BERPINDAH</div>
+          ${shifted.slice(0, 6).map(p => {
+            const c = store.getContractById(p.contractId);
+            const r = c ? store.getRenterById(c.renterId) : null;
+            return `<div class="row-between text-sm"><span>${fmt.dateShort(p.date)} · ${r ? r.name : "—"}</span><b class="num-display">${fmt.rp(p.amount)}</b></div>`;
+          }).join("")}
+        </div>` : ""}
+      </div>`;
+    window.UI.openModal("impact-modal");
+  });
+
+  document.querySelectorAll("[data-close='impact-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("impact-modal")));
+  document.getElementById("impact-apply").addEventListener("click", () => {
+    S.cutoffDay = parseInt(cutoffSel.value, 10);
+    store.save();
+    window.UI.closeModal("impact-modal");
+    renderPeriodPreview();
+    window.UI.toast("Tanggal cut off disimpan: tanggal " + S.cutoffDay, "success", "Terapkan", renderPeriodPreview);
+  });
+
+  /* ---------- Backup / restore / export ---------- */
+  function renderStats() {
+    document.getElementById("stat-cars").textContent = store.getCars().length;
+    document.getElementById("stat-renters").textContent = store.getRenters().length;
+    document.getElementById("stat-pays").textContent = store.getPayments().length;
+    const bytes = new Blob([JSON.stringify(store.state)]).size;
+    document.getElementById("db-size").textContent = (bytes / 1024).toFixed(1) + " KB";
+  }
+
+  document.getElementById("btn-backup").addEventListener("click", () => {
+    window.UI.download("klinik-net-backup-2026-03-29.json", JSON.stringify(store.state, null, 2), "application/json");
+  });
+
+  document.getElementById("btn-restore").addEventListener("click", () => {
+    const input = document.createElement("input");
+    input.type = "file"; input.accept = ".json,application/json";
+    input.addEventListener("change", () => {
+      const file = input.files[0];
+      if (!file) return;
+      const reader = new FileReader();
+      reader.onload = () => {
+        try {
+          const data = JSON.parse(reader.result);
+          if (!data.cars || !data.payments) throw new Error("Format tidak dikenali");
+          store.state = data; store.save();
+          renderStats(); renderPeriodPreview();
+          window.UI.toast("Data berhasil dipulihkan");
+        } catch (e) { window.UI.toast("Gagal memulihkan: " + e.message, "error"); }
+      };
+      reader.readAsText(file);
+    });
+    input.click();
+  });
+
+  document.getElementById("btn-export-all").addEventListener("click", () => {
+    const s = store.state;
+    const csv = [["DATA KLINIK NET — CADANGAN LOKAL"], [], ["TANGGAL", new Date().toLocaleDateString("id-ID")], []];
+    csv.push(["MOBIL"], ["Plat", "Merek", "Tipe", "Tahun", "Warna", "Tarif", "Status", "Catatan"]);
+    s.cars.forEach(c => csv.push([c.plate, c.brand, c.model, c.year, c.color, c.dailyRate, c.status, c.notes]));
+    csv.push([], ["PENYEWA"], ["Nama", "HP", "Alamat", "Bergabung"]);
+    s.renters.forEach(r => csv.push([r.name, r.phone, r.address, r.joinDate]));
+    csv.push([], ["KONTRAK"], ["Renter", "Mobil", "Mulai", "Tarif", "Jadwal", "Libur", "Status"]);
+    s.contracts.forEach(c => { const r = store.getRenterById(c.renterId); const car = store.getCarById(c.carId);
+      csv.push([r ? r.name : "", car ? car.plate : "", c.startDate, c.dailyRate, c.workSchedule, (c.offDays || []).join("/"), c.status]); });
+    csv.push([], ["TRANSAKSI"], ["Tanggal", "Kontrak", "Nominal", "Bank", "Referensi", "Status", "Alasan Batal", "Catatan"]);
+    s.payments.forEach(p => csv.push([p.date, p.contractId, p.amount, p.bank, p.referenceNo, p.status, p.cancelReason || "", p.notes || ""]));
+    window.CSV.download("klinik-net-data-lengkap.csv", csv);
+  });
+
+  document.getElementById("btn-reset").addEventListener("click", async () => {
+    const ok = await window.UI.confirm({
+      title: "Reset ke data demo?",
+      subtitle: "Semua perubahan Anda akan hilang",
+      message: "Seluruh mobil, penyewa, kontrak, dan transaksi akan dikembalikan ke kondisi awal prototype.",
+      okLabel: "Reset sekarang",
+      danger: true
+    });
+    if (!ok) return;
+    store.resetDefaults();
+    renderStats(); renderPeriodPreview();
+    window.UI.toast("Data dikembalikan ke kondisi demo", "success", "Muat ulang", () => location.reload());
+  });
+
+  renderStats();
+  window.addEventListener("klinik_data_changed", renderStats);
+})();
+</script>
+</body>
+</html>

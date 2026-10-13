@@ -1,0 +1,291 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Klinik Net — Sistem Rental Mobil Harian</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<!-- Preview chrome (outside device) -->
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span>
+  <span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span>
+  <button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+
+    <!-- SPLASH -->
+    <div class="splash-screen" id="splash">
+      <div class="splash-logo">
+        <svg viewBox="0 0 52 52" fill="none">
+          <defs><linearGradient id="kn-splash" x1="0%" y1="0%" x2="100%" y2="100%">
+            <stop offset="0%" stop-color="#FF385C"/><stop offset="100%" stop-color="#C01336"/>
+          </linearGradient></defs>
+          <rect width="52" height="52" rx="15" fill="url(#kn-splash)"/>
+          <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+            <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+            <path d="M7 14h.01"/><path d="M17 14h.01"/>
+            <rect width="18" height="8" x="3" y="10" rx="2"/>
+            <path d="M5 18v2"/><path d="M19 18v2"/>
+          </g>
+        </svg>
+      </div>
+      <div class="splash-title">Klinik Net</div>
+      <div class="splash-loader"></div>
+    </div>
+
+    <!-- PIN LOCK -->
+    <div class="pin-screen hidden" id="pin-screen">
+      <div class="col" style="align-items:center;gap:10px">
+        <div class="splash-logo" style="width:74px;height:74px;border-radius:20px;box-shadow:var(--el-2);background:var(--brand-500)">
+          <svg viewBox="0 0 52 52" fill="none" style="width:46px;height:46px">
+            <g transform="translate(6.8 6) scale(1.6)" fill="none" stroke="#FFFFFF" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+              <path d="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"/>
+              <path d="M7 14h.01"/><path d="M17 14h.01"/>
+              <rect width="18" height="8" x="3" y="10" rx="2"/>
+              <path d="M5 18v2"/><path d="M19 18v2"/>
+            </g>
+          </svg>
+        </div>
+        <div class="display-font" style="font-size:var(--fs-lg);font-weight:700">Masuk dengan PIN</div>
+        <div class="text-xs text-tertiary">Data tersimpan lokal &amp; terenkripsi di perangkat ini</div>
+      </div>
+      <div class="pin-dots" id="pin-dots">
+        <div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div><div class="pin-dot"></div>
+      </div>
+      <div class="pin-error" id="pin-error">PIN salah, coba lagi</div>
+      <div class="pin-grid" id="pin-grid">
+        <button class="pin-key" data-pin="1">1</button>
+        <button class="pin-key" data-pin="2">2</button>
+        <button class="pin-key" data-pin="3">3</button>
+        <button class="pin-key" data-pin="4">4</button>
+        <button class="pin-key" data-pin="5">5</button>
+        <button class="pin-key" data-pin="6">6</button>
+        <button class="pin-key" data-pin="7">7</button>
+        <button class="pin-key" data-pin="8">8</button>
+        <button class="pin-key" data-pin="9">9</button>
+        <button class="pin-key" id="pin-clear" style="font-size:var(--fs-sm);font-weight:800;color:var(--text-tertiary)">HAPUS</button>
+        <button class="pin-key" data-pin="0">0</button>
+        <button class="pin-key" id="pin-back" style="font-size:var(--fs-sm)">⌫</button>
+      </div>
+      <div class="text-xs text-tertiary" style="margin-top:-16px">Demo PIN: <b class="text-brand">1234</b></div>
+    </div>
+
+    <!-- APP -->
+    <div class="app-shell" id="app-shell" style="visibility:hidden">
+      <nav class="nav-rail" id="nav-rail"></nav>
+
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Beranda</div>
+            <div class="page-subtitle" id="page-subtitle">Sistem Rental Mobil Harian</div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="search-bar" style="max-width:280px">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+              <input type="search" placeholder="Cari penyewa, plat, transaksi…" aria-label="Pencarian global" />
+            </div>
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" data-tip="Mode gelap" aria-label="Ganti tema"></button>
+          </div>
+        </header>
+
+        <main class="page-body" id="page-body">
+          <!-- HOME -->
+          <div class="col gap-5" id="home-view">
+            <!-- Hero -->
+            <div class="card card-pad-xl kpi-accent stagger" style="position:relative;overflow:hidden">
+              <div class="col" style="position:relative;z-index:2;max-width:560px">
+                <span class="badge badge-brand" style="align-self:flex-start">Selamat datang kembali</span>
+                <h1 class="display-font" style="font-size:var(--fs-3xl);font-weight:700;letter-spacing:-1.6px;margin-top:14px;line-height:1.05">
+                  Sewa harian,<br />setoran tiap hari.
+                </h1>
+                <p class="text-sm text-secondary mt-4" style="line-height:1.7">
+                  Kelola armada, kontrak sewa harian, dan setoran penyewa dalam satu layar.
+                  Semua data tersimpan lokal di tablet — berfungsi penuh tanpa internet.
+                </p>
+                <div class="row gap-3 mt-6 wrap">
+                  <a class="btn btn-primary btn-lg" href="payments.html">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M12 5v14M5 12h14"/></svg>
+                    Catat Setoran
+                  </a>
+                  <a class="btn btn-secondary btn-lg" href="dashboard.html">Buka Dashboard</a>
+                </div>
+              </div>
+              <div style="position:absolute;right:-40px;top:-30px;width:280px;height:280px;border-radius:50%;background:radial-gradient(circle at 30% 30%, rgba(255,56,92,.16), rgba(255,56,92,.02) 70%)"></div>
+            </div>
+
+            <!-- Quick KPIs (live) -->
+            <div class="kpi-grid" id="home-kpis"></div>
+
+            <!-- Quick actions grid -->
+            <div class="row-between wrap gap-3">
+              <h2 class="display-font" style="font-size:var(--fs-lg);font-weight:700">Aksi cepat</h2>
+              <a class="btn btn-ghost btn-sm" href="components.html">Lihat katalog komponen →</a>
+            </div>
+            <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(200px,1fr))" id="home-actions"></div>
+
+            <!-- Screen map -->
+            <div class="card card-pad-lg">
+              <div class="card-header">
+                <div>
+                  <div class="card-title">Peta layar aplikasi</div>
+                  <div class="card-sub">9 layar utama, fully offline, master-detail di landscape</div>
+                </div>
+              </div>
+              <div class="kpi-grid" style="grid-template-columns:repeat(auto-fit,minmax(240px,1fr))" id="home-map"></div>
+            </div>
+          </div>
+        </main>
+      </div>
+
+      <!-- Portrait bottom nav -->
+      <div style="position:absolute;inset:0;pointer-events:none"></div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  const pin = store.getSettings().pinEnabled;
+  let entered = "";
+
+  function showPin() {
+    document.getElementById("pin-screen").classList.remove("hidden");
+    document.getElementById("app-shell").style.visibility = "hidden";
+  }
+
+  function showApp() {
+    document.getElementById("pin-screen").classList.add("hidden");
+    const shell = document.getElementById("app-shell");
+    shell.style.visibility = "visible";
+    shell.style.animation = "fadeUp 420ms both";
+  }
+
+  function updateDots() {
+    const dots = document.querySelectorAll("#pin-dots .pin-dot");
+    dots.forEach((d, i) => d.classList.toggle("filled", i < entered.length));
+  }
+
+  function verify() {
+    const code = store.getSettings().pinCode || "1234";
+    if (entered === code) {
+      entered = "";
+      updateDots();
+      showApp();
+      window.UI.toast("PIN diterima. Data lokal siap.");
+    } else {
+      const err = document.getElementById("pin-error");
+      err.textContent = "PIN salah, coba lagi";
+      const dots = document.getElementById("pin-dots");
+      dots.style.animation = "none";
+      void dots.offsetWidth;
+      dots.style.animation = "shake 420ms";
+      entered = "";
+      updateDots();
+    }
+  }
+
+  document.getElementById("pin-grid").addEventListener("click", e => {
+    const key = e.target.closest("[data-pin]");
+    if (key) {
+      if (entered.length < 4) { entered += key.getAttribute("data-pin"); updateDots(); }
+      if (entered.length === 4) setTimeout(verify, 180);
+    } else if (e.target.closest("#pin-clear")) {
+      entered = ""; updateDots();
+    } else if (e.target.closest("#pin-back")) {
+      entered = entered.slice(0, -1); updateDots();
+    }
+  });
+
+  // Splash → PIN → App
+  setTimeout(() => {
+    document.getElementById("splash").classList.add("hide");
+    setTimeout(() => {
+      document.getElementById("splash").style.display = "none";
+      if (pin) showPin(); else showApp();
+    }, 320);
+  }, 1600);
+
+  // Theme button in header (shared.js handles #theme-toggle)
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) {
+    t2.innerHTML = window.I.sun;
+    t2.addEventListener("click", () => {
+      window.Device.toggleTheme();
+      t2.innerHTML = document.documentElement.getAttribute("data-theme") === "dark" ? window.I.moon : window.I.sun;
+    });
+  }
+
+  /* ---------- Home content ---------- */
+  function renderKpis() {
+    const m = store.getDashboardMetrics();
+    const host = document.getElementById("home-kpis");
+    host.innerHTML = `
+      <div class="kpi stagger"><div class="kpi-label">Pendapatan hari ini</div>
+        <div class="kpi-value">${fmt.rpShort(m.todayIncome)}</div>
+        <div class="kpi-meta trend-up">${I.trendUp} <span>${store.getPayments().filter(p => p.status==="confirmed" && p.date==="2026-03-29").length} setoran diterima</span></div>
+        <div class="kpi-icon" style="background:var(--brand-50);color:var(--brand-500)">${I.wallet}</div></div>
+      <div class="kpi stagger"><div class="kpi-label">Tunggakan aktif</div>
+        <div class="kpi-value text-danger">${fmt.rpShort(m.totalArrears)}</div>
+        <div class="kpi-meta ${m.criticalArrearsCount > 0 ? "text-danger" : "trend-up"}">${m.criticalArrearsCount} penyewa ≥3 hari</div>
+        <div class="kpi-icon" style="background:var(--danger-bg);color:var(--danger)">${I.alert}</div></div>
+      <div class="kpi stagger"><div class="kpi-label">Armada aktif</div>
+        <div class="kpi-value">${m.rentedCars}/${m.totalCars}</div>
+        <div class="kpi-meta text-tertiary">${m.availableCars} tersedia · ${m.maintenanceCars} servis</div>
+        <div class="kpi-icon" style="background:var(--success-bg);color:var(--success)">${I.car}</div></div>
+      <div class="kpi stagger"><div class="kpi-label">Tingkat penagihan</div>
+        <div class="kpi-value">${m.collectionRate}%</div>
+        <div class="kpi-meta trend-up">${I.trendUp} <span>periode berjalan</span></div>
+        <div class="kpi-icon" style="background:var(--info-bg);color:var(--info)">${I.report}</div></div>`;
+  }
+
+  function renderActions() {
+    const actions = [
+      { href: "payments.html", icon: I.wallet, title: "Catat Setoran", sub: "Numpad rupiah cepat", color: "var(--brand-500)", bg: "var(--brand-50)" },
+      { href: "cars.html", icon: I.car, title: "Tambah Mobil", sub: "Plat unik, tarif harian", color: "var(--info)", bg: "var(--info-bg)" },
+      { href: "renters.html", icon: I.users, title: "Penyewa & Kontrak", sub: "Jadwal setoran 6/7 hari", color: "var(--success)", bg: "var(--success-bg)" },
+      { href: "arrears.html", icon: I.wa, title: "Ingat via WhatsApp", sub: "Template pesan siap kirim", color: "var(--warning)", bg: "var(--warning-bg)" }
+    ];
+    document.getElementById("home-actions").innerHTML = actions.map(a => `
+      <a class="card card-hover" href="${a.href}" style="text-decoration:none">
+        <div class="row gap-4">
+          <div class="kpi-icon" style="position:static;width:52px;height:52px;background:${a.bg};color:${a.color}">${a.icon}</div>
+          <div class="grow"><div class="card-title">${a.title}</div><div class="card-sub">${a.sub}</div></div>
+        </div>
+      </a>`).join("");
+  }
+
+  function renderMap() {
+    const map = window.PAGES.map((p, i) => `
+      <a class="list-row" href="${p.file}" style="text-decoration:none">
+        <div class="avatar avatar-sm" style="background:var(--brand-50);border-color:var(--brand-100);color:var(--brand-600);font-size:14px;font-weight:800">${String(i+1).padStart(2,"0")}</div>
+        <div class="lr-main"><div class="lr-title">${p.label}</div><div class="lr-sub">${p.file}</div></div>
+        <div class="lr-right text-tertiary">${I.grid}</div>
+      </a>`).join("");
+    document.getElementById("home-map").innerHTML = map;
+  }
+
+  // Wire up shell + home
+  window.Shell.render("home", { title: "Beranda", subtitle: "Sistem Rental Mobil Harian" });
+  renderKpis(); renderActions(); renderMap();
+
+  // Refresh KPIs if data changes
+  window.addEventListener("klinik_data_changed", renderKpis);
+})();
+</script>
+</body>
+</html>

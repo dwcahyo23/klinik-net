@@ -1,0 +1,409 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Komponen — Klinik Net Design System</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Design System</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <!-- TOKENS -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Design tokens</div><div class="card-sub">Sumber kebenaran visual untuk implementasi Compose</div></div>
+            </div>
+            <div class="text-xs text-tertiary font-bold mb-3">WARNA</div>
+            <div class="kpi-grid mb-5" style="grid-template-columns:repeat(auto-fit,minmax(130px,1fr))" id="color-tokens"></div>
+            <div class="text-xs text-tertiary font-bold mb-3">TIPOGRAFI</div>
+            <div class="col gap-3" id="type-tokens"></div>
+            <div class="divider"></div>
+            <div class="row gap-5 wrap">
+              <div><div class="text-xs text-tertiary font-bold mb-3">SPACING (4dp base)</div><div class="row gap-2" id="space-tokens"></div></div>
+              <div><div class="text-xs text-tertiary font-bold mb-3">RADIUS</div><div class="row gap-2" id="radius-tokens"></div></div>
+              <div><div class="text-xs text-tertiary font-bold mb-3">ELEVASI</div><div class="row gap-3" id="elev-tokens"></div></div>
+            </div>
+          </div>
+
+          <!-- BUTTONS -->
+          <div class="row gap-4 wrap mb-5" style="align-items:stretch">
+            <div class="card card-pad-lg grow" style="min-width:360px">
+              <div class="card-header"><div><div class="card-title">Tombol</div><div class="card-sub">Target sentuh ≥ 48dp</div></div></div>
+              <div class="row gap-3 wrap mb-4">
+                <button class="btn btn-primary">Primer</button>
+                <button class="btn btn-secondary">Sekunder</button>
+                <button class="btn btn-ghost">Ghost</button>
+                <button class="btn btn-success">Sukses</button>
+                <button class="btn btn-danger">Hapus</button>
+              </div>
+              <div class="row gap-3 wrap">
+                <button class="btn btn-primary btn-lg">Besar</button>
+                <button class="btn btn-secondary btn-sm">Kecil</button>
+                <button class="btn btn-secondary btn-icon" aria-label="Icon">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.1" stroke-linecap="round" style="width:18px;height:18px"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                </button>
+                <button class="btn btn-primary btn-icon" aria-label="Tambah">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" stroke-linecap="round" style="width:18px;height:18px"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
+              <div class="divider"></div>
+              <div class="row gap-3 wrap">
+                <div class="segmented"><button class="active">Opsi A</button><button>Opsi B</button><button>Opsi C</button></div>
+                <label class="switch"><input type="checkbox" checked /><span class="switch-track"><span class="switch-thumb"></span></span><span class="text-sm font-bold">Aktif</span></label>
+              </div>
+            </div>
+
+            <!-- FAB + speed dial -->
+            <div class="card card-pad-lg" style="min-width:300px;position:relative;min-height:290px">
+              <div class="card-header"><div><div class="card-title">FAB &amp; speed dial</div><div class="card-sub">Aksi utama mengambang</div></div></div>
+              <div class="row gap-4 wrap">
+                <button class="btn btn-primary" style="border-radius:var(--r-full);height:56px;padding:0 var(--sp-6);min-height:56px;box-shadow:var(--el-brand)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width:20px;height:20px"><path d="M12 5v14M5 12h14"/></svg>
+                  Setoran
+                </button>
+                <button class="btn btn-primary btn-icon" style="width:56px;min-height:56px;border-radius:var(--r-full)">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.6" style="width:24px;height:24px"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
+              <div class="speed-dial" id="sd-demo" style="right:var(--sp-4);bottom:var(--sp-4)">
+                <div class="sd-actions">
+                  <div class="sd-action"><span class="sd-label">Tambah Mobil</span><button class="sd-btn" title="Mobil"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:22px;height:22px"><path d="M5 17h14M3 17v-4l2-5a3 3 0 0 1 2.8-2h8.4A3 3 0 0 1 19 8l2 5v4"/><circle cx="7.5" cy="17" r="2"/><circle cx="16.5" cy="17" r="2"/><path d="M4 12h16"/></svg></button></div>
+                  <div class="sd-action"><span class="sd-label">Tambah Penyewa</span><button class="sd-btn" title="Penyewa"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:22px;height:22px"><circle cx="9" cy="8" r="3.5"/><path d="M2.5 20a6.5 6.5 0 0 1 13 0"/><path d="M17 5.2a3.5 3.5 0 0 1 0 6.6M18.5 20a6.4 6.4 0 0 0-2.2-4.8"/></svg></button></div>
+                  <div class="sd-action"><span class="sd-label">Catat Setoran</span><button class="sd-btn" title="Setoran"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" style="width:22px;height:22px"><rect x="3" y="6" width="18" height="14" rx="3"/><path d="M3 10h18M17 14.5h2.5"/></svg></button></div>
+                </div>
+                <button class="sd-btn sd-toggle" style="width:60px;height:60px;background:var(--brand-500);color:#fff;box-shadow:var(--el-3)" aria-label="Buka menu cepat">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.8" stroke-linecap="round" style="width:26px;height:26px"><path d="M12 5v14M5 12h14"/></svg>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- NUMPAD -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header">
+              <div><div class="card-title">Numpad rupiah</div><div class="card-sub">Tombol besar, "000", hapus, format ribuan otomatis</div></div>
+              <div class="segmented" id="numpad-layout">
+                <button class="active" data-layout="inline">Inline</button>
+                <button data-layout="sheet">Bottom sheet</button>
+              </div>
+            </div>
+            <div class="row gap-5 wrap">
+              <div class="grow" style="min-width:300px;max-width:380px">
+                <div class="numpad-shell" style="border:1px solid var(--border);border-radius:var(--r-lg);padding:var(--sp-4)">
+                  <div class="numpad-display">
+                    <div class="amount" id="np-demo-amount"><span class="rp">Rp</span> 0</div>
+                    <div class="meta" id="np-demo-meta">Tarif harian: Rp 250.000</div>
+                  </div>
+                  <div class="numpad-grid" id="np-demo-grid">
+                    <button class="numpad-key" data-key="7">7</button>
+                    <button class="numpad-key" data-key="8">8</button>
+                    <button class="numpad-key" data-key="9">9</button>
+                    <button class="numpad-key fn" data-key="del">⌫</button>
+                    <button class="numpad-key" data-key="4">4</button>
+                    <button class="numpad-key" data-key="5">5</button>
+                    <button class="numpad-key" data-key="6">6</button>
+                    <button class="numpad-key fn" data-key="clear">C</button>
+                    <button class="numpad-key" data-key="1">1</button>
+                    <button class="numpad-key" data-key="2">2</button>
+                    <button class="numpad-key" data-key="3">3</button>
+                    <button class="numpad-key fn" data-key="000">000</button>
+                    <button class="numpad-key" data-key="0">0</button>
+                    <button class="numpad-key save" data-key="save">SIMPAN</button>
+                  </div>
+                </div>
+              </div>
+              <div class="grow col gap-3" style="min-width:260px">
+                <div class="card card-outlined" style="box-shadow:none;padding:var(--sp-4)">
+                  <div class="text-sm font-bold mb-2">Aturan format</div>
+                  <ul class="col gap-2 text-sm text-secondary">
+                    <li class="row gap-2"><span style="color:var(--brand-500)">→</span> Titik ribuan otomatis (id-ID locale)</li>
+                    <li class="row gap-2"><span style="color:var(--brand-500)">→</span> Maksimal 12 digit (Rp 1 triliun)</li>
+                    <li class="row gap-2"><span style="color:var(--brand-500)">→</span> Angka nol di depan dihapus otomatis</li>
+                    <li class="row gap-2"><span style="color:var(--brand-500)">→</span> Tombol "000" untuk input cepat</li>
+                    <li class="row gap-2"><span style="color:var(--brand-500)">→</span> Meta menampilkan sisa/kredit vs tarif harian</li>
+                  </ul>
+                </div>
+                <button class="btn btn-secondary" id="btn-demo-sheet">Buka sebagai bottom sheet</button>
+              </div>
+            </div>
+          </div>
+
+          <!-- FORM CONTROLS -->
+          <div class="row gap-4 wrap mb-5" style="align-items:stretch">
+            <div class="card card-pad-lg grow" style="min-width:340px">
+              <div class="card-header"><div><div class="card-title">Form &amp; filter</div><div class="card-sub">Input, pilih, chip, hari kerja</div></div></div>
+              <div class="col gap-4">
+                <div class="field">
+                  <label class="field-label">Input dengan prefiks</label>
+                  <div class="input-affix"><span class="affix">Rp</span><input class="input" value="250000" /></div>
+                </div>
+                <div class="field">
+                  <label class="field-label">Input dengan error</label>
+                  <input class="input is-error" value="B 1235 TF" />
+                  <div class="field-error show"><span>Plat nomor B 1235 TF sudah dipakai unit lain</span></div>
+                </div>
+                <div class="field">
+                  <label class="field-label">Select</label>
+                  <select class="select"><option>BCA 0882199001</option><option>Mandiri 12400998811</option></select>
+                </div>
+                <div class="field">
+                  <label class="field-label">Toggle hari kerja</label>
+                  <div class="day-toggle">
+                    <button class="day-chip off">Sen</button><button class="day-chip">Sel</button><button class="day-chip">Rab</button>
+                    <button class="day-chip">Kam</button><button class="day-chip">Jum</button><button class="day-chip">Sab</button><button class="day-chip off">Min</button>
+                  </div>
+                </div>
+                <div class="field">
+                  <label class="field-label">Cari</label>
+                  <div class="search-bar">
+                    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="11" cy="11" r="7"/><path d="m20 20-3.5-3.5"/></svg>
+                    <input placeholder="Cari plat, penyewa…" />
+                  </div>
+                </div>
+                <div class="col gap-2">
+                  <label class="field-label">Chip filter</label>
+                  <div class="chips">
+                    <button class="chip active">Semua <span class="count">10</span></button>
+                    <button class="chip">Disewa <span class="count">8</span></button>
+                    <button class="chip">Tersedia <span class="count">1</span></button>
+                    <button class="chip">Servis <span class="count">1</span></button>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <div class="card card-pad-lg grow" style="min-width:320px">
+              <div class="card-header"><div><div class="card-title">Badge &amp; status</div><div class="card-sub">Badge tingkat keterlambatan</div></div></div>
+              <div class="row gap-2 wrap mb-5">
+                <span class="badge badge-success"><span class="dot dot-success"></span>Lancar</span>
+                <span class="badge badge-warning">1-2 Hari</span>
+                <span class="badge badge-warning">3-6 Hari</span>
+                <span class="badge badge-danger">7+ Hari</span>
+                <span class="badge badge-info">Tersedia</span>
+                <span class="badge badge-neutral">Nonaktif</span>
+                <span class="badge badge-brand">Baru</span>
+              </div>
+              <div class="text-xs text-tertiary font-bold mb-3">PROGRESS</div>
+              <div class="col gap-3">
+                <div><div class="row-between text-xs mb-2"><span>Selesai</span><span>100%</span></div><div class="progress"><div class="progress-fill success" style="width:100%"></div></div></div>
+                <div><div class="row-between text-xs mb-2"><span>Perlu perhatian</span><span>62%</span></div><div class="progress"><div class="progress-fill warning" style="width:62%"></div></div></div>
+                <div><div class="row-between text-xs mb-2"><span>Kritis</span><span>28%</span></div><div class="progress"><div class="progress-fill danger" style="width:28%"></div></div></div>
+              </div>
+              <div class="divider"></div>
+              <div class="text-xs text-tertiary font-bold mb-3">AVATAR</div>
+              <div class="row gap-3">
+                <div class="avatar">👨🏻</div><div class="avatar avatar-sm">👩🏽</div><div class="avatar avatar-lg">🧑🏻‍🦱</div>
+              </div>
+            </div>
+          </div>
+
+          <!-- STATES -->
+          <div class="row gap-4 wrap mb-5" style="align-items:stretch">
+            <div class="card grow" style="min-width:290px">
+              <div class="card-header"><div><div class="card-title">Empty state</div><div class="card-sub">Belum ada data</div></div></div>
+              <div class="empty-state" style="padding:var(--sp-6) 0">
+                <div class="es-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round"><path d="M3 13h3l2-7h8l2 7h3"/><circle cx="7.5" cy="17.5" r="2"/><circle cx="16.5" cy="17.5" r="2"/><path d="M9 10h6M10.5 6h3"/></svg></div>
+                <h3>Belum ada transaksi</h3><p>Transaksi akan muncul di sini setelah Anda mencatat setoran harian.</p>
+                <button class="btn btn-primary mt-3">Catat Setoran</button>
+              </div>
+            </div>
+            <div class="card grow" style="min-width:290px">
+              <div class="card-header"><div><div class="card-title">Error state</div><div class="card-sub">Kegagalan &amp; pemulihan</div></div></div>
+              <div class="error-state">
+                <div class="err-icon"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"><path d="M12 8v5M12 16h.01"/><circle cx="12" cy="12" r="9"/></svg></div>
+                <div class="font-bold">Gagal memuat data</div>
+                <div class="text-sm text-tertiary">Database tidak dapat diakses</div>
+                <button class="btn btn-secondary mt-2">Coba Lagi</button>
+              </div>
+            </div>
+            <div class="card grow" style="min-width:290px">
+              <div class="card-header"><div><div class="card-title">Loading skeleton</div><div class="card-sub">Saat memuat data</div></div></div>
+              <div style="padding:var(--sp-2) 0">
+                <div class="skel skel-title"></div>
+                <div class="skel skel-line"></div><div class="skel skel-line" style="width:80%"></div>
+                <div class="skel skel-line" style="width:64%"></div>
+                <div class="skel skel-line" style="width:88%"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- OVERLAYS -->
+          <div class="card card-pad-lg mb-5">
+            <div class="card-header"><div><div class="card-title">Overlay &amp; umpan balik</div><div class="card-sub">Dialog, snackbar, konfirmasi</div></div></div>
+            <div class="row gap-3 wrap">
+              <button class="btn btn-secondary" id="btn-demo-dialog">Buka Dialog</button>
+              <button class="btn btn-secondary" id="btn-demo-confirm">Konfirmasi Hapus</button>
+              <button class="btn btn-secondary" id="btn-demo-snack">Snackbar</button>
+              <button class="btn btn-secondary" id="btn-demo-snack-err">Snackbar Error</button>
+              <button class="btn btn-secondary" id="btn-demo-skeleton">Tampilkan Skeleton</button>
+            </div>
+            <div id="skeleton-host" class="mt-4"></div>
+          </div>
+
+          <!-- ACCESSIBILITY -->
+          <div class="card card-pad-lg">
+            <div class="card-header"><div><div class="card-title">Catatan aksesibilitas</div><div class="card-sub">Standar yang dipakai di seluruh aplikasi</div></div></div>
+            <div class="col gap-3 text-sm text-secondary" style="line-height:1.7">
+              <div class="row gap-3"><span class="badge badge-success">AA</span> Kontras teks utama ≥ 4.5:1 (terang) dan ≥ 7:1 (gelap)</div>
+              <div class="row gap-3"><span class="badge badge-success">48dp</span> Target sentuh minimum pada semua tombol, chip, dan baris tabel</div>
+              <div class="row gap-3"><span class="badge badge-success">14sp</span> Ukuran teks minimum untuk label dan data</div>
+              <div class="row gap-3"><span class="badge badge-success">90Hz</span> Transisi 200-300ms dengan cubic-bezier(.2,.8,.2,1)</div>
+              <div class="row gap-3"><span class="badge badge-success">a11y</span> Focus ring 3px warna brand pada elemen interaktif</div>
+              <div class="row gap-3"><span class="badge badge-success">a11y</span> Angka rupiah memakai tabular-nums agar mudah dibandingkan</div>
+            </div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- Demo dialog -->
+    <div class="modal" id="demo-dialog">
+      <div class="modal-header">
+        <div><div class="card-title">Tambah Penyewa</div><div class="card-sub">Data untuk pengingat WhatsApp</div></div>
+        <button class="btn btn-ghost btn-icon" data-close="demo-dialog" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body"><div class="form-grid">
+        <div class="field span-2"><label class="field-label">Nama lengkap *</label><input class="input" placeholder="Nama sesuai KTP" /></div>
+        <div class="field"><label class="field-label">No. HP *</label><input class="input" placeholder="0812-xxxx-xxxx" /></div>
+        <div class="field"><label class="field-label">Alamat</label><input class="input" placeholder="Kecamatan, Kota" /></div>
+      </div></div>
+      <div class="modal-footer"><button class="btn btn-secondary" data-close="demo-dialog">Batal</button><button class="btn btn-primary" data-close="demo-dialog">Simpan</button></div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  window.Shell.render("components", { title: "Design System", subtitle: "Katalog komponen & design tokens" });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  /* tokens */
+  const colors = [
+    ["brand-500", "#FF385C", "Primary"], ["brand-600", "#E81E45", "Pressed"],
+    ["warm-0", "#FFFFFF", "Card"], ["warm-50", "#F9F7F4", "Page bg"],
+    ["warm-900", "#1A1715", "Text"], ["success", "#0E9F6E", "Success"],
+    ["warning", "#D97706", "Warning"], ["danger", "#DC2626", "Danger"]
+  ];
+  document.getElementById("color-tokens").innerHTML = colors.map(([n, hex, use]) => `
+    <div class="kpi" style="padding:var(--sp-3)">
+      <div style="height:56px;border-radius:var(--r-md);background:${hex};border:1px solid var(--border);margin-bottom:10px"></div>
+      <div class="text-xs font-800">${n}</div>
+      <div class="text-xs text-tertiary">${hex} · ${use}</div>
+    </div>`).join("");
+
+  const types = [
+    ["Display / Fraunces", "var(--font-display)", "48px / 700", "Sewa harian"],
+    ["Judul kartu", "var(--font-body)", "16px / 700", "Pendapatan hari ini"],
+    ["Body", "var(--font-body)", "14px / 500", "Rincian transaksi harian"],
+    ["Angka tabular", "var(--font-body)", "36px / 800", "Rp 12.450.000"],
+    ["Caption", "var(--font-body)", "12px / 700", "LABEL KECIL"]
+  ];
+  document.getElementById("type-tokens").innerHTML = types.map(([label, font, spec, sample]) => `
+    <div class="row-between" style="border-bottom:1px solid var(--border);padding-bottom:10px">
+      <div><div class="text-xs text-tertiary font-bold">${label} · ${spec}</div>
+      <div style="font-family:${font};font-weight:700;font-size:${spec.split(" /")[0]};letter-spacing:-.5px">${sample}</div></div>
+    </div>`).join("");
+
+  document.getElementById("space-tokens").innerHTML = [4,8,12,16,20,24,32,48].map(v =>
+    `<div class="col" style="align-items:center;gap:5px"><div style="width:22px;height:${v}px;background:var(--brand-300);border-radius:4px"></div><span class="text-xs font-bold">${v}</span></div>`).join("");
+  document.getElementById("radius-tokens").innerHTML = [10,14,20,26,999].map(v =>
+    `<div class="col" style="align-items:center;gap:5px"><div style="width:42px;height:42px;background:var(--brand-100);border-radius:${v}px;border:1.5px solid var(--brand-300)"></div><span class="text-xs font-bold">${v === 999 ? "full" : v}</span></div>`).join("");
+  document.getElementById("elev-tokens").innerHTML = [["el-1","var(--el-1)"],["el-2","var(--el-2)"],["el-3","var(--el-3)"]].map(([n, sh]) =>
+    `<div class="col" style="align-items:center;gap:5px"><div style="width:52px;height:52px;background:var(--bg-card);border-radius:var(--r-md);box-shadow:${sh}"></div><span class="text-xs font-bold">${n}</span></div>`).join("");
+
+  /* numpad demo */
+  window.UI.createNumpad({
+    container: document.getElementById("np-demo-grid"),
+    display: document.getElementById("np-demo-amount"),
+    meta: document.getElementById("np-demo-meta"),
+    metaText: (v) => {
+      if (v === 0) return "Tarif harian: Rp 250.000";
+      if (v === 250000) return "✓ Pas dengan tarif harian";
+      if (v < 250000) return "Kurang Rp " + fmt.rp(250000 - v).replace("Rp ", "");
+      return "Kredit Rp " + fmt.rp(v - 250000).replace("Rp ", "");
+    },
+    onSave: (v) => window.UI.toast("Nilai dikirim: " + fmt.rp(v))
+  });
+  document.getElementById("numpad-layout").addEventListener("click", e => {
+    const b = e.target.closest("[data-layout]");
+    if (!b) return;
+    document.querySelectorAll("#numpad-layout button").forEach(x => x.classList.toggle("active", x === b));
+    document.getElementById("btn-demo-sheet").style.display = b.getAttribute("data-layout") === "sheet" ? "inline-flex" : "none";
+  });
+
+  /* speed dial */
+  const sd = document.getElementById("sd-demo");
+  sd.querySelector(".sd-toggle").addEventListener("click", () => sd.classList.toggle("open"));
+  document.body.addEventListener("click", e => {
+    if (!sd.contains(e.target)) sd.classList.remove("open");
+  });
+  sd.querySelectorAll(".sd-btn:not(.sd-toggle)").forEach(b => b.addEventListener("click", () => {
+    sd.classList.remove("open");
+    window.UI.toast("Aksi: " + b.getAttribute("title"));
+  }));
+
+  /* overlays */
+  document.getElementById("btn-demo-dialog").addEventListener("click", () => window.UI.openModal("demo-dialog"));
+  document.querySelectorAll("[data-close='demo-dialog']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("demo-dialog")));
+  document.getElementById("btn-demo-confirm").addEventListener("click", async () => {
+    const ok = await window.UI.confirm({
+      title: "Hapus mobil B 1235 TF?",
+      message: "Mobil akan dihapus dari daftar armada. Riwayat transaksi lama tetap tersimpan.",
+      okLabel: "Hapus mobil", danger: true, reason: true
+    });
+    if (ok) window.UI.toast("Dibatalkan dengan alasan: " + (window.UI.lastConfirmReason || "—"));
+  });
+  document.getElementById("btn-demo-snack").addEventListener("click", () => window.UI.toast("Urungkan — setoran Rp 250.000 tersimpan", "success", "Urungkan", () => window.UI.toast("Dibatalkan")));
+  document.getElementById("btn-demo-snack-err").addEventListener("click", () => window.UI.toast("Plat nomor B 1235 TF sudah dipakai unit lain", "error"));
+  document.getElementById("btn-demo-skeleton").addEventListener("click", () => {
+    window.showSkeleton(document.getElementById("skeleton-host"), 2);
+    setTimeout(() => { document.getElementById("skeleton-host").innerHTML = ""; window.UI.toast("Data selesai dimuat"); }, 2200);
+  });
+  document.getElementById("btn-demo-sheet").style.display = "none";
+  document.getElementById("btn-demo-sheet").addEventListener("click", () => {
+    const np = document.getElementById("np-demo-grid").closest(".numpad-shell");
+    const sheet = document.createElement("div");
+    sheet.className = "bottom-sheet show";
+    sheet.innerHTML = `<div class="bs-grip"></div><div class="modal-header"><div><div class="card-title">Catat Setoran</div><div class="card-sub">Budi Santoso · B 1235 TF</div></div><button class="btn btn-ghost btn-icon" data-x aria-label="Tutup"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg></button></div>` + np.outerHTML;
+    document.getElementById("device-frame").appendChild(sheet);
+    const amt = sheet.querySelector(".amount"), meta = sheet.querySelector(".meta");
+    window.UI.createNumpad({ container: sheet.querySelector(".numpad-grid"), display: amt, meta, metaText: (v) => v ? fmt.rp(v) + " siap disimpan" : "Masukkan nominal", onSave: (v) => { sheet.remove(); window.UI.toast("Tersimpan: " + fmt.rp(v)); } });
+    sheet.querySelector("[data-x]").addEventListener("click", () => sheet.remove());
+  });
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="id" data-theme="light">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Tunggakan — Klinik Net</title>
+<link rel="stylesheet" href="shared.css" />
+</head>
+<body>
+
+<div class="preview-bar">
+  <span>Redmi Pad 2 · 2560×1600 · 90Hz</span><span class="sep"></span>
+  <button data-orient-btn data-orient="landscape">Landscape</button>
+  <button data-orient-btn data-orient="portrait">Portrait</button>
+  <span class="sep"></span><button id="theme-toggle">Mode</button>
+</div>
+
+<div class="viewport-stage">
+  <div class="device-frame" id="device-frame">
+    <div class="app-shell">
+      <nav class="nav-rail" id="nav-rail"></nav>
+      <div class="top-bar">
+        <header class="top-bar-header">
+          <div>
+            <div class="page-title" id="page-title">Tunggakan</div>
+            <div class="page-subtitle" id="page-subtitle"></div>
+          </div>
+          <div class="top-bar-actions">
+            <div class="chips" id="risk-filter">
+              <button class="chip active" data-risk="all">Semua</button>
+              <button class="chip" data-risk="critical">7+ Hari</button>
+              <button class="chip" data-risk="attention">3-6 Hari</button>
+              <button class="chip" data-risk="warning">1-2 Hari</button>
+              <button class="chip" data-risk="normal">Lancar</button>
+            </div>
+            <button class="btn btn-secondary btn-icon" id="theme-toggle-2" aria-label="Tema"></button>
+          </div>
+        </header>
+        <main class="page-body" id="page-body">
+
+          <div class="kpi-grid mb-5" id="arrears-summary"></div>
+
+          <div class="master-detail">
+            <div class="md-list" id="arrears-list"></div>
+            <div class="md-detail" id="arrears-detail"></div>
+          </div>
+
+        </main>
+      </div>
+    </div>
+
+    <!-- WhatsApp Modal -->
+    <div class="modal" id="wa-modal">
+      <div class="modal-header">
+        <div>
+          <div class="card-title">Kirim Pengingat WhatsApp</div>
+          <div class="card-sub">Template siap kirim — tetap bisa diedit</div>
+        </div>
+        <button class="btn btn-ghost btn-icon" data-close="wa-modal" aria-label="Tutup">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4"><path d="M18 6 6 18M6 6l12 12"/></svg>
+        </button>
+      </div>
+      <div class="modal-body">
+        <div class="row-between mb-4">
+          <div class="text-xs text-tertiary font-bold">PREVIEW PESAN</div>
+          <span class="badge badge-success">WhatsApp</span>
+        </div>
+        <div class="wa-preview" id="wa-text"></div>
+        <div class="wa-time" id="wa-time"></div>
+        <div class="divider"></div>
+        <div class="field">
+          <label class="field-label">Edit pesan (opsional)</label>
+          <textarea class="input" id="wa-edit" style="min-height:120px"></textarea>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="btn btn-secondary" data-close="wa-modal">Batal</button>
+        <button class="btn btn-secondary" id="wa-copy"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" style="width:18px;height:18px"><rect x="9" y="9" width="12" height="12" rx="2.5"/><path d="M6 15H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h8a2 2 0 0 1 2 2v1"/></svg> Salin</button>
+        <a class="btn btn-success" id="wa-open" target="_blank" rel="noopener">Buka WhatsApp</a>
+      </div>
+    </div>
+
+    <div class="scrim" id="scrim"></div>
+    <div id="snackbar-host" style="position:absolute;inset:0;pointer-events:none;z-index:130"></div>
+  </div>
+</div>
+
+<script src="data.js"></script>
+<script src="shared.js"></script>
+<script>
+(function () {
+  const store = window.klinikStore;
+  let risk = "all";
+  let selectedContractId = null;
+  let currentWa = null;
+
+  window.Shell.render("arrears", { title: "Tunggakan", subtitle: "Akumulasi setoran belum lunas" });
+  const t2 = document.getElementById("theme-toggle-2");
+  if (t2) { t2.innerHTML = window.I.sun; t2.addEventListener("click", () => { window.Device.toggleTheme(); t2.innerHTML = document.documentElement.getAttribute("data-theme")==="dark"?window.I.moon:window.I.sun; }); }
+
+  function riskBadge(level, days) {
+    if (level === "critical") return `<span class="badge badge-danger">${days} hari · Kritis</span>`;
+    if (level === "attention") return `<span class="badge badge-warning">${days} hari · Perhatian</span>`;
+    if (level === "warning") return `<span class="badge badge-warning">${days} hari · Ringan</span>`;
+    return `<span class="badge badge-success">Lancar</span>`;
+  }
+
+  function data() {
+    return store.calculateArrears().filter(a => risk === "all" || a.riskLevel === risk);
+  }
+
+  function renderSummary() {
+    const all = store.calculateArrears();
+    const total = all.reduce((s, a) => s + a.arrearsAmount, 0);
+    const crit = all.filter(a => a.riskLevel === "critical");
+    const attn = all.filter(a => a.riskLevel === "attention");
+    const warn = all.filter(a => a.riskLevel === "warning");
+
+    document.getElementById("arrears-summary").innerHTML = `
+      <div class="kpi kpi-accent"><div class="kpi-label">Total tunggakan</div>
+        <div class="kpi-value text-danger">${fmt.rpShort(total)}</div>
+        <div class="kpi-meta text-tertiary">${all.filter(a => a.arrearsAmount > 0).length} penyewa dari ${all.length} kontrak</div>
+        <div class="kpi-icon" style="background:var(--danger-bg);color:var(--danger)">${I.alert}</div></div>
+      <div class="kpi"><div class="kpi-label">Kritis (7+ hari)</div>
+        <div class="kpi-value">${crit.length}</div>
+        <div class="kpi-meta text-danger">${fmt.rpShort(crit.reduce((s, a) => s + a.arrearsAmount, 0))}</div>
+        <div class="kpi-icon" style="background:var(--danger-bg);color:var(--danger)">${I.clock}</div></div>
+      <div class="kpi"><div class="kpi-label">Perhatian (3-6 hari)</div>
+        <div class="kpi-value">${attn.length}</div>
+        <div class="kpi-meta text-warning">${fmt.rpShort(attn.reduce((s, a) => s + a.arrearsAmount, 0))}</div>
+        <div class="kpi-icon" style="background:var(--warning-bg);color:var(--warning)">${I.clock}</div></div>
+      <div class="kpi"><div class="kpi-label">Ringan (1-2 hari)</div>
+        <div class="kpi-value">${warn.length}</div>
+        <div class="kpi-meta trend-up">${fmt.rpShort(warn.reduce((s, a) => s + a.arrearsAmount, 0))}</div>
+        <div class="kpi-icon" style="background:var(--info-bg);color:var(--info)">${I.info}</div></div>`;
+  }
+
+  function renderList() {
+    const items = data();
+    const host = document.getElementById("arrears-list");
+    if (!items.length) {
+      host.innerHTML = `<div class="empty-state">
+        <div class="es-icon">${I.checkCircle}</div><h3>Tidak ada tunggakan</h3>
+        <p>Semua penyewa dalam kategori ini sudah lunas. Kerja bagus!</p></div>`;
+      document.getElementById("arrears-detail").innerHTML = "";
+      return;
+    }
+    if (!selectedContractId || !items.find(a => a.contract.id === selectedContractId)) selectedContractId = items[0].contract.id;
+
+    host.innerHTML = items.map(a => `
+      <div class="list-row ${a.contract.id === selectedContractId ? "active" : ""}" data-contract="${a.contract.id}">
+        <div class="avatar" style="background:${a.arrearsAmount > 0 ? "var(--danger-bg)" : "var(--success-bg)"};border-color:transparent;color:${a.arrearsAmount > 0 ? "var(--danger)" : "var(--success)"}">${a.renter.avatar}</div>
+        <div class="lr-main">
+          <div class="lr-title">${a.renter.name}</div>
+          <div class="lr-sub">${a.car.plate} · ${a.car.brand} ${a.car.model}</div>
+        </div>
+        <div class="lr-right">
+          <div class="num-display" style="font-size:var(--fs-sm);${a.arrearsAmount > 0 ? "color:var(--danger)" : "color:var(--success)"}">${a.arrearsAmount > 0 ? fmt.rp(a.arrearsAmount) : "Lunas"}</div>
+          <div class="mt-2">${riskBadge(a.riskLevel, a.overdueDays)}</div>
+        </div>
+      </div>`).join("");
+
+    host.querySelectorAll("[data-contract]").forEach(el =>
+      el.addEventListener("click", () => { selectedContractId = el.getAttribute("data-contract"); renderList(); renderDetail(); })
+    );
+    renderDetail();
+  }
+
+  function renderDetail() {
+    const a = data().find(x => x.contract.id === selectedContractId);
+    const host = document.getElementById("arrears-detail");
+    if (!a) { host.innerHTML = ""; return; }
+    const c = a.contract;
+    const pays = store.getPayments().filter(p => p.contractId === c.id).slice(0, 8);
+
+    host.innerHTML = `
+      <div class="card card-pad-lg">
+        <div class="row-between wrap gap-4 mb-5">
+          <div class="row gap-4">
+            <div class="avatar avatar-lg">${a.renter.avatar}</div>
+            <div>
+              <div class="display-font" style="font-size:var(--fs-xl);font-weight:700">${a.renter.name}</div>
+              <div class="text-sm text-secondary">${a.car.plate} · ${a.car.brand} ${a.car.model}</div>
+              <div class="text-xs text-tertiary">${a.renter.phone} · ${fmt.date(c.startDate)}</div>
+            </div>
+          </div>
+          <div>${riskBadge(a.riskLevel, a.overdueDays)}</div>
+        </div>
+
+        <div class="kpi-grid" style="grid-template-columns:repeat(3,1fr);gap:var(--sp-3)">
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Tunggakan</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg);color:var(--danger)">${fmt.rp(a.arrearsAmount)}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Hari menunggak</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg)">${a.overdueDays}</div>
+          </div>
+          <div class="kpi" style="padding:var(--sp-4)">
+            <div class="kpi-label" style="font-size:11px">Tarif harian</div>
+            <div class="kpi-value" style="font-size:var(--fs-lg)">${fmt.rp(a.dailyRate)}</div>
+          </div>
+        </div>
+
+        <div class="row gap-2 mt-4">
+          <div class="grow">
+            <div class="row-between text-xs mb-2">
+              <span class="text-tertiary font-bold">Kewajiban (${a.overdueDays + Math.round(a.arrearsAmount / a.dailyRate) || 0} hari)</span>
+              <span class="num-display">${fmt.rp(a.expectedTotal)}</span>
+            </div>
+            <div class="progress"><div class="progress-fill ${a.arrearsAmount > 0 ? "danger" : "success"}" style="width:${Math.min(100, (a.totalPaid / (a.expectedTotal || 1)) * 100)}%"></div></div>
+            <div class="row-between text-xs mt-2">
+              <span class="text-tertiary">Dibayar ${fmt.rp(a.totalPaid)}</span>
+              <span class="text-danger font-bold">Kurang ${fmt.rp(a.arrearsAmount)}</span>
+            </div>
+          </div>
+        </div>
+
+        <div class="divider"></div>
+
+        <!-- Quick actions -->
+        <div class="card-title mb-4">Aksi cepat</div>
+        <div class="row gap-3 wrap">
+          <a class="btn btn-primary" href="payments.html">${I.wallet} Catat Pembayaran</a>
+          <button class="btn btn-success" id="btn-wa">${I.wa} Ingat via WhatsApp</button>
+          <a class="btn btn-secondary" href="tel:${a.renter.phone}">${I.phone} Telepon</a>
+          <button class="btn btn-secondary" id="btn-copy-wa">${I.copy} Salin pesan</button>
+        </div>
+
+        <div class="divider"></div>
+        <div class="card-title mb-4">Transaksi terakhir</div>
+        <div class="col gap-2">
+          ${pays.map(p => `
+            <div class="row-between list-row" style="padding:var(--sp-3);cursor:default">
+              <div class="lr-main">
+                <div class="lr-title">${fmt.date(p.date)} ${p.status === "canceled" ? '<span class="badge badge-danger">Dibatalkan</span>' : ""}</div>
+                <div class="lr-sub">${p.bank} · ${p.referenceNo}</div>
+              </div>
+              <div class="lr-right num-display" style="${p.status === "canceled" ? "text-decoration:line-through;color:var(--text-tertiary)" : "color:var(--success)"}">${fmt.rp(p.amount)}</div>
+            </div>`).join("") || `<div class="text-sm text-tertiary">Belum ada transaksi.</div>`}
+        </div>
+      </div>`;
+
+    document.getElementById("btn-wa").addEventListener("click", () => openWa(a));
+    document.getElementById("btn-copy-wa").addEventListener("click", () => {
+      const t = window.UI.waTemplate(a.renter.name, a.car.plate, a.arrearsAmount, a.overdueDays, store.getSettings().companyName, a.renter.phone);
+      window.UI.copy(t.text);
+    });
+  }
+
+  /* ---------- WhatsApp ---------- */
+  function openWa(a) {
+    currentWa = a;
+    const t = window.UI.waTemplate(a.renter.name, a.car.plate, a.arrearsAmount, a.overdueDays, store.getSettings().companyName, a.renter.phone);
+    document.getElementById("wa-text").textContent = t.text;
+    document.getElementById("wa-edit").value = t.text;
+    document.getElementById("wa-time").textContent = t.time;
+    document.getElementById("wa-open").href = t.link;
+    window.UI.openModal("wa-modal");
+  }
+
+  document.getElementById("wa-copy").addEventListener("click", () => {
+    const txt = document.getElementById("wa-edit").value;
+    document.getElementById("wa-text").textContent = txt;
+    window.UI.copy(txt);
+  });
+  document.getElementById("wa-open").addEventListener("click", () => {
+    document.getElementById("wa-open").href = "https://wa.me/" + (currentWa.renter.phone || "").replace(/\D/g, "") + "?text=" + encodeURIComponent(document.getElementById("wa-edit").value);
+    window.UI.toast("Membuka WhatsApp di aplikasi");
+  });
+  document.querySelectorAll("[data-close='wa-modal']").forEach(b => b.addEventListener("click", () => window.UI.closeModal("wa-modal")));
+
+  /* ---------- Filter ---------- */
+  document.getElementById("risk-filter").addEventListener("click", e => {
+    const chip = e.target.closest("[data-risk]");
+    if (!chip) return;
+    risk = chip.getAttribute("data-risk");
+    document.querySelectorAll("#risk-filter .chip").forEach(c => c.classList.toggle("active", c === chip));
+    selectedContractId = null;
+    renderList();
+  });
+
+  renderSummary();
+  renderList();
+  window.addEventListener("klinik_data_changed", () => { renderSummary(); renderList(); });
+})();
+</script>
+</body>
+</html>
