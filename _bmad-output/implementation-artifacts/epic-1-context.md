@@ -57,3 +57,16 @@ Andi punya mesin hitung tunggakan yang terbukti benar lewat test, sebelum aplika
 ## Cross-Story Dependencies
 
 Story 1.6 bergantung pada Story 1.1 (butuh `./gradlew :domain:test` yang jalan) dan pada ketujuhan Story 1.2–1.5, karena benchmark mengukur mesin yang sudah jadi. Story 1.2 mendahului 1.3 dan 1.4 — semua hitungan tunggakan membaca dari satu sumber tanggal. Kontrak database (`CONTRACT.settledThroughDate`, tabel `ALLOCATION`) didefinisikan di sini karena mesinnya yang membacanya, meski entitasnya baru ditulis di epic lain. Tidak ada dependensi ke epic lain untuk menjalankan epic ini.
+
+## Performance Baseline
+
+**Skala NFR-1:** 20 Kontrak, 2.000 Setoran, 500 hari tagih (25 hari × 20 Kontrak).
+Test-nya: `domain/src/test/kotlin/net/klinik/rental/domain/calculate/BenchmarkTest.kt`.
+
+| Nilai | Jumlah | Keterangan |
+|---|---|---|
+| On-device target (NFR-1) | 50 ms | Redmi Pad 2, mode debug. Tidak pernah di-assert di CI — kondisi perangkat tidak bisa direproduksi di mesin build. |
+| CI threshold | 500 ms | Proksi build-machine. `CI_THRESHOLD_MS` di `BenchmarkTest.kt`. Longgar untuk variance mesin, ketat untuk regresi ordo-besar di engine. |
+| Baseline terukur (perubahan `5d47235`, 2026-10-13) | **14 ms** | Dari log `:domain:test` di mesin `IOT04`: `NFR-1 benchmark: 2000 allocation rows across 20 contracts, 2000 payments, 500 charge days in 14 ms (on-device target: 50 ms)`. Test mencetak angka ini ke stdout tiap run; bagian ini mencatatnya agar bisa dibandingkan antar-commit. Angka ini **bukan** angka on-device — 50 ms adalah target perangkat, 14 ms adalah proksi mesin build di commit saat file ini ditulis. |
+
+**Aturan:** `CI_THRESHOLD_MS` tidak boleh diturunkan atau dihapus secara diam-diam (NFR-1, "tidak boleh dihapus diam-diam"). Perubahan nilai ambang — naik maupun turun — adalah keputusan tingkat spec yang harus dicatat di bagian ini beserta alasannya sebelum perubahan itu dibuat di kode.
