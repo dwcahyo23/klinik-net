@@ -1,6 +1,11 @@
 # ── BMAD ───────────────────────────────────────────────
-# Generated planning artifacts — regenerate, don't track
-_bmad-output/
+# Working state only. The planning documents themselves ARE tracked —
+# they hold decisions that can't be re-derived from the code, and losing
+# them means losing the reasoning behind every architectural choice.
+_bmad-output/**/.memlog.md
+_bmad-output/**/review-*.md
+_bmad-output/**/reconcile-*.md
+_bmad-output/**/.working/
 
 # Installer-managed + per-user answers
 _bmad/config.user.toml
