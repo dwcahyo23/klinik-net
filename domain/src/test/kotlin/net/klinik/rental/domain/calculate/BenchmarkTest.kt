@@ -23,10 +23,10 @@ import java.time.LocalDate
  * warm-up, tight enough to catch a genuine order-of-magnitude regression in the engine.
  *
  * [CI_THRESHOLD_MS] is 500 ms. That is deliberately ten times the on-device target:
- * the engine at NFR-1 scale is a pure-JVM computation over 100,000 day-payment pairs
- * (20 contracts × 2,000 payments, walked against 500 charge days), and 500 ms is far
- * above what that should take on any runner that has ever served a build. Anything that
- * pushes the measured figure toward 500 ms is a real algorithmic or data-structure
+ * the engine at NFR-1 scale is a pure-JVM computation over 2,000 allocation rows
+ * (20 contracts × 100 payments, each resolved against 25 charge days), and 500 ms is
+ * far above what that should take on any runner that has ever served a build. Anything
+ * that pushes the measured figure toward 500 ms is a real algorithmic or data-structure
  * regression, not machine variance.
  *
  * **Never silently remove or lower this threshold.** NFR-1's rule — "tidak boleh
@@ -141,6 +141,25 @@ class BenchmarkTest {
         }
 
         val elapsedMs = (System.nanoTime() - start) / 1_000_000
+
+        // The NFR-1 scale itself is pinned by assertion, not just by the printed
+        // string: a fixture drift that drops the total charge-day count (e.g. a later
+        // refactor adding a serviceException day, or dropping `restDay`) would otherwise
+        // run a smaller workload, still print a green figure, and silently stop measuring
+        // the NFR-1 input.
+        assertTrue(
+            "the NFR-1 fixture must produce exactly ${contracts * chargeDaysPerContract} charge " +
+                "days total (${chargeDaysPerContract} per contract); the benchmark would no " +
+                "longer be measuring NFR-1's scale — see epics.md Story 1.6 AC #1",
+            chargeDaysByContract.sumOf { it.size } == contracts * chargeDaysPerContract,
+        )
+        assertTrue(
+            "the NFR-1-scale recompute must produce exactly " +
+                "${contracts * paymentsPerContract} allocation rows; a regression that drops " +
+                "the row count (e.g. an engine change that stops writing credit rows) would " +
+                "still pass the timing bound but no longer measure the NFR-1 input",
+            totalAllocations == contracts * paymentsPerContract,
+        )
 
         // The measured figure is the baseline. Print it so it is in the log and
         // can be copied into epic-1-context.md's Performance Baseline section.
