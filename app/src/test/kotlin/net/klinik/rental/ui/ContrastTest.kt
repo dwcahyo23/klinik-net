@@ -128,6 +128,65 @@ class ContrastTest {
         }
     }
 
+    /**
+     * The dark scheme declares its own copies of the four fills, so the dark
+     * values are what a `KnButton` on a dark tablet actually sits on. Asserting
+     * only `LightColors` would leave a dark-theme fill regression invisible.
+     */
+    @Test
+    fun `white label clears 4_5 on the dark solid fills too`() {
+        listOf(
+            "primaryFill" to DarkColors.primaryFill,
+            "successFill" to DarkColors.successFill,
+            "dangerFill" to DarkColors.dangerFill,
+            "infoFill" to DarkColors.infoFill,
+        ).forEach { (name, fill) ->
+            assertClears("white on dark $name", Color.White, fill)
+        }
+    }
+
+    /**
+     * The focus ring drawn *on* a filled button.
+     *
+     * A filled variant and a ring are the same node, so the pair that matters is
+     * the ring against the fill it sits inside — not only against the page and
+     * card surfaces the earlier test covers.
+     *
+     * A filled variant does **not** use the brand ring: `--brand-500` measures
+     * 1.3:1 against the primary fill, which is brand darkened precisely until
+     * white clears 4.5:1 on it. So the filled variants ring in their own label
+     * ink. Both the rejected value and the shipped one are asserted, so a revert
+     * to the brand ring on a fill fails here rather than in front of a keyboard
+     * user.
+     */
+    @Test
+    fun `the focus ring clears 3_1 on the solid fills`() {
+        val inverse = LightColors.surfaceInverse
+        listOf(
+            "primaryFill" to LightColors.primaryFill,
+            "successFill" to LightColors.successFill,
+            "dangerFill" to LightColors.dangerFill,
+            "infoFill" to LightColors.infoFill,
+        ).forEach { (name, fill) ->
+            // The value a filled variant actually rings in.
+            val ratio = contrastRatio(inverse, fill)
+            assertTrue(
+                "the ring on $name was ${"%.3f".format(ratio)}:1, needs >= 3:1",
+                ratio >= 3.0,
+            )
+        }
+
+        // And the reason a filled variant cannot use the brand ring, pinned so
+        // the choice above is not mistaken for an arbitrary one.
+        val brandOnPrimary = contrastRatio(LightColors.focusRing, LightColors.primaryFill)
+        assertTrue(
+            "the brand ring is expected NOT to reach 3:1 on the primary fill " +
+                "(${ "%.2f".format(brandOnPrimary) }:1); if this now fails, the " +
+                "filled variants could go back to the brand ring",
+            brandOnPrimary < 3.0,
+        )
+    }
+
     // ------------------------------------------------------------------
     // Brand text on the brand-tinted surface (badge-brand, active rail item).
     // ------------------------------------------------------------------
@@ -167,6 +226,23 @@ class ContrastTest {
                 )
             }
         }
+    }
+
+    @Test
+    fun `the snackbar's count and dismiss ink is measured against its fill`() {
+        // The chip's selected count and the snackbar's dismiss both use the
+        // inverse ink on the filled surface, so the pair is pinned rather than
+        // assumed.
+        assertClears("onSurfaceInverse on surfaceInverse", LightColors.onSurfaceInverse, LightColors.surfaceInverse)
+        assertClears("dark onSurfaceInverse on surfaceInverse", DarkColors.onSurfaceInverse, DarkColors.surfaceInverse)
+    }
+
+    @Test
+    fun `the placeholder tone is readable on the card surface`() {
+        // Placeholder copy is still read, so it uses the tertiary text level
+        // rather than the CSS's --warm-400 (which is 2.58:1 on card).
+        assertClears("light placeholder on card", LightColors.textTertiary, LightColors.bgCard)
+        assertClears("dark placeholder on card", DarkColors.textTertiary, DarkColors.bgCard)
     }
 
     // ------------------------------------------------------------------

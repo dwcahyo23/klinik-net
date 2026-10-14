@@ -1,10 +1,11 @@
 package net.klinik.rental.ui.theme
 
 import androidx.compose.ui.test.junit4.createComposeRule
-import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.TextStyle
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.ui.components.KnTableCell
 import net.klinik.rental.ui.components.KnTableRow
+import net.klinik.rental.ui.components.tableCellStyle
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -61,24 +62,46 @@ class TabularFiguresTest {
     }
 
     /**
- * A numeric table cell is the case the context names explicitly — a column of
- * rupiah that has to be compared digit by digit — so it is worth pinning that
- * the cell actually resolves to the tabular style rather than the default body
- * style.
+ * A numeric table cell resolves to the tabular style — asserted through the
+ * component's own resolution, not a locally rebuilt style.
+ *
+ * An earlier version composed a `KnTableRow` and then asserted on
+ * `KnTypography.Clinic.figure.copy(fontWeight = Bold)`, which is the test's
+ * *guess* at what the cell uses. Repointing the numeric branch of
+ * `tableCellStyle` at any other style would have left that assertion green while
+ * the money column stopped aligning — the test would have been asserting on
+ * itself. So the style is read from the same function `KnTableRow` calls.
  */
-    @Test
+@Test
     fun `a numeric table cell resolves to the tabular figure style`() {
+        val resolved = mutableListOf<TextStyle>()
         compose.setContent {
             KlinikNetTheme(darkTheme = false) {
+                // The real row, so a change to its cell styling is exercised.
                 KnTableRow(
-                    cells = listOf(KnTableCell("Rp 350.000", numeric = true)),
+                    cells = listOf(
+                        KnTableCell("B 1235 TF"),
+                        KnTableCell("Rp 350.000", numeric = true),
+                    ),
                 )
+                // And the exact style that row resolves for that numeric cell.
+                resolved += tableCellStyle(KnTableCell("Rp 350.000", numeric = true))
             }
         }
         compose.waitForIdle()
 
-        val style = KnTypography.Clinic.figure.copy(fontWeight = FontWeight.Bold)
+        val style = resolved.last()
         assertCarries("numeric cell style", style)
+        assertEquals(
+            "a numeric cell must resolve to the figure style, not the body style",
+            KnTypography.Clinic.figure.fontSize,
+            style.fontSize,
+        )
+        assertEquals(
+            "a numeric cell must resolve to the figure style, not the label style",
+            KnTypography.Clinic.figure.lineHeight,
+            style.lineHeight,
+        )
     }
 
     /**

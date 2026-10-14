@@ -31,6 +31,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.KnAccessibility
 import net.klinik.rental.ui.theme.focusRing
+import net.klinik.rental.ui.theme.knAccessibility
 import net.klinik.rental.ui.theme.knBrandShadow
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knElevation
@@ -100,6 +101,10 @@ fun KnButton(
     val focused by interaction.collectIsFocusedAsState()
     val palette = KnButtonPalette(variant)
     val shape = RoundedCornerShape(MaterialTheme.knRadii.full)
+    // Read from the theme rather than from `KnAccessibility.Clinic`: the value
+    // `KlinikNetTheme` provides is the one that must be applied, and a static
+    // read would make the token look configurable without being so.
+    val touchFloor = MaterialTheme.minTouchTarget
     // The brand shadow is drawn by `knShadow`, not by `Surface(shadowElevation
     // = …)`: that parameter takes no colour, so passing the height alone would
     // render Material's default black and quietly drop `--el-brand`.
@@ -108,6 +113,13 @@ fun KnButton(
     } else {
         Modifier
     }
+
+    // An icon-size button draws no label, so the icon is its only content. With
+    // no icon there is nothing at all: a 48dp target a screen reader announces as
+    // an unlabelled "Button". Falling back to the label as the description would
+    // be worse — it renders blank while pretending to be named. Rendering nothing
+    // is the honest outcome, and the caller's layout simply has no item there.
+    if (size == KnButtonSize.Icon && icon == null) return
 
     Surface(
         onClick = onClick,
@@ -121,7 +133,7 @@ fun KnButton(
             // the floor unconditionally makes the guarantee structural instead
             // of dependent on how long the caller's label happens to be.
             .minTouchTarget()
-            .focusRing(focused = focused, cornerRadius = MaterialTheme.knRadii.full)
+            .focusRing(focused = focused, cornerRadius = MaterialTheme.knRadii.full, color = palette.ringColor)
             .then(shadowModifier),
         shape = shape,
         color = palette.container,
@@ -134,7 +146,7 @@ fun KnButton(
                 .heightIn(min = size.height)
                 .then(
                     if (size == KnButtonSize.Icon) {
-                        Modifier.size(KnAccessibility.Clinic.minTouchTarget)
+                        Modifier.size(touchFloor)
                     } else {
                         Modifier.padding(horizontal = size.horizontalPadding)
                     }
@@ -181,6 +193,16 @@ internal data class KnButtonPalette(
     val container: Color,
     val content: Color,
     val border: BorderStroke?,
+    /**
+     * The focus ring's colour on this variant.
+     *
+     * The brand ring is legible on every surface, but *not* on a saturated fill:
+     * `--brand-500` measures 1.3:1 against the primary fill, which is brand
+     * darkened precisely until white clears 4.5:1 on it. A filled variant
+     * therefore rings in its own label ink, which clears 3:1 on all four fills;
+     * the unfilled ones keep the brand token.
+     */
+    val ringColor: Color,
 )
 
 @Composable
@@ -189,30 +211,35 @@ internal fun KnButtonPalette(variant: KnButtonVariant): KnButtonPalette {
     return when (variant) {
         KnButtonVariant.Primary -> KnButtonPalette(
             container = kn.primaryFill,
+            ringColor = kn.surfaceInverse,
             content = Color.White,
             border = null,
         )
 
         KnButtonVariant.Secondary -> KnButtonPalette(
             container = kn.bgCard,
+            ringColor = MaterialTheme.knAccessibility.focusRingColor,
             content = kn.textPrimary,
             border = BorderStroke(1.dp, kn.border),
         )
 
         KnButtonVariant.Ghost -> KnButtonPalette(
             container = Color.Transparent,
+            ringColor = MaterialTheme.knAccessibility.focusRingColor,
             content = kn.textSecondary,
             border = null,
         )
 
         KnButtonVariant.Danger -> KnButtonPalette(
             container = kn.dangerFill,
+            ringColor = kn.surfaceInverse,
             content = Color.White,
             border = null,
         )
 
         KnButtonVariant.Success -> KnButtonPalette(
             container = kn.successFill,
+            ringColor = kn.surfaceInverse,
             content = Color.White,
             border = null,
         )

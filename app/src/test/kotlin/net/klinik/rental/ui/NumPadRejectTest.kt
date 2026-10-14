@@ -224,6 +224,41 @@ class NumPadRejectTest {
         compose.onNodeWithText(rejectedMessage).assertDoesNotExist()
     }
 
+    /**
+     * The digit-tap path, and the internal state holder it depends on.
+     *
+     * `NumPadLogicTest` covers the pure rules and `AccessibilityTest` measures
+     * bounds with `onValueChange = {}`, so nothing exercised the composable's own
+     * digit path. That path holds an internal `digits` state so two taps landing
+     * before recomposition compose on each other rather than on the same stale
+     * string — reverting to reading the `value` parameter would drop a digit and
+     * leave every other test green.
+     *
+     * Asserted on the composed display, which is what the owner sees.
+     */
+    @Test
+    fun `tapping digits in sequence composes the display`() {
+        compose.setContent {
+            KlinikNetTheme(darkTheme = false) {
+                val value = remember { mutableStateOf("") }
+                KnNumPad(
+                    value = value.value,
+                    onValueChange = { value.value = it },
+                    onSave = {},
+                )
+            }
+        }
+
+        listOf("2", "5", "0").forEach { digit ->
+            compose.onNodeWithText(digit).performClick()
+        }
+        compose.waitForIdle()
+
+        // The `Rp` prefix is its own styled span, so the figure node holds the
+        // grouped digits alone.
+        compose.onNodeWithText("250").assertIsDisplayed()
+    }
+
     /** Taps Save and freezes the clock, leaving the rejection mid-hold. */
     private fun rejectSave() {
         compose.onNodeWithText(saveLabel).performClick()

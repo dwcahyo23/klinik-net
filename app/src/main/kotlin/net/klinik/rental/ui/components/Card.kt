@@ -56,11 +56,17 @@ fun KnCard(
 ) {
     val kn = MaterialTheme.knColors
     val shape = RoundedCornerShape(MaterialTheme.knRadii.lg)
+    val elevation = if (outlined) 0.dp else MaterialTheme.knElevation.level1
+    // The ring and the shadow wrap the *card*, so they are applied before the
+    // content padding. Appended after it, both would size to the padded content
+    // rect and the ring would float inside the card's own edge rather than trace
+    // it — correct-looking until you focus a card and see the 3dp line sitting
+    // one padding-width in from the border.
     val base = modifier
         .fillMaxWidth()
+        .knShadow(elevation, shape)
         .padding(padding)
     val border = if (outlined) androidx.compose.foundation.BorderStroke(1.dp, kn.border) else null
-    val elevation = if (outlined) 0.dp else MaterialTheme.knElevation.level1
 
     if (onClick != null) {
         val interaction = remember { MutableInteractionSource() }
@@ -73,8 +79,7 @@ fun KnCard(
             // rather than left to the caller.
             modifier = base
                 .minTouchTarget()
-                .focusRing(focused, MaterialTheme.knRadii.lg)
-                .knShadow(elevation, shape),
+                .focusRing(focused, MaterialTheme.knRadii.lg),
             shape = shape,
             color = kn.bgCard,
             contentColor = kn.textPrimary,
@@ -84,7 +89,7 @@ fun KnCard(
         )
     } else {
         Surface(
-            modifier = base.then(Modifier.knShadow(elevation, shape)),
+            modifier = base,
             shape = shape,
             color = kn.bgCard,
             contentColor = kn.textPrimary,

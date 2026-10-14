@@ -12,11 +12,14 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertHeightIsEqualTo
+import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.assertWidthIsEqualTo
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasSetTextAction
+import androidx.compose.ui.test.isEditable
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
@@ -448,6 +451,11 @@ class AccessibilityTest {
      * The field's own box is ≥48dp tall by token, and its trailing icon button
      * is a separate interactive node — the one a reviewer skims past, because a
      * 20dp glyph is what it looks like.
+     *
+     * The two are told apart by `isTextField` rather than by click action: a
+     * labelled editable field carries a content description, and Compose treats
+     * that as clickable, so `hasClickAction()` on its own matches the input too
+     * and measures the wrong node.
      */
     @Test
     fun `the field and its trailing button clear the floor`() {
@@ -472,9 +480,15 @@ class AccessibilityTest {
             hasSetTextAction() and taggedOrInside(TAG_FIELD),
         ).assertAllAtLeast("field input")
 
-        // The trailing button.
+        // The trailing button, and only the trailing button. Scoped by
+        // `hasSetTextAction`'s absence rather than by `isEditable`: the field's
+        // own label lives in its semantics, and a labelled editable node
+        // reports a click action, so `hasClickAction()` alone matches the input
+        // too — measuring a 10x35dp glyph and failing for the wrong reason.
         compose.onAllNodes(
-            hasClickAction() and taggedOrInside(TAG_FIELD),
+            hasClickAction() and
+                !hasSetTextAction() and
+                taggedOrInside(TAG_FIELD),
         ).assertAllAtLeast("field trailing button")
     }
 
@@ -528,8 +542,10 @@ class AccessibilityTest {
     }
 
     /**
-     * The empty state's action slot is caller-supplied, so what is measured here
-     * is the slot's own contribution: a bare button placed in it.
+     * The empty state's action slot is caller-supplied, so the slot's own
+     * contribution is a bare `KnButton`. Both the state and that button are
+     * asserted, so a regression that stopped rendering the slot fails here
+     * rather than silently measuring a node that no longer exists.
      */
     @Test
     fun `the empty state action clears the floor`() {
@@ -551,13 +567,16 @@ class AccessibilityTest {
             }
         }
 
+        compose.onNodeWithTag(TAG_EMPTY_STATE).assertIsDisplayed()
         compose.onNodeWithTag(TAG_EMPTY_ACTION)
             .assertAtLeast(MIN_TARGET, "empty state action")
     }
 
     /**
-     * A modal renders in its own window, so the clickables are addressed through
-     * the dialog rather than through a container tag.
+     * A modal renders in its own window, so the clickables are scoped to the
+     * dialog. Unscoped, any clickable in the composition would satisfy the
+     * query — a button on the page behind the dialog would let a 30dp modal
+     * control pass.
      */
     @Test
     fun `the modal confirm dismiss and close clear the floor`() {
@@ -571,15 +590,23 @@ class AccessibilityTest {
                     onConfirm = {},
                     dismissLabel = "Batal",
                     onDismiss = {},
+                    modifier = Modifier.testTag(TAG_MODAL),
                 ) {
                     Text("Tindakan ini tidak dapat dibatalkan.")
                 }
             }
         }
 
-        val clickable = compose.onAllNodes(hasClickAction())
-        assertTrue("the modal rendered no controls", clickable.fetchSemanticsNodes().isNotEmpty())
-        clickable.assertAllAtLeast("modal control")
+        val controls = compose.onAllNodes(hasClickAction() and taggedOrInside(TAG_MODAL))
+        val nodes = controls.fetchSemanticsNodes()
+        // Confirm, dismiss and the header's close: all three are inside the
+        // dialog, so all three must clear the floor.
+        assertTrue(
+            "the modal rendered ${nodes.size} controls; expected at least 3 " +
+                "(confirm, dismiss, close)",
+            nodes.size >= 3,
+        )
+        controls.assertAllAtLeast("modal control")
     }
 
     /** A clickable list row is the row itself, not just its text. */
@@ -704,6 +731,7 @@ class AccessibilityTest {
         const val TAG_SNACKBAR = "snackbar"
         const val TAG_EMPTY_STATE = "empty-state"
         const val TAG_EMPTY_ACTION = "empty-action"
+        const val TAG_MODAL = "modal"
         const val TAG_LIST_ROW = "list-row"
         const val TAG_TABLE_ROW = "table-row"
 

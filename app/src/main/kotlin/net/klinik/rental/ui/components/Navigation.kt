@@ -25,6 +25,7 @@ import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -132,11 +133,18 @@ fun KnNavRail(
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             items.forEachIndexed { index, item ->
-                KnNavRailItem(
-                    item = item,
-                    selected = index == selectedIndex,
-                    onClick = { onSelect(index) },
-                )
+                // Keyed on the destination, not the position. An unkeyed
+                // `remember` inside a loop is keyed by slot, so inserting or
+                // removing a destination migrates the focus state onto the wrong
+                // item and the ring follows the index rather than the control the
+                // user actually focused.
+                key(item.label) {
+                    KnNavRailItem(
+                        item = item,
+                        selected = index == selectedIndex,
+                        onClick = { onSelect(index) },
+                    )
+                }
             }
         }
     }
@@ -265,9 +273,14 @@ fun KnBottomNav(
         Row(Modifier.fillMaxWidth()) {
             items.forEachIndexed { index, item ->
                 val selected = index == selectedIndex
-                val interaction = remember { MutableInteractionSource() }
-                val focused by interaction.collectIsFocusedAsState()
-                Surface(
+                // Keyed on the destination for the same reason as the rail: an
+                // unkeyed `remember` in a loop is keyed by slot, so adding or
+                // removing a destination moves the focus ring onto a different
+                // control.
+                key(item.label) {
+                    val interaction = remember { MutableInteractionSource() }
+                    val focused by interaction.collectIsFocusedAsState()
+                    Surface(
                     onClick = { onSelect(index) },
                     modifier = Modifier
                         .weight(1f)
@@ -305,6 +318,7 @@ fun KnBottomNav(
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
+                    }
                     }
                 }
             }

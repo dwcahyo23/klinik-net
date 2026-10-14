@@ -36,6 +36,14 @@ cuts at the weights the stylesheet asks for. Variable-font support is API 26+
 and this app's minSdk is 24, so a variable file alone would render every weight
 as the default instance on API 24-25.
 
+    Plus Jakarta Sans
+    Copyright 2020 The Plus Jakarta Sans Project Authors
+    https://github.com/tokotype/PlusJakartaSans
+
+    Fraunces
+    Copyright 2018 The Fraunces Project Authors
+    https://github.com/undercasetype/Fraunces
+
     SIL OPEN FONT LICENSE Version 1.1
 
     Permission is hereby granted, free of charge, to any person obtaining a

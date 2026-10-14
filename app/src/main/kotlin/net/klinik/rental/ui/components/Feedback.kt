@@ -189,10 +189,13 @@ private fun KnSnackbarDismiss(label: String, onClick: () -> Unit) {
             .focusRing(focused, MaterialTheme.knRadii.sm),
         shape = shape,
         color = Color.Transparent,
-        // Reduced rather than a third colour: the dismiss affordance is
-        // secondary to the message, and an alpha on the token that is already
-        // measured keeps it from having to be measured again.
-        contentColor = MaterialTheme.knColors.onSurfaceInverse.copy(alpha = 0.72f),
+        // The full inverse ink, not a reduced one. `copy(alpha = …)` yields an
+        // effective colour that no token names and no contrast assertion
+        // measures — the same special-casing `KnChip`'s count avoids. The
+        // dismiss affordance reads as secondary because it is a bare glyph with
+        // no filled button behind it, not because it is a lighter shade of the
+        // text it sits inside.
+        contentColor = MaterialTheme.knColors.onSurfaceInverse,
         interactionSource = interaction,
     ) {
         Box(contentAlignment = Alignment.Center) {

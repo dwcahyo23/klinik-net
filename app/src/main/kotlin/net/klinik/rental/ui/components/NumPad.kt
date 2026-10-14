@@ -119,17 +119,33 @@ fun KnNumPad(
      *
      * [next] is the single place a tap reads and writes the current digits, so
      * handlers compose on the result of the previous one regardless of
-     * recomposition timing. The effect re-syncs when the caller changes the
-     * value from outside (a reset, or state restored from a saved bundle)
-     * without clobbering input already in flight.
+     * recomposition timing.
+     *
+     * The seed is normalised, and the re-sync only fires when the caller's value
+     * has genuinely moved. Both matter: a caller seeding `"abc"`, `"12.5"` or a
+     * fifteen-digit string would otherwise render `Rp 0` with Save rejecting and
+     * no error shown, and a caller that clamps or ignores the value it was
+     * handed would see its digits silently discarded the moment it echoed back
+     * something different.
      */
-    val digits = remember { mutableStateOf(value) }
+    val digits = remember { mutableStateOf(normaliseNumPadDigits(value)) }
+    // `lastSeen` is what the pad last *emitted or accepted*, so the effect can
+    // tell a real caller-side change from an echo of this pad's own output.
+    val lastSeen = remember { mutableStateOf(digits.value) }
     LaunchedEffect(value) {
-        if (value != digits.value) digits.value = value
+        val incoming = normaliseNumPadDigits(value)
+        // An echo of our own output is not a caller change.
+        if (incoming != lastSeen.value) {
+            digits.value = incoming
+            lastSeen.value = incoming
+        }
     }
 
     fun next(transform: (String) -> String) {
-        digits.value = transform(digits.value).also(onValueChange)
+        val updated = transform(digits.value)
+        digits.value = updated
+        lastSeen.value = updated
+        onValueChange(updated)
     }
 
     val rejected = rejectionCount > 0

@@ -1,5 +1,7 @@
 package net.klinik.rental.ui.components
 
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -135,6 +137,13 @@ fun KnField(
     val focused by interaction.collectIsFocusedAsState()
 
     Column(modifier.fillMaxWidth()) {
+        // The label is *associated* with the input, not merely drawn above it.
+        // Two sibling `Text` nodes leave a screen reader announcing "Tarif
+        // harian" as static prose and then an unlabelled edit box, so the owner
+        // hears a field with no name. The association is semantic only — the
+        // label is deliberately not a click target, because a label made
+        // clickable becomes a second interactive node, and a text label is well
+        // under the 48dp floor.
         Text(
             text = label,
             style = MaterialTheme.knTypography.label,
@@ -226,6 +235,11 @@ fun KnField(
                     // either wrapper leaves the tappable node at ~19dp.
                     modifier = Modifier
                         .fillMaxWidth()
+                        // The label lives in the input's own semantics, so a
+                        // screen reader announces "Tarif harian, edit box"
+                        // rather than the name as unrelated prose followed by an
+                        // unnamed field.
+                        .semantics { contentDescription = label }
                         .defaultMinSize(minHeight = MaterialTheme.minTouchTarget),
                 )
             }

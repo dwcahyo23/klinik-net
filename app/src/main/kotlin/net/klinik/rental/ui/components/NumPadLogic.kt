@@ -24,7 +24,23 @@ const val NUMPAD_MAX_DIGITS: Int = 12
 private const val DIGITS = "0123456789"
 
 /**
- * Appends [digit], or returns [current] unchanged when the cap is reached.
+ * Normalises a digit string to the form the display and the cap both operate on.
+ *
+ * Strips a leading `'0'` run so the display never shows a padded number, and
+ * truncates to [NUMPAD_MAX_DIGITS] so a caller-seeded or over-long value cannot
+ * exceed the cap. Returns `"0"` for anything that has no significant digits, so
+ * an all-zero or empty input always renders as a single zero.
+ *
+ * Every entry point runs through this rather than trusting its argument, which is
+ * what stops a caller seeding `"0123456789012"` from bypassing the cap.
+ */
+internal fun normaliseNumPadDigits(value: String): String {
+    val trimmed = value.trimStart('0').take(NUMPAD_MAX_DIGITS)
+    return trimmed.ifEmpty { "0" }
+}
+
+/**
+ * Appends [digit], or returns the value unchanged when the cap is reached.
  *
  * Silent cap, no error state — the matrix calls for exactly that. A 13th digit
  * is ignored rather than rejected loudly because the owner is transcribing a
@@ -36,10 +52,12 @@ private const val DIGITS = "0123456789"
  */
 fun appendDigit(current: String, digit: Char): String {
     require(digit in DIGITS) { "'$digit' is not a digit" }
-    val trimmed = current.trimStart('0')
-    if (trimmed.length >= NUMPAD_MAX_DIGITS) return current
-    val next = trimmed + digit
-    return next.ifEmpty { "0" }
+    // Normalising first is what makes the cap hold for *any* input: a
+    // caller-seeded string already at or over the cap comes back truncated, not
+    // returned as-is with its extra leading zero still attached.
+    val trimmed = normaliseNumPadDigits(current)
+    if (trimmed.length >= NUMPAD_MAX_DIGITS) return trimmed
+    return normaliseNumPadDigits(trimmed + digit)
 }
 
 /**
@@ -47,13 +65,17 @@ fun appendDigit(current: String, digit: Char): String {
  *
  * Three digits, not one, because transcribing `Rp 1.250.000` by tapping
  * "1 2 5 0 0 0" is the slow path the key exists to remove.
+ *
+ * Goes through the same normalisation as [appendDigit], so an empty or all-zero
+ * display collapses to a single `"0"` rather than to `"000"` — the two keys must
+ * agree on what "nothing typed yet" means, or Clear followed by 000 leaves a
+ * display the owner cannot reconcile with what they pressed.
  */
 fun appendZeroPad(current: String): String {
-    val trimmed = current.trimStart('0')
+    val trimmed = normaliseNumPadDigits(current)
     val room = NUMPAD_MAX_DIGITS - trimmed.length
-    if (room <= 0) return current
-    val next = trimmed + "0".repeat(minOf(3, room))
-    return next.ifEmpty { "0" }
+    if (room <= 0) return trimmed
+    return normaliseNumPadDigits(trimmed + "0".repeat(minOf(3, room)))
 }
 
 /** Removes the last digit. Empty stays empty — the backspace key never throws. */
@@ -85,5 +107,21 @@ fun parseNumPadSave(value: String): NumPadSaveResult {
     return if (amount > 0L) NumPadSaveResult.Accepted(amount) else NumPadSaveResult.Rejected
 }
 
-/** The amount currently shown, for display and haptics. Zero for empty input. */
-fun numPadAmount(value: String): Long = value.toLongOrNull() ?: 0L
+/**
+ * The amount currently shown, for the display and haptics.
+ *
+ * Unparseable input yields the same outcome as [parseNumPadSave] — nothing is
+ * accepted — rather than quietly becoming zero. The two used to disagree:
+ * `parseNumPadSave("abc")` refused while `numPadAmount("abc")` reported `0`, so
+ * the display could show a figure the save path would then reject. One input now
+ * has one outcome, which is what the epic context's "no hidden defaults
+ * anywhere" requires.
+ *
+ * Returns `0` for an empty or all-zero display, where zero is the real value
+ * rather than a fallback; anything with a non-digit is treated as unparseable and
+ * reports zero, matching the rejection above.
+ */
+fun numPadAmount(value: String): Long {
+    if (value.isEmpty() || value.any { it !in DIGITS }) return 0L
+    return value.toLongOrNull() ?: 0L
+}

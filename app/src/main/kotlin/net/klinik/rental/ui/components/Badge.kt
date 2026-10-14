@@ -136,7 +136,9 @@ fun KnChip(
     // The count is not a tint of the label: `copy(alpha = …)` would produce an
     // effective colour that no token names and no test measures, which is the
     // same special-casing the contrast AC forbids. On the selected fill it takes
-    // the inverse ink, which is already measured against that fill.
+    // the inverse ink — `surfaceInverse` — which is what that fill is measured
+    // against, and `ContrastTest` pins the pair on both the fill and the
+    // unfocused card surface.
     val content = if (selected) Color.White else kn.textSecondary
     val countContent = if (selected) kn.surfaceInverse else kn.textTertiary
     val border = if (selected) null else BorderStroke(1.5.dp, kn.border)

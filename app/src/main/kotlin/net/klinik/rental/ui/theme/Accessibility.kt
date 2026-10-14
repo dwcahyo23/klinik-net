@@ -72,11 +72,18 @@ val MaterialTheme.minTouchTarget: Dp
  * Applied inside every interactive component rather than at the call site, so a
  * screen cannot opt out by forgetting. A chip whose label is short still gets a
  * 48dp hit area even though its visual box is 26dp tall.
+ *
+ * Reads the floor from [MaterialTheme.knAccessibility] rather than from
+ * [KnAccessibility.Clinic] directly, so a value provided by `KlinikNetTheme` is
+ * the one actually applied. A static read here would make the theme's provider
+ * change no interactive node at all — the token would look configurable and not
+ * be.
  */
-fun Modifier.minTouchTarget(): Modifier = this.defaultMinSize(
-    minWidth = KnAccessibility.Clinic.minTouchTarget,
-    minHeight = KnAccessibility.Clinic.minTouchTarget,
-)
+@Composable
+fun Modifier.minTouchTarget(): Modifier {
+    val floor = MaterialTheme.knAccessibility.minTouchTarget
+    return this.defaultMinSize(minWidth = floor, minHeight = floor)
+}
 
 /**
  * Draws the brand-coloured focus ring **on top of** the element it decorates.
@@ -114,26 +121,48 @@ fun Modifier.minTouchTarget(): Modifier = this.defaultMinSize(
  * would show half a ring. The ring is inset by half its stroke width instead,
  * which keeps it whole at any position.
  *
+ * ## Why the colour is a parameter
+ *
+ * The brand ring is legible against a page, a card or the sunken surfaces — those
+ * are all light or all dark. It is *not* legible against the saturated fills: the
+ * primary fill is `--brand-500` darkened for white-label contrast, and the ring
+ * measured 1.3:1 against it, i.e. effectively invisible on exactly the button a
+ * keyboard user is most likely to be on. A filled variant therefore passes the
+ * inverse ink, which clears 3:1 on all four fills.
+ *
  * @param cornerRadius the element's own corner radius, so the ring follows a
  *   pill button's rounding instead of boxing it in a rounded rectangle.
+ * @param color the ring colour. Defaults to the token; pass the element's own
+ *   content ink when the element sits on a saturated fill.
  */
 @Composable
 fun Modifier.focusRing(
     focused: Boolean,
-    cornerRadius: Dp = KnRadii.Clinic.sm,
+    cornerRadius: Dp = MaterialTheme.knRadii.sm,
+    color: Color? = null,
 ): Modifier {
     if (!focused) return this
     val a11y = MaterialTheme.knAccessibility
+    val ringColor = color ?: a11y.focusRingColor
     return this.drawWithContent {
         drawContent()
         // A stroke straddles its path, so inset by half the width to sit fully
         // inside the bounds instead of half-clipped.
         val stroke = a11y.focusRingWidth.toPx()
         val radius = cornerRadius.toPx()
+        // Not every node carrying this modifier has `minTouchTarget` applied —
+        // a ring is useful on a decorative-but-focusable node too. `Size`
+        // rejects negative components, so a node narrower than the ring would
+        // throw inside the draw pass rather than merely look odd. Clamped to
+        // zero: the ring collapses to a line on such a node instead of taking
+        // the frame down.
+        val width = (size.width - stroke).coerceAtLeast(0f)
+        val height = (size.height - stroke).coerceAtLeast(0f)
+        if (width <= 0f || height <= 0f) return@drawWithContent
         drawRoundRect(
-            color = a11y.focusRingColor,
+            color = ringColor,
             topLeft = Offset(stroke / 2f, stroke / 2f),
-            size = Size(size.width - stroke, size.height - stroke),
+            size = Size(width, height),
             cornerRadius = CornerRadius(radius),
             style = Stroke(width = stroke),
         )

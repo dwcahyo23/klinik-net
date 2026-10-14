@@ -1,5 +1,9 @@
 package net.klinik.rental.ui.components
 
+import androidx.compose.ui.focus.FocusRequester
+import androidx.compose.ui.focus.focusRequester
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -76,11 +80,16 @@ fun KnSearchBar(
                 shape,
             )
             .border(
-                width = if (focused) 1.5.dp else 1.5.dp,
+                // `.search-bar { border: 1.5px solid transparent }` — the
+                // unfocused state really is borderless, and the focus state is
+                // what supplies the brand edge. So the width is unconditional
+                // and only the colour changes; the earlier `if (focused) 1.5.dp
+                // else 1.5.dp` was a no-op that read as a pending decision.
+                width = 1.5.dp,
                 color = if (focused) {
                     MaterialTheme.knColors.primaryFill
                 } else {
-                    androidx.compose.ui.graphics.Color.Transparent
+                    Color.Transparent
                 },
                 shape = shape,
             )
@@ -126,6 +135,11 @@ fun KnSearchBar(
                 // tall inside a 48dp bar — the padding is not the target.
                 modifier = Modifier
                     .fillMaxWidth()
+                    // The bar's own name, in the input's own semantics. Without
+                    // it a screen reader announces an unlabelled search box and
+                    // then the placeholder, which is the *value* hint rather than
+                    // the field's name.
+                    .semantics { contentDescription = placeholder }
                     .defaultMinSize(minHeight = MaterialTheme.minTouchTarget),
             )
         }

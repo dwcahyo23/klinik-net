@@ -326,7 +326,7 @@ fun KnTableRow(
  * someone edits one cell.
  */
 @Composable
-private fun tableCellStyle(cell: KnTableCell) = when {
+internal fun tableCellStyle(cell: KnTableCell) = when {
     cell.numeric -> MaterialTheme.knTypography.figure.copy(
         fontWeight = if (cell.bold) FontWeight.ExtraBold else FontWeight.Bold,
     )
