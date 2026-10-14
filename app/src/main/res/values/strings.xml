@@ -67,4 +67,120 @@
     <!-- MainActivity placeholder until Story 2.2 replaces it -->
     <string name="home_placeholder_title">Klinik.Net</string>
     <string name="home_placeholder_body">Desain dan komponen inti sudah siap. Layar armada menyusul.</string>
+
+    <!--
+      Story 2.2 — Armada (fleet).
+
+      Every string the vehicle screen shows lives here, including the validation
+      messages. The repository deliberately returns typed exceptions rather than
+      text, so these are the only place the copy for a refusal exists, and a
+      screen cannot invent a second wording that says less (epic context: an error
+      message must name both the fault and the fix).
+    -->
+    <!-- Top bar -->
+    <string name="kendaraan_title">Armada</string>
+    <!--
+      The fleet count. A plural would be a second string per count in a language
+      whose plural rules differ from the CSS's, and the count is a figure rather
+      than a sentence — so it is rendered as "N mobil", which reads correctly in
+      both singular and plural Indonesian.
+    -->
+    <string name="kendaraan_count">%1$d mobil</string>
+
+    <!-- Search and filters -->
+    <string name="kendaraan_search_placeholder">Cari plat, merek, atau model</string>
+    <!-- Chip labels. `Semua` is the unfiltered state, not an empty one. -->
+    <string name="kendaraan_filter_semua">Semua</string>
+    <string name="kendaraan_filter_tersedia">Tersedia</string>
+    <string name="kendaraan_filter_tersewa">Tersewa</string>
+    <string name="kendaraan_filter_servis">Servis</string>
+
+    <!-- List rows -->
+    <!--
+      The row subtitle is "%1$s %2$d" — brand and year, e.g. "Toyota 2023". Both
+      are always present, so there is no variant for a missing year: an empty year
+      is a form bug, and hiding it would leave the owner unable to tell two cars
+      apart.
+    -->
+    <string name="kendaraan_row_subtitle">%1$s %2$d</string>
+    <!-- Colour, when the owner recorded one: "Warna: Putih". -->
+    <string name="kendaraan_row_color">Warna: %1$s</string>
+    <!-- Status badges -->
+    <string name="kendaraan_status_tersedia">Tersedia</string>
+    <string name="kendaraan_status_tersewa">Tersewa</string>
+    <string name="kendaraan_status_servis">Servis</string>
+
+    <!-- Empty states -->
+    <!--
+      The AC names both halves: what is missing, and what to do about it. "Belum
+      ada Kendaraan" is the state; the body is the instruction. A bare "no data"
+      reads as an error, which the epic context forbids.
+    -->
+    <string name="kendaraan_empty_title">Belum ada Kendaraan</string>
+    <string name="kendaraan_empty_body">Tambahkan mobil pertama untuk mulai mencatat sewa.</string>
+    <!--
+      A separate empty state for an empty *search result*. It names the query so
+      the owner can tell "nothing matched" from "nothing stored" — two situations
+      that need opposite actions.
+    -->
+    <string name="kendaraan_empty_search_title">Tidak ada yang cocok</string>
+    <string name="kendaraan_empty_search_body">Tidak ada kendaraan untuk “%1$s”. Coba kata lain atau hapus pencarian.</string>
+
+    <!-- Actions -->
+    <string name="kendaraan_add">Tambah Mobil</string>
+    <string name="kendaraan_edit">Ubah</string>
+    <!-- The row's edit affordance, spoken: names the car it belongs to. -->
+    <string name="kendaraan_edit_description">Ubah %1$s</string>
+
+    <!-- Form sheet -->
+    <string name="kendaraan_form_title_new">Tambah Mobil</string>
+    <string name="kendaraan_form_title_edit">Ubah Mobil</string>
+    <string name="kendaraan_field_plate">Nomor plat</string>
+    <string name="kendaraan_field_brand">Merek</string>
+    <string name="kendaraan_field_model">Model / tipe</string>
+    <string name="kendaraan_field_year">Tahun</string>
+    <string name="kendaraan_field_color">Warna (opsional)</string>
+    <string name="kendaraan_field_rate">Tarif harian</string>
+    <string name="kendaraan_field_notes">Catatan (opsional)</string>
+    <!-- The rate field carries `Rp` as an affix; the numpad carries its own. -->
+    <string name="kendaraan_rate_affix">Rp</string>
+    <!--
+      Hints, hidden by `KnField` until an error replaces them. Both say what to
+      do rather than only what is wrong.
+    -->
+    <string name="kendaraan_plate_hint">Huruf dan angka, misalnya B 1235 TF</string>
+    <string name="kendaraan_rate_hint">Ketik di keypad angka di bawah</string>
+    <string name="kendaraan_save">Simpan Kendaraan</string>
+    <string name="kendaraan_cancel">Batal</string>
+
+    <!--
+      Validation. Each names the fault *and* the fix, per the epic context.
+
+      The blank-plate message is the shared `KnFieldError.Required` one — a blank
+      plate is a required field left empty, which is exactly what that enum case
+      means, so reusing it keeps one wording for one class of fault instead of
+      letting the fleet screen invent a synonym.
+    -->
+    <string name="kendaraan_error_blank_plate">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <string name="kendaraan_error_blank_brand">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <string name="kendaraan_error_blank_model">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <string name="kendaraan_error_blank_year">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <!--
+      Shown instead of a defaulted rate. The prototype's `parseInt(x) || 250000`
+      made this message unnecessary by never refusing; this story's rule is that
+      no figure is invented, so the owner is told to type one.
+    -->
+    <string name="kendaraan_error_rate_zero">Tarif harian harus lebih dari nol. Ketik angka di keypad lalu simpan.</string>
+    <string name="kendaraan_error_rate_invalid">Hanya angka yang diperbolehkan. Hapus huruf dan coba lagi.</string>
+
+    <!--
+      Save refusals, raised as typed exceptions by `VehicleRepository` and given
+      their words here. `%1$s` is the plate, so the owner knows which car to fix.
+    -->
+    <string name="kendaraan_error_duplicate_plate">Plat %1$s sudah dipakai mobil lain. Periksa lagi nomornya.</string>
+    <string name="kendaraan_error_invalid_amount">Tarif harian harus lebih dari nol. Ketik angka di keypad lalu simpan.</string>
+    <string name="kendaraan_error_has_contract">%1$s masih tersewa. Akhiri sewanya dulu sebelum menghapusnya.</string>
+    <string name="kendaraan_error_unexpected">Gagal menyimpan. Coba lagi.</string>
+    <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
+    <string name="kendaraan_saved">%1$s tersimpan</string>
 </resources>

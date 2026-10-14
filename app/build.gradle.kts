@@ -59,6 +59,10 @@ dependencies {
     implementation(libs.androidx.core.ktx)
     implementation(libs.androidx.activity.compose)
     implementation(libs.androidx.lifecycle.runtime.ktx)
+    // collectAsStateWithLifecycle: a Flow collected without it keeps collecting
+    // while the screen is stopped, which on Room means a background rebuild the
+    // owner cannot see.
+    implementation(libs.androidx.lifecycle.runtime.compose)
 
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
