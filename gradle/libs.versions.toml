@@ -10,6 +10,15 @@ activityCompose = "1.13.0"
 coreKtx = "1.19.1"
 desugar = "2.1.5"
 junit = "4.13.2"
+# AR-16: icons come from Lucide via com.composables, never Material Icons.
+# 1.0.0 is pinned deliberately — it is the version whose androidJvm variant
+# resolves to `icons-lucide-android` and exposes `Lucide.<Name>: ImageVector`
+# extension properties.
+iconsLucide = "1.0.0"
+# Compose UI tests run on the JVM through Robolectric: `:app:testDebugUnitTest`
+# is the only test task the build guarantees, so instrumentation is not an option.
+robolectric = "4.17"
+androidxTestExtJunit = "1.3.0"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -32,6 +41,15 @@ androidx-room-compiler = { group = "androidx.room", name = "room-compiler", vers
 androidx-navigation-compose = { group = "androidx.navigation", name = "navigation-compose", version.ref = "navigationCompose" }
 
 desugar-jdk-libs = { group = "com.android.tools", name = "desugar_jdk_libs", version.ref = "desugar" }
+
+# AR-16 — Lucide icons. Deliberately NOT androidx.compose.material:material-icons.
+icons-lucide = { group = "com.composables", name = "icons-lucide", version.ref = "iconsLucide" }
+
+# Accessibility tests (48dp touch targets) run on the JVM via Robolectric.
+robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "robolectric" }
+androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
+androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
+androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

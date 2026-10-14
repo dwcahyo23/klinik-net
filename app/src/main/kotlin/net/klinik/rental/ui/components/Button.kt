@@ -1,0 +1,220 @@
+package net.klinik.rental.ui.components
+
+import androidx.compose.animation.animateColorAsState
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.interaction.MutableInteractionSource
+import androidx.compose.foundation.interaction.collectIsFocusedAsState
+import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.material3.LocalContentColor
+import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.remember
+import androidx.compose.ui.Alignment
+import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.Dp
+import androidx.compose.ui.unit.dp
+import net.klinik.rental.ui.theme.KnAccessibility
+import net.klinik.rental.ui.theme.focusRing
+import net.klinik.rental.ui.theme.knBrandShadow
+import net.klinik.rental.ui.theme.knColors
+import net.klinik.rental.ui.theme.knElevation
+import net.klinik.rental.ui.theme.knRadii
+import net.klinik.rental.ui.theme.knTypography
+import net.klinik.rental.ui.theme.minTouchTarget
+
+/** The five button variants from `shared.css` section 5. */
+enum class KnButtonVariant { Primary, Secondary, Ghost, Danger, Success }
+
+/**
+ * The four sizes. [Icon] is the `.btn-icon` shape from the CSS: exactly 48dp,
+ * pill, no label.
+ */
+enum class KnButtonSize(
+    internal val height: Dp,
+    internal val minWidth: Dp,
+    internal val horizontalPadding: Dp,
+    internal val gap: Dp,
+    internal val iconSize: Dp,
+) {
+    /** `.btn-lg` — 58dp. */
+    Large(58.dp, 0.dp, 32.dp, 8.dp, 24.dp),
+
+    /** The default `.btn` — 48dp, the `--tap-min` floor. */
+    Default(48.dp, 0.dp, 20.dp, 8.dp, 18.dp),
+
+    /**
+     * `.btn-sm` — 44dp tall but still 48dp wide.
+     *
+     * The CSS sets `min-height: 44px`, which is below the 48dp floor. The floor
+     * wins: the hit area is padded back out to 48dp via [minTouchTarget] so the
+     * *measured* bound never drops below the threshold, while the visual box
+     * keeps the tighter CSS height. `.btn-sm` is only used inside dense rows
+     * where a 58dp control would not fit.
+     */
+    Small(44.dp, 48.dp, 16.dp, 6.dp, 16.dp),
+
+    /** `.btn-icon` — exactly 48dp square, pill. */
+    Icon(48.dp, 48.dp, 0.dp, 0.dp, 22.dp),
+}
+
+/**
+ * The core button.
+ *
+ * Sizes and variants are exhaustive enums, not nullable parameters: "a button
+ * with no variant" is not a state this library can express.
+ *
+ * Every size clears the 48dp touch floor on both axes. For [KnButtonSize.Small]
+ * and [KnButtonSize.Icon] the floor is enforced inside the component rather than
+ * left to the caller, because the AC says *no* interactive node may fall below
+ * 48dp — including a chip, a badge and an in-row icon button — and the
+ * accessibility test cannot tell a caller who forgot.
+ */
+@Composable
+fun KnButton(
+    label: String,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+    variant: KnButtonVariant = KnButtonVariant.Primary,
+    size: KnButtonSize = KnButtonSize.Default,
+    icon: ImageVector? = null,
+    enabled: Boolean = true,
+    contentDescription: String? = null,
+) {
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+    val palette = KnButtonPalette(variant)
+    val shape = RoundedCornerShape(MaterialTheme.knRadii.full)
+    // The brand shadow is drawn by `knShadow`, not by `Surface(shadowElevation
+    // = …)`: that parameter takes no colour, so passing the height alone would
+    // render Material's default black and quietly drop `--el-brand`.
+    val shadowModifier = if (variant == KnButtonVariant.Primary) {
+        Modifier.knBrandShadow(shape)
+    } else {
+        Modifier
+    }
+
+    Surface(
+        onClick = onClick,
+        enabled = enabled,
+        modifier = modifier
+            // The floor on every size, not just the short ones. Height is
+            // already guaranteed by `heightIn` below, but width is not: a button
+            // is content-sized, so a short label can leave the node under 48dp
+            // across. Under Robolectric's collapsed font metrics a "Batal" ghost
+            // button measures 46dp wide, which is what surfaced this. Applying
+            // the floor unconditionally makes the guarantee structural instead
+            // of dependent on how long the caller's label happens to be.
+            .minTouchTarget()
+            .focusRing(focused = focused, cornerRadius = MaterialTheme.knRadii.full)
+            .then(shadowModifier),
+        shape = shape,
+        color = palette.container,
+        contentColor = palette.content,
+        border = palette.border,
+        interactionSource = interaction,
+    ) {
+        Row(
+            modifier = Modifier
+                .heightIn(min = size.height)
+                .then(
+                    if (size == KnButtonSize.Icon) {
+                        Modifier.size(KnAccessibility.Clinic.minTouchTarget)
+                    } else {
+                        Modifier.padding(horizontal = size.horizontalPadding)
+                    }
+                ),
+            horizontalArrangement = if (size == KnButtonSize.Icon) {
+                Arrangement.Center
+            } else {
+                Arrangement.spacedBy(size.gap, Alignment.CenterHorizontally)
+            },
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            if (icon != null) {
+                Icon(
+                    imageVector = icon,
+                    // The label already names the action; an icon-only button
+                    // needs its own description.
+                    contentDescription = if (size == KnButtonSize.Icon) {
+                        contentDescription ?: label
+                    } else {
+                        null
+                    },
+                    modifier = Modifier.size(size.iconSize),
+                    tint = LocalContentColor.current,
+                )
+            }
+            if (size != KnButtonSize.Icon) {
+                Text(
+                    text = label,
+                    style = when (size) {
+                        KnButtonSize.Large -> MaterialTheme.typography.titleMedium
+                        else -> MaterialTheme.knTypography.label
+                    },
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        }
+    }
+}
+
+/** Resolved colours for a variant. Kept out of the composable body for clarity. */
+@androidx.compose.runtime.Immutable
+internal data class KnButtonPalette(
+    val container: Color,
+    val content: Color,
+    val border: BorderStroke?,
+)
+
+@Composable
+internal fun KnButtonPalette(variant: KnButtonVariant): KnButtonPalette {
+    val kn = MaterialTheme.knColors
+    return when (variant) {
+        KnButtonVariant.Primary -> KnButtonPalette(
+            container = kn.primaryFill,
+            content = Color.White,
+            border = null,
+        )
+
+        KnButtonVariant.Secondary -> KnButtonPalette(
+            container = kn.bgCard,
+            content = kn.textPrimary,
+            border = BorderStroke(1.dp, kn.border),
+        )
+
+        KnButtonVariant.Ghost -> KnButtonPalette(
+            container = Color.Transparent,
+            content = kn.textSecondary,
+            border = null,
+        )
+
+        KnButtonVariant.Danger -> KnButtonPalette(
+            container = kn.dangerFill,
+            content = Color.White,
+            border = null,
+        )
+
+        KnButtonVariant.Success -> KnButtonPalette(
+            container = kn.successFill,
+            content = Color.White,
+            border = null,
+        )
+    }
+}

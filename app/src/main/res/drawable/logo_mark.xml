@@ -1,0 +1,94 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Klinik.Net app mark, converted from prototype/assets/logo-mark.svg.
+
+  The path data is carried across verbatim from the SVG — nothing here was
+  retyped or redrawn. The two things that had to change are structural, not
+  geometric:
+
+    1. `fill="url(#kn-coral)"` becomes an <aapt:attr> gradient block. AAPT2
+       compiles this into a real LinearGradient shader, which VectorDrawable
+       supports from API 24 — the app's minSdk — so the coral gradient now
+       survives where the previous flat-fill launcher icon lost it.
+    2. The SVG's `translate(6.8 6) scale(1.6)` becomes the equivalent
+       <group> transform; <group> applies scale before translate, which is the
+       same composition order the SVG transform list expresses.
+
+  Glyph is lucide "car-front" (ISC). See NOTICE for the attribution.
+-->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    xmlns:aapt="http://schemas.android.com/aapt"
+    android:width="52dp"
+    android:height="52dp"
+    android:viewportWidth="52"
+    android:viewportHeight="52">
+
+    <!-- Rounded square: 52x52, r=15. -->
+    <path android:pathData="M15,0H37A15,15 0 0 1 52,15V37A15,15 0 0 1 37,52H15A15,15 0 0 1 0,37V15A15,15 0 0 1 15,0Z">
+        <aapt:attr name="android:fillColor">
+            <gradient
+                android:type="linear"
+                android:startX="0"
+                android:startY="0"
+                android:endX="52"
+                android:endY="52">
+                <item android:offset="0.0" android:color="#FF385C" />
+                <item android:offset="1.0" android:color="#C01336" />
+            </gradient>
+        </aapt:attr>
+    </path>
+
+    <!--
+      lucide car-front on the native 24-unit grid. Stroke bounds x 2-22,
+      y 4-21; at scale 1.6 translate(6.8 6) centres it on the squircle's
+      optical centre (26,26) with 10px horizontal padding.
+    -->
+    <group
+        android:translateX="6.8"
+        android:translateY="6"
+        android:scaleX="1.6"
+        android:scaleY="1.6">
+
+        <path
+            android:pathData="m21 8-2 2-1.5-3.7A2 2 0 0 0 15.646 5H8.4a2 2 0 0 0-1.903 1.257L5 10 3 8"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M7 14h.01"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M17 14h.01"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M5,10h14a2,2 0 0 1 2,2v4a2,2 0 0 1 -2,2h-14a2,2 0 0 1 -2,-2v-4a2,2 0 0 1 2,-2z"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M5 18v2"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+
+        <path
+            android:pathData="M19 18v2"
+            android:strokeColor="#FFFFFF"
+            android:strokeWidth="2"
+            android:strokeLineCap="round"
+            android:strokeLineJoin="round" />
+    </group>
+</vector>

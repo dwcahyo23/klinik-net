@@ -1,4 +1,70 @@
 <?xml version="1.0" encoding="utf-8"?>
+<!--
+  Every Indonesian string the UI displays lives here (epic context, UX-DR14).
+  Components take their labels as parameters; what they display unconditionally
+  — a numpad key, a validation message, a content description — comes from here
+  so no composable carries a literal.
+-->
 <resources>
     <string name="app_name">Klinik.Net</string>
+
+    <!-- Numpad -->
+    <!--
+      The prefix is a separate, smaller styled span next to the figure, so the
+      numpad cannot reuse formatRupiah's "Rp " prefix verbatim. It still comes
+      from here rather than from a literal in the composable.
+    -->
+    <string name="currency_symbol_rupiah">Rp</string>
+    <string name="numpad_key_save">Simpan</string>
+    <!--
+      Key faces versus announcements. The clear key shows `C` but announces
+      "Hapus": a screen reader reading the letter aloud is worse than useless,
+      while the spoken word is what the owner actually wants to hear. The
+      zero-pad key shows and announces the same `000`, so it needs one string.
+    -->
+    <string name="numpad_key_clear">Hapus</string>
+    <string name="numpad_key_clear_face">C</string>
+    <string name="numpad_key_zero_pad">000</string>
+    <string name="numpad_key_delete">Hapus digit terakhir</string>
+    <!--
+      The digit zero. Used both as the zero key's face and as the figure an
+      untouched display shows, so an empty panel does not read as broken.
+    -->
+    <string name="numpad_digit_zero">0</string>
+    <string name="numpad_display_label">Jumlah sedang diketik</string>
+    <string name="numpad_display_empty">Ketuk angka untuk mulai</string>
+    <string name="numpad_rejected_zero">Ditolak. Jumlah harus lebih dari nol — tekan angka untuk mengoreksi.</string>
+
+    <!-- Field -->
+    <string name="field_required_error">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <string name="field_invalid_number_error">Hanya angka yang diperbolehkan. Hapus huruf dan coba lagi.</string>
+    <string name="field_error_prefix">Galat:</string>
+
+    <!-- Search -->
+    <string name="search_hint">Cari</string>
+    <string name="search_clear">Hapus pencarian</string>
+
+    <!-- Snackbar -->
+    <string name="snackbar_dismiss">Tutup</string>
+
+    <!-- PIN -->
+    <string name="pin_grid_label">Kode PIN</string>
+    <string name="pin_key_delete">Hapus digit terakhir</string>
+    <string name="pin_dot_filled">terisi</string>
+    <string name="pin_dot_empty">kosong</string>
+
+    <!-- Logo / iconography -->
+    <string name="logo_lockup_description">Klinik.Net</string>
+    <string name="logo_mono_description">Klinik.Net</string>
+
+    <!-- Generic control labels used by library components themselves -->
+    <string name="action_close">Tutup</string>
+    <string name="action_more">Lainnya</string>
+    <string name="action_back">Kembali</string>
+    <string name="action_edit">Ubah</string>
+    <string name="action_delete">Hapus</string>
+
+    <!-- MainActivity placeholder until Story 2.2 replaces it -->
+    <string name="home_placeholder_title">Klinik.Net</string>
+    <string name="home_placeholder_body">Desain dan komponen inti sudah siap. Layar armada menyusul.</string>
 </resources>
