@@ -2,7 +2,7 @@
 title: 'Story 2.2 — Menyimpan armada mobil'
 type: 'feature'
 created: '2026-10-14'
-status: 'ready-for-dev'
+status: 'done'
 review_loop_iteration: 0
 baseline_revision: '397e5fe'
 followup_review_recommended: false
