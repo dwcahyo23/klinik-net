@@ -16,6 +16,7 @@ import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.domain.validation.VehicleHasActiveContractException
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -350,6 +351,105 @@ class VehicleRepositoryTest {
         )
 
         assertTrue(repository.observeRentedPlates().first().isEmpty())
+    }
+
+    // ------------------------------------------------------------ servis marker
+
+    /**
+     * SERVIS_PERSISTS: `isServis` is a stored column, so a vehicle marked in
+     * service comes back out of the flow after the write — the marker survives
+     * a reload rather than being lost to a default.
+     *
+     * The edit path is what exercises it: the form opens with the marker on,
+     * the owner saves, and the same row still carries `isServis = true`. A
+     * write that dropped the column would make the stored value `false` and the
+     * vehicle silently stop reading as `Servis` on the next load.
+     */
+    @Test
+    fun `the servis marker is written and read back`() = runBlocking {
+        repository.save(
+            vehicle("B 1235 TF", rate = 250_000L, id = "first").copy(isServis = true),
+        )
+
+        val stored = repository.observeVehicles().first().single()
+        assertEquals("B 1235 TF", stored.plate)
+        assertTrue("the marker must survive the round-trip", stored.isServis)
+
+        // Through the raw column, the only place the stored representation is
+        // actually observable.
+        val raw = database.vehicleDao().findById(stored.id)
+        assertNotNull(raw)
+        assertEquals(true, raw!!.isServis)
+    }
+
+    /**
+     * MARK_SERVIS_WITH_CONTRACT at the data layer: marking a vehicle in service
+     * while it has an open contract changes only the vehicle row. The contract
+     * row is untouched — the marker never stops billing on its own, and the
+     * billing-stopping mechanism is a service exception on the contract, a
+     * different table and a different story.
+     */
+    @Test
+    fun `marking servis does not touch the contract row`() = runBlocking {
+        repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
+        database.vehicleDao().insertContract(
+            ContractEntity(
+                id = "contract-1",
+                vehicleId = "first",
+                startDate = LocalDate.of(2026, 10, 1),
+                endDate = null,
+            ),
+        )
+
+        // The owner marks the car in service and saves it.
+        repository.save(
+            vehicle("B 1235 TF", rate = 250_000L, id = "first").copy(isServis = true),
+        )
+
+        // The vehicle now carries the marker…
+        val stored = repository.observeVehicles().first().single()
+        assertTrue(stored.isServis)
+
+        // …and the contract row is byte-for-byte what it was: still open.
+        assertEquals(
+            setOf("B 1235 TF"),
+            repository.observeRentedPlates().first(),
+        )
+        val contracts = database.vehicleDao().allContracts().first()
+        assertEquals(1, contracts.size)
+        assertEquals(null, contracts.single().endDate)
+    }
+
+    /**
+     * UNMARK_SERVIS: clearing the marker on a vehicle with an open contract
+     * leaves the contract in place, so the derived status falls back to
+     * `Tersewa` rather than inventing a state the marker is not responsible
+     * for.
+     */
+    @Test
+    fun `clearing the servis marker leaves the open contract intact`() = runBlocking {
+        repository.save(
+            vehicle("B 1235 TF", rate = 250_000L, id = "first").copy(isServis = true),
+        )
+        database.vehicleDao().insertContract(
+            ContractEntity(
+                id = "contract-1",
+                vehicleId = "first",
+                startDate = LocalDate.of(2026, 10, 1),
+                endDate = null,
+            ),
+        )
+
+        // The owner un-marks the car and saves it.
+        repository.save(
+            vehicle("B 1235 TF", rate = 250_000L, id = "first").copy(isServis = false),
+        )
+
+        val stored = repository.observeVehicles().first().single()
+        assertFalse("the marker must be off after the save", stored.isServis)
+        // The open contract still reports the plate as rented, so the derived
+        // status is `Tersewa`, not `Tersedia`.
+        assertEquals(setOf("B 1235 TF"), repository.observeRentedPlates().first())
     }
 
     // ------------------------------------------------------------------ helpers

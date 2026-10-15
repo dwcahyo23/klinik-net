@@ -144,6 +144,16 @@
     <string name="kendaraan_field_notes">Catatan (opsional)</string>
     <!-- The rate field carries `Rp` as an affix; the numpad carries its own. -->
     <string name="kendaraan_rate_affix">Rp</string>
+    <!-- The manual service marker. A checkbox on the form, not a separate screen. -->
+    <string name="kendaraan_form_servis_label">Servis</string>
+    <!--
+      The second line under the label. It names the one fact the marker carries
+      and the one it does not: parking the car moves it off the road, but the
+      open contract keeps billing — the marker never stops billing. The
+      billing-stopping mechanism is a service exception on the contract (Story
+      2.6), not this marker.
+    -->
+    <string name="kendaraan_form_servis_hint">Mobil sedang di bengkel</string>
     <!--
       Hints, hidden by `KnField` until an error replaces them. Both say what to
       do rather than only what is wrong.

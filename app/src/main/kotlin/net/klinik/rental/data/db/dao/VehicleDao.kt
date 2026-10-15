@@ -141,4 +141,16 @@ interface VehicleDao {
      */
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertContract(contract: ContractEntity)
+
+    /**
+     * Every contract row, as a [Flow], in a stable order.
+     *
+     * Read-only observation used to assert contract-row invariants — Story 2.3's
+     * "marking servis leaves the contract row byte-for-byte untouched" test
+     * queries through this, and a later story can rely on the same stable order
+     * when it adds its own invariants. `startDate` is ISO `yyyy-MM-dd` TEXT, so
+     * lexicographic order equals chronological order; `id` breaks the tie.
+     */
+    @Query("SELECT * FROM contract ORDER BY startDate ASC, id ASC")
+    fun allContracts(): Flow<List<ContractEntity>>
 }

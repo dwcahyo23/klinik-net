@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnCheckbox
 import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.theme.knSpacing
@@ -172,6 +173,17 @@ fun VehicleFormSheet(
                 modifier = Modifier.testTag(TAG_NUMPAD),
             )
 
+            // The manual service marker, set by the owner rather than derived:
+            // the one status input that is stored (see `Vehicle.isServis`). It
+            // sits above the notes field, with the form's other attributes.
+            KnCheckbox(
+                label = stringResource(R.string.kendaraan_form_servis_label),
+                hint = stringResource(R.string.kendaraan_form_servis_hint),
+                checked = state.isServis,
+                onCheckedChange = { value -> onChange { it.copy(isServis = value) } },
+                modifier = Modifier.testTag(TAG_SERVIS),
+            )
+
             KnField(
                 label = stringResource(R.string.kendaraan_field_notes),
                 value = state.notes,
@@ -219,5 +231,6 @@ internal const val TAG_FIELD_COLOR = "vehicle-field-color"
 internal const val TAG_FIELD_RATE = "vehicle-field-rate"
 internal const val TAG_FIELD_NOTES = "vehicle-field-notes"
 internal const val TAG_NUMPAD = "vehicle-numpad"
+internal const val TAG_SERVIS = "vehicle-servis"
 internal const val TAG_SAVE = "vehicle-save"
 internal const val TAG_CANCEL = "vehicle-cancel"

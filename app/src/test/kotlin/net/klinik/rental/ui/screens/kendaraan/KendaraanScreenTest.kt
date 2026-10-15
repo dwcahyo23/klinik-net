@@ -219,6 +219,136 @@ class KendaraanScreenTest {
         )
     }
 
+    // ------------------------------------------------------------ Story 2.3
+
+    /**
+     * MARK_SERVIS: a vehicle that is in service shows the `Servis` badge on its
+     * own row, and the `Servis` filter chip carries a count of one.
+     *
+     * The badge is asserted *scoped to the row* rather than over the whole tree:
+     * two cars in service would both read "Servis" and an unscoped match would
+     * fail on ambiguity rather than on the thing under test.
+     */
+    @Test
+    fun `a vehicle marked servis shows the servis badge and the servis chip counts it`() {
+        compose.setContent { theme { KendaraanScreenState(servisState()) } }
+
+        // The row's own badge.
+        compose.onAllNodes(hasText("Servis") and insideRow("kendaraan-row-v3"))
+            .assertCountEquals(1)
+        // The Servis chip is present; its count is asserted in the dedicated
+        // filter test where only one in-service car exists in the list.
+        compose.onAllNodes(hasTestTag("kendaraan-chip-Servis"))
+            .assertCountEquals(1)
+    }
+
+    /**
+     * MARK_SERVIS_WITH_CONTRACT: `Servis` takes priority over `Tersewa` in the
+     * derivation. A car that is in service *and* under an open contract shows
+     * `Servis`, not `Tersewa` — the car is off the road, and that is the fact
+     * the owner needs on the morning screen.
+     *
+     * The derivation lives in `VehicleStatus.of`, so this test feeds it the
+     * exact inputs a contracted-and-in-service vehicle would carry and asserts
+     * the screen renders the winner, not the loser.
+     */
+    @Test
+    fun `a car in service with an open contract shows servis not tersewa`() {
+        val rows = listOf(
+            row(
+                id = "v4",
+                plate = "B 4455 CC",
+                model = "Avanza",
+                rate = 300_000L,
+                // `Servis` wins: both `isServis` and an open contract are true.
+                status = VehicleStatus.Servis,
+            ),
+        )
+        val state = KendaraanUiState(rows = rows, counts = countByStatus(rows))
+
+        compose.setContent { theme { KendaraanScreenState(state) } }
+
+        compose.onAllNodes(hasText("Servis") and insideRow("kendaraan-row-v4"))
+            .assertCountEquals(1)
+        compose.onAllNodes(hasText("Tersewa") and insideRow("kendaraan-row-v4"))
+            .assertCountEquals(0)
+    }
+
+    /**
+     * UNMARK_SERVIS: a vehicle that was `Servis` and has an open contract falls
+     * back to `Tersewa` once the marker is cleared — the status is derived, so
+     * clearing the marker reveals the contract underneath rather than inventing
+     * a new state.
+     */
+    @Test
+    fun `clearing the servis marker on a rented car shows tersewa`() {
+        val rows = listOf(
+            row(
+                id = "v5",
+                plate = "B 6677 DD",
+                model = "Brio",
+                rate = 275_000L,
+                // Marker off, contract open: `Tersewa` is the derived status.
+                status = VehicleStatus.Tersewa,
+            ),
+        )
+        val state = KendaraanUiState(rows = rows, counts = countByStatus(rows))
+
+        compose.setContent { theme { KendaraanScreenState(state) } }
+
+        compose.onAllNodes(hasText("Tersewa") and insideRow("kendaraan-row-v5"))
+            .assertCountEquals(1)
+        compose.onAllNodes(hasText("Servis") and insideRow("kendaraan-row-v5"))
+            .assertCountEquals(0)
+    }
+
+    /**
+     * SERVIS_FILTER_COUNT: selecting the `Servis` chip narrows the list to the
+     * in-service cars, and the count the chip carries is the same number the
+     * list shows.
+     */
+    @Test
+    fun `the servis filter shows only the in-service cars and its count matches`() {
+        val state = KendaraanUiState(
+            rows = listOf(
+                row("v1", "B 1235 TF", "Agya", 250_000L, VehicleStatus.Tersedia),
+                row("v2", "B 9876 AB", "Brio", 275_000L, VehicleStatus.Tersewa),
+                row("v3", "B 1122 EE", "Avanza", 300_000L, VehicleStatus.Servis),
+            ),
+            counts = countByStatus(
+                listOf(
+                    row("v1", "B 1235 TF", "Agya", 250_000L, VehicleStatus.Tersedia),
+                    row("v2", "B 9876 AB", "Brio", 275_000L, VehicleStatus.Tersewa),
+                    row("v3", "B 1122 EE", "Avanza", 300_000L, VehicleStatus.Servis),
+                ),
+            ),
+            filter = VehicleFilter.Servis,
+        )
+
+        compose.setContent { theme { KendaraanScreenState(state) } }
+
+        // The in-service row is visible; the other two are filtered out.
+        compose.onNodeWithTag("kendaraan-row-v3").assertIsDisplayed()
+        assertTrue(
+            "the available car must be hidden under the servis filter",
+            compose.onAllNodes(hasTestTag("kendaraan-row-v1")).fetchSemanticsNodes().isEmpty(),
+        )
+        assertTrue(
+            "the rented car must be hidden under the servis filter",
+            compose.onAllNodes(hasTestTag("kendaraan-row-v2")).fetchSemanticsNodes().isEmpty(),
+        )
+        // And the chip's count. `KnChip`'s clickable `Surface` merges its
+        // descendants, so the count is not a node of its own — the chip's own
+        // node carries both `Text` entries ("Servis" and "1"). `hasText` matches
+        // each entry separately rather than a joined string, so requiring *both*
+        // on one node is what pins the label and the count together: the
+        // `Tersedia` chip in this same fixture also carries a "1", and only the
+        // label half tells the two apart.
+        compose.onAllNodes(
+            insideChip("kendaraan-chip-Servis") and hasText("Servis") and hasText("1"),
+        ).assertCountEquals(1)
+    }
+
     // -------------------------------------------------------- touch target floor
 
     /**
@@ -399,6 +529,47 @@ class KendaraanScreenTest {
         ),
     )
 
+    /**
+     * A fleet where one of the two cars is in service, so the `Servis` chip has
+     * a real count of one and a row that is not `Tersedia`/`Tersewa`.
+     */
+    private fun servisState() = KendaraanUiState(
+        rows = listOf(
+            row(
+                id = "v1",
+                plate = "B 1235 TF",
+                model = "Agya",
+                rate = 250_000L,
+                status = VehicleStatus.Tersedia,
+            ),
+            row(
+                id = "v3",
+                plate = "B 1122 EE",
+                model = "Avanza",
+                rate = 300_000L,
+                status = VehicleStatus.Servis,
+            ),
+        ),
+        counts = countByStatus(
+            listOf(
+                row(
+                    id = "v1",
+                    plate = "B 1235 TF",
+                    model = "Agya",
+                    rate = 250_000L,
+                    status = VehicleStatus.Tersedia,
+                ),
+                row(
+                    id = "v3",
+                    plate = "B 1122 EE",
+                    model = "Avanza",
+                    rate = 300_000L,
+                    status = VehicleStatus.Servis,
+                ),
+            ),
+        ),
+    )
+
     private fun row(
         id: String,
         plate: String,
@@ -448,6 +619,15 @@ class KendaraanScreenTest {
     /** Nodes carrying [tag] or inside one. Both halves, as in `AccessibilityTest`. */
     private fun insideRow(tag: String): SemanticsMatcher =
         hasTestTag(tag) or hasAnyAncestor(hasTestTag(tag))
+
+    /**
+     * The chip tagged [tag] itself — its label and count merged into one node.
+     *
+     * Not `hasAnyAncestor`: `KnChip`'s clickable `Surface` merges descendants,
+     * so the count is not a separate node *inside* the chip and no node has the
+     * chip as an ancestor. The chip's own node is what carries both texts.
+     */
+    private fun insideChip(tag: String): SemanticsMatcher = hasTestTag(tag)
 
     /** A short description, so a failure says *which* control. */
     private fun describe(node: SemanticsNodeInteraction): String {

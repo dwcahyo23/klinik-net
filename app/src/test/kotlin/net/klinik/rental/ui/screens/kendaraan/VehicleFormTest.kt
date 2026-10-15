@@ -1,16 +1,20 @@
 package net.klinik.rental.ui.screens.kendaraan
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performSemanticsAction
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.parse.parseRupiahInput
 import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.ui.theme.KlinikNetTheme
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
@@ -66,9 +70,55 @@ class VehicleFormTest {
         compose.onNodeWithTag(TAG_FIELD_RATE).assertExists()
         compose.onNodeWithTag(TAG_FIELD_COLOR).assertExists()
         compose.onNodeWithTag(TAG_FIELD_NOTES).assertExists()
+        compose.onNodeWithTag(TAG_SERVIS).assertExists().assertHasClickAction()
         compose.onNodeWithTag(TAG_NUMPAD).assertExists()
         compose.onNodeWithTag(TAG_SAVE).assertExists().assertHasClickAction()
         compose.onNodeWithTag(TAG_CANCEL).assertExists().assertHasClickAction()
+    }
+
+    /**
+     * The servis marker drives the real checkbox, not a hand-mutated copy of the
+     * state: clicking the rendered `TAG_SERVIS` node must flip `isServis` on the
+     * state the sheet was given, through the same `onChange` path the save button
+     * reads. A test that merely copied state in a local lambda would pass while
+     * the checkbox's own `onCheckedChange` was never wired, which is exactly the
+     * wiring this test exists to exercise.
+     *
+     * The click is invoked as the node's `OnClick` *semantics action* rather
+     * than as a pointer tap. A real tap is injected at the node's centre, and
+     * this file's own header note says why that does not work here: seven
+     * fields plus a 66dp-key numpad overflow the Robolectric window, so the
+     * servis row — which sits between them — measures zero and a coordinate tap
+     * lands on nothing. The semantics action is the same handler the owner's
+     * finger reaches (`Surface(onClick=)`), so the wiring under test is the one
+     * that actually runs.
+     */
+    @Test
+    fun `tapping the servis marker flips isServis on the form state`() {
+        // A `mutableStateOf`, not a plain `var`: the sheet is a composable, and
+        // `KnCheckbox` reads `checked` off the state it was composed with. A
+        // plain `var` would leave the sheet showing the *original* `checked`
+        // after the first click, so the second click would compute `!false`
+        // again and re-set the same value instead of clearing it — the toggle
+        // would look like it fired once and then got stuck. Making the holder
+        // observable is what lets the recomposition that a real ViewModel
+        // triggers happen here too.
+        val state = mutableStateOf(VehicleFormState())
+
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = state.value,
+                    onChange = { newState -> state.value = newState },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_SERVIS).performSemanticsAction(SemanticsActions.OnClick)
+        assertTrue("clicking the marker turns it on", state.value.isServis)
+
+        compose.onNodeWithTag(TAG_SERVIS).performSemanticsAction(SemanticsActions.OnClick)
+        assertFalse("clicking again turns it back off", state.value.isServis)
     }
 
     /**
@@ -179,13 +229,22 @@ class VehicleFormTest {
         KlinikNetTheme(darkTheme = false) { content() }
     }
 
-    /** The sheet over no-op handlers — the state is what is under test. */
+    /**
+     * The sheet over no-op handlers by default — the state is what is under
+     * test. [onChange] is captured by the caller so a test can observe the
+     * state the real checkbox writes back through the form's own change path.
+     * The form calls it with the *new* state; this forwards that value
+     * straight to the caller's callback so a test can store and assert on it.
+     */
     @androidx.compose.runtime.Composable
-    private fun Sheet(state: VehicleFormState) {
+    private fun Sheet(
+        state: VehicleFormState,
+        onChange: (VehicleFormState) -> Unit = {},
+    ) {
         VehicleFormSheet(
             state = state,
             onDismissRequest = {},
-            onChange = {},
+            onChange = { transformer -> onChange(transformer(state)) },
             onSave = {},
         )
     }
