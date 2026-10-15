@@ -19,6 +19,11 @@ iconsLucide = "1.0.0"
 # is the only test task the build guarantees, so instrumentation is not an option.
 robolectric = "4.17"
 androidxTestExtJunit = "1.3.0"
+# Test-only. `viewModelScope` runs on Dispatchers.Main, which does not exist on
+# the JVM without Robolectric driving the main looper; a TestDispatcher installed
+# on Dispatchers.Main is what makes "after the save settled" assertable instead of
+# "eventually". Matches the coroutines version Room 2.8.5 pulls in transitively.
+coroutines = "1.10.2"
 
 [libraries]
 junit = { group = "junit", name = "junit", version.ref = "junit" }
@@ -51,6 +56,9 @@ robolectric = { group = "org.robolectric", name = "robolectric", version.ref = "
 androidx-test-ext-junit = { group = "androidx.test.ext", name = "junit", version.ref = "androidxTestExtJunit" }
 androidx-compose-ui-test-junit4 = { group = "androidx.compose.ui", name = "ui-test-junit4" }
 androidx-compose-ui-test-manifest = { group = "androidx.compose.ui", name = "ui-test-manifest" }
+
+# Test-only — see the `coroutines` version note above.
+kotlinx-coroutines-test = { group = "org.jetbrains.kotlinx", name = "kotlinx-coroutines-test", version.ref = "coroutines" }
 
 [plugins]
 android-application = { id = "com.android.application", version.ref = "agp" }

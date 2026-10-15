@@ -28,7 +28,7 @@ import net.klinik.rental.R
  *
  * @param context used only to resolve resources. Held weakly by nothing here —
  *   the caller owns its lifetime, so this must not outlive the Activity in
- *   practice; `KendaraanViewModel` receives one from `MainActivity`, which lives
+ *   practice; the ViewModels receive one from `MainActivity`, which lives
  *   exactly as long as the composition that created it.
  */
 class RStrings(private val context: Context) {
@@ -73,4 +73,58 @@ class RStrings(private val context: Context) {
 
     fun kendaraanErrorUnexpected(): String =
         context.getString(R.string.kendaraan_error_unexpected)
+
+    // -------------------------------------------------------------- Story 2.4
+
+    /** A saved renter's confirmation. Names the person so it is recognisable. */
+    fun penyewaSaved(name: String): String =
+        context.getString(R.string.penyewa_saved, name)
+
+    /**
+     * A name that is already stored by a *different* renter.
+     *
+     * The exception carries the *stored* name, not the one the owner typed.
+     * Matching here is exact rather than normalised — a plate has one canonical
+     * form and a person's name does not — so the two are the same string, and
+     * naming the stored value means the message points at a row that actually
+     * exists in the list behind the sheet.
+     */
+    fun penyewaErrorDuplicateName(name: String): String =
+        context.getString(R.string.penyewa_error_duplicate_name, name)
+
+    /**
+     * A blank or whitespace-only name.
+     *
+     * The wording is the shared required-field one rather than a renter-specific
+     * synonym: a blank name *is* a required field left empty, and two wordings
+     * for one class of fault is how a screen ends up saying less somewhere.
+     */
+    fun penyewaErrorBlankName(): String =
+        context.getString(R.string.penyewa_error_blank_name)
+
+    /**
+     * A blank phone number, and a blank emergency contact.
+     *
+     * Both resolve to the same wording, deliberately: they are one class of fault
+     * — a required number the owner did not supply — and the difference is which
+     * field the message lands on, not what it says. The field is chosen by
+     * `BlankRenterFieldException.field`, not by the copy.
+     */
+    fun penyewaErrorBlankPhone(): String =
+        context.getString(R.string.penyewa_error_blank_phone)
+
+    fun penyewaErrorBlankEmergency(): String =
+        context.getString(R.string.penyewa_error_blank_emergency)
+
+    /**
+     * A write that failed for a reason this screen does not model.
+     *
+     * Says nothing about what went wrong because nothing is known: naming a
+     * cause here would be a guess shown to the owner as fact. The epic context is
+     * explicit that a failed write must fail loudly rather than reset to
+     * defaults — data that disappears and looks like a fresh account is worse
+     * than a message that admits it does not know the reason.
+     */
+    fun penyewaErrorUnexpected(): String =
+        context.getString(R.string.penyewa_error_unexpected)
 }

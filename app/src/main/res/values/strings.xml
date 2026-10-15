@@ -193,4 +193,105 @@
     <string name="kendaraan_error_unexpected">Gagal menyimpan. Coba lagi.</string>
     <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
     <string name="kendaraan_saved">%1$s tersimpan</string>
+
+    <!--
+      Story 2.4 — Penyewa (renters).
+
+      The `penyewa_*` prefix mirrors `kendaraan_*` so a screen's whole copy set is
+      findable from its prefix. Same rule as the fleet block above: the repository
+      returns typed exceptions rather than text, so these are the only place the
+      copy for a refusal exists, and a screen cannot invent a second wording.
+    -->
+    <!-- Top bar -->
+    <string name="penyewa_title">Penyewa</string>
+    <!--
+      The renter count. Rendered as "N penyewa", which reads correctly in both
+      singular and plural Indonesian — the same reasoning as `kendaraan_count`.
+    -->
+    <string name="penyewa_count">%1$d penyewa</string>
+
+    <!-- Search -->
+    <!--
+      The three searchable fields, named in the same order the search matches
+      them. `kontak darurat` is deliberately absent: an emergency number is not
+      something an owner looks a renter up by.
+    -->
+    <string name="penyewa_search_placeholder">Cari nama, telepon, atau rekening</string>
+
+    <!-- List rows -->
+    <!--
+      The row subtitle is "%1$s %2$s" — the renter's own number and the emergency
+      contact. Both are always present, so there is no variant for a missing one.
+    -->
+    <string name="penyewa_row_subtitle">%1$s · Darurat %2$s</string>
+    <!--
+      The account badge. Rendered only when the owner recorded an account, so
+      there is no "-"/"kosong" variant — a badge naming absent data would be a
+      claim the database cannot support.
+    -->
+    <string name="penyewa_row_account">Rek %1$s</string>
+
+    <!-- Empty states -->
+    <!--
+      The AC names both halves: what is missing, and what to do about it. "Belum
+      ada Penyewa" is the state; the body is the instruction. A bare "no data"
+      reads as an error, which the epic context forbids.
+    -->
+    <string name="penyewa_empty_title">Belum ada Penyewa</string>
+    <string name="penyewa_empty_body">Tambahkan penyewa pertama untuk mulai mencatat sewa.</string>
+    <!--
+      A separate empty state for an empty *search result*. It names the query so
+      the owner can tell "nothing matched" from "nothing stored" — two situations
+      that need opposite actions.
+    -->
+    <string name="penyewa_empty_search_title">Tidak ada yang cocok</string>
+    <string name="penyewa_empty_search_body">Tidak ada penyewa untuk “%1$s”. Coba kata lain atau hapus pencarian.</string>
+
+    <!-- Actions -->
+    <string name="penyewa_add">Tambah Penyewa</string>
+    <string name="penyewa_edit">Ubah</string>
+    <!-- The row's edit affordance, spoken: names the person it belongs to. -->
+    <string name="penyewa_edit_description">Ubah %1$s</string>
+
+    <!-- Form sheet -->
+    <!--
+      Exactly four fields, in the order the owner reads them: who, how to reach
+      them, who to call in an emergency, where the money lands.
+    -->
+    <string name="penyewa_field_name">Nama lengkap</string>
+    <string name="penyewa_field_phone">Nomor telepon</string>
+    <string name="penyewa_field_emergency">Kontak darurat</string>
+    <string name="penyewa_field_bank_account">Nomor rekening (opsional)</string>
+    <!-- Hints, hidden by `KnField` until an error replaces them. -->
+    <string name="penyewa_name_hint">Nama yang dipakai di m-banking</string>
+    <string name="penyewa_bank_account_hint">Kosongkan jika dibayar tunai</string>
+    <string name="penyewa_save">Simpan Penyewa</string>
+    <string name="penyewa_cancel">Batal</string>
+
+    <!--
+      Validation and save refusals. Each names the fault *and* the fix, per the
+      epic context. The blank-name message is the shared `KnFieldError.Required`
+      one — a blank name is a required field left empty, so reusing it keeps one
+      wording for one class of fault instead of letting this screen invent a
+      synonym.
+    -->
+    <string name="penyewa_error_blank_name">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <!--
+      One wording for both contact fields, because they are the same class of
+      fault: a required number the owner did not supply. `Renter` refuses them
+      with the same typed exception shape as the name, and the message lands on
+      whichever field is actually empty.
+    -->
+    <string name="penyewa_error_blank_phone">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <string name="penyewa_error_blank_emergency">Wajib diisi. Isi kolom ini lalu kirim ulang.</string>
+    <!--
+      Raised as a typed exception by `RenterRepository` and given its words here.
+      `%1$s` is the stored name, so the owner knows which person to look at —
+      after normalisation-free matching it is the exact string already in the
+      list, not a re-spelling of what they typed.
+    -->
+    <string name="penyewa_error_duplicate_name">Nama %1$s sudah dipakai penyewa lain. Periksa lagi namanya.</string>
+    <string name="penyewa_error_unexpected">Gagal menyimpan. Coba lagi.</string>
+    <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
+    <string name="penyewa_saved">%1$s tersimpan</string>
 </resources>

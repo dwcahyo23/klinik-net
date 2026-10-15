@@ -89,5 +89,9 @@ dependencies {
     testImplementation(libs.androidx.test.ext.junit)
     testImplementation(platform(libs.androidx.compose.bom))
     testImplementation(libs.androidx.compose.ui.test.junit4)
+    // Story 2.4: `PenyewaViewModel` writes through `viewModelScope`, so testing
+    // the save path needs a dispatcher installed on Dispatchers.Main — without it
+    // every launch body queues forever and the AC assertions cannot be made.
+    testImplementation(libs.kotlinx.coroutines.test)
     debugImplementation(libs.androidx.compose.ui.test.manifest)
 }
