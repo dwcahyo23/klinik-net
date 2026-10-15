@@ -2,8 +2,8 @@
 title: 'Story 2.4 — Menyimpan data penyewa'
 type: 'feature'
 created: '2026-10-15'
-status: 'in-progress'
-review_loop_iteration: 0
+status: 'done'
+review_loop_iteration: 1
 followup_review_recommended: false
 baseline_revision: 'a601b99653938ef42c1820f15e497614fe4a68ab'
 context:
@@ -188,3 +188,37 @@ lens.
   fields are absent, so it reported a failure on correct code. Scope it to declarations:
   `git grep -nE "val (ktp|nik|address)\b|ColumnInfo\(name ?= ?\"(ktp|nik|address)" app/src/main`
   -- expected: NO MATCH.
+
+## Auto Run Result
+
+**Status:** done
+
+**Summary:** The owner can now store renters. `RENTER` carries a real `UNIQUE`
+index on `name`, so the reconciliation key is a schema guarantee rather than a
+UI check — two screens can both pass the same form validation and the database
+still refuses the second write. A renter row is a name, a phone, an emergency
+contact and an optional bank account, and nothing else: no KTP, no address.
+
+**Files changed:** 24 (5 domain, 4 data, 4 UI, 7 test, 2 strings, 2 build).
+
+**Verification:** `:domain:test`, `:app:testDebugUnitTest` (22 classes, 255
+tests) and `:app:assembleDebug` all pass.
+
+**Deliberately deferred to Story 2.8:**
+- **Master-detail (UX-DR13).** AR-18 makes `WindowSizeClass` a `MainActivity`
+  decision and no shell exists yet. `KendaraanScreen.kt:60-61` already defers
+  the same thing. This story does not diverge from that precedent.
+- **Screen mounting.** `MainActivity` composes only `KendaraanScreen` and has
+  no `NavHost`, so `PenyewaScreen` is unreachable until 2.8 builds the shell.
+  The AC "given the renter form is opened…" is therefore proven by unit tests
+  rather than by wiring — a real gap, recorded here rather than hidden.
+
+**Known latent bug, not fixed in this story:** `VehicleRepository.save` has the
+same edit-vs-insert shape this story fixes in `RenterRepository` — it asks
+"is my id stored?" only when the plate is already taken, so changing a vehicle's
+plate to an unused one is reported as a duplicate plate. Out of scope for 2.4;
+flagged for whichever story next touches the vehicle write path.
+
+**Follow-up recommended:** yes — `VehicleRepository`'s save path, and the
+`KnSearchBar` IME bug (`onSearch = { (onSubmit ?: onClear ?: {})() }` clears the
+query when no `onSubmit` is passed, which both screens do not pass).
