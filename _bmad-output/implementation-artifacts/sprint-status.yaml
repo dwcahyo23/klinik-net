@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-13-2026 12:57
-last_updated: 10-15-2026
+last_updated: 10-16-2026
 project: dev.klinik.net
 project_key: NOKEY
 tracking_system: file-system
@@ -50,7 +50,7 @@ development_status:
   2-2-menyimpan-armada-mobil: done
   2-3-melihat-status-ketersediaan-armada: done
   2-4-menyimpan-data-penyewa: done
-  2-5-membuka-kontrak-sewa: review
+  2-5-membuka-kontrak-sewa: done
   2-6-menandai-hari-tanpa-tagihan: backlog
   2-7-mengakhiri-kontrak-sewa: backlog
   epic-2-retrospective: optional
