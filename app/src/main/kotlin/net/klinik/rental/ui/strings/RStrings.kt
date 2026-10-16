@@ -127,4 +127,72 @@ class RStrings(private val context: Context) {
      */
     fun penyewaErrorUnexpected(): String =
         context.getString(R.string.penyewa_error_unexpected)
+
+    // -------------------------------------------------------------- Story 2.5
+
+    /**
+     * A saved contract's confirmation. Names the vehicle so it is recognisable —
+     * the plate is what the owner sees in the fleet list they just came from.
+     */
+    fun kontrakSaved(plate: String): String =
+        context.getString(R.string.kontrak_saved, plate)
+
+    /**
+     * A vehicle that already has an open contract.
+     *
+     * The exception carries the plate read back from the vehicle row, not the id
+     * the form held, so the message names a car that exists in the fleet list. The
+     * copy names both the fault and the fix: the car is out, and the way to free it
+     * is to end the running contract — which is Story 2.7's screen, and the message
+     * says so rather than leaving the owner to work it out.
+     */
+    fun kontrakErrorVehicleBusy(plate: String): String =
+        context.getString(R.string.kontrak_error_vehicle_busy, plate)
+
+    /**
+     * A renter who already has an open contract.
+     *
+     * The renter-side twin of [kontrakErrorVehicleBusy], and deliberately a
+     * separate sentence: "that car is already out" and "that person is already
+     * renting something" need different actions from the owner, and one wording for
+     * both would tell them less than the exception knows.
+     */
+    fun kontrakErrorRenterBusy(name: String): String =
+        context.getString(R.string.kontrak_error_renter_busy, name)
+
+    /**
+     * A zero or negative rate.
+     *
+     * The same wording the fleet screen uses, and no fallback figure is named
+     * anywhere in it: the prototype's `parseInt(x) || 250000` produced a plausible
+     * number, and telling the owner "we used Rp 250.000" would be inventing a price
+     * nobody agreed to. A contract is where that invention would be most expensive,
+     * because the frozen rate is what every later charge is computed from.
+     */
+    fun kontrakErrorRate(): String =
+        context.getString(R.string.kontrak_error_rate_zero)
+
+    /** An unpicked renter — a required selection left empty. */
+    fun kontrakErrorBlankRenter(): String =
+        context.getString(R.string.kontrak_error_blank_renter)
+
+    /** An unpicked vehicle, the same class of fault on the other picker. */
+    fun kontrakErrorBlankVehicle(): String =
+        context.getString(R.string.kontrak_error_blank_vehicle)
+
+    /** An unpicked start date. */
+    fun kontrakErrorBlankDate(): String =
+        context.getString(R.string.kontrak_error_blank_date)
+
+    /**
+     * A write that failed for a reason this screen does not model.
+     *
+     * Says nothing about what went wrong because nothing is known: naming a cause
+     * here would be a guess shown to the owner as fact. The epic context is explicit
+     * that a failed write must fail loudly rather than reset to defaults — data that
+     * disappears and looks like a fresh account is worse than a message that admits
+     * it does not know the reason.
+     */
+    fun kontrakErrorUnexpected(): String =
+        context.getString(R.string.kontrak_error_unexpected)
 }

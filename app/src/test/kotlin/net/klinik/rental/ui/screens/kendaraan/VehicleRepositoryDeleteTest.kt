@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.entity.ContractEntity
+import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.validation.VehicleHasActiveContractException
@@ -42,6 +43,15 @@ import java.time.LocalDate
  * The refusal is enforced by `onDelete = ForeignKey.RESTRICT` in the schema. A
  * fake DAO would have to re-implement that rule by hand, and a hand-written
  * implementation of the rule under test proves nothing about the real one.
+ *
+ * ## What Story 2.5 changed here
+ *
+ * The fixture contract used to be written through `VehicleDao.insertContract`, a
+ * seam Story 2.2 declared as a test-only stand-in for the contract DAO that did not
+ * exist yet. That DAO exists now, so the seam moved to `ContractDao` and this file's
+ * helper writes through it. The `ContractEntity` shape also widened: `renterId`,
+ * `dailyRate`, `restDay`, `endDate` and the two active columns are all required, and
+ * the renter is a real foreign key — so the fixture creates the renter row it names.
  */
 @RunWith(org.robolectric.RobolectricTestRunner::class)
 @Config(sdk = [34])
@@ -68,15 +78,7 @@ class VehicleRepositoryDeleteTest {
     @Test
     fun `a vehicle with an open contract cannot be deleted`() = runBlocking {
         repository.save(vehicle("B 1235 TF", id = "first"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                // `null` *is* "still running".
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = true)
 
         val error = assertThrows(VehicleHasActiveContractException::class.java) {
             runBlocking { repository.delete("first") }
@@ -114,14 +116,7 @@ class VehicleRepositoryDeleteTest {
     @Test
     fun `a vehicle with a closed contract is still protected by the foreign key`() = runBlocking {
         repository.save(vehicle("B 1235 TF", id = "first"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = LocalDate.of(2026, 10, 5),
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = false)
 
         assertThrows(IllegalStateException::class.java) {
             runBlocking { repository.delete("first") }
@@ -153,14 +148,7 @@ class VehicleRepositoryDeleteTest {
     fun `a rented vehicle does not block deleting a different vehicle`() = runBlocking {
         repository.save(vehicle("B 1235 TF", id = "rented"))
         repository.save(vehicle("B 9876 AB", id = "free"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "rented",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "rented", open = true)
 
         repository.delete("free")
 
@@ -193,14 +181,7 @@ class VehicleRepositoryDeleteTest {
     @Test
     fun `the foreign key refuses a delete even when the repository check is bypassed`() = runBlocking {
         repository.save(vehicle("B 1235 TF", id = "first"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = true)
 
         assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) {
             runBlocking { database.vehicleDao().deleteById("first") }
@@ -221,4 +202,58 @@ class VehicleRepositoryDeleteTest {
         color = "Hitam",
         dailyRate = 250_000L,
     )
+
+    /**
+     * Writes a contract row through `ContractDao`, creating the renter it names.
+     *
+     * Both active columns carry the vehicle's and the renter's id for an open
+     * contract and are `NULL` for an ended one — that is the shape
+     * `ContractEntity.init` pins together, so this builds a row the entity accepts
+     * and the constraint the test exercises is the foreign key's, not the entity's.
+     *
+     * @param open `true` writes `endDate = null` (still rented); `false` writes an
+     *   end date, which is the "finished contract still referencing the vehicle"
+     *   case the RESTRICT refusal also covers.
+     */
+    private suspend fun insertContract(id: String, vehicleId: String, open: Boolean) {
+        ensureRenter()
+        database.contractDao().insertContract(
+            ContractEntity(
+                id = id,
+                renterId = RENTER_ID,
+                vehicleId = vehicleId,
+                startDate = LocalDate.of(2026, 10, 1),
+                dailyRate = 250_000L,
+                restDay = null,
+                activeVehicleId = if (open) vehicleId else null,
+                activeRenterId = if (open) RENTER_ID else null,
+                endDate = if (open) null else LocalDate.of(2026, 10, 5),
+            ),
+        )
+    }
+
+    /**
+     * The renter every fixture contract names.
+     *
+     * `CONTRACT.renterId` carries `onDelete = ForeignKey.RESTRICT` as well, so a
+     * contract row cannot be written without a matching renter — the fixture has to
+     * create one rather than leaving the column dangling.
+     */
+    private suspend fun ensureRenter() {
+        if (database.renterDao().findById(RENTER_ID) == null) {
+            database.renterDao().insert(
+                RenterEntity(
+                    id = RENTER_ID,
+                    name = "Budi Santoso",
+                    phone = "08123456789",
+                    bankAccount = null,
+                    emergencyContact = "08129876543",
+                ),
+            )
+        }
+    }
+
+    private companion object {
+        const val RENTER_ID = "renter-1"
+    }
 }

@@ -6,6 +6,7 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.entity.ContractEntity
+import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.parse.normalizePlate
@@ -325,14 +326,7 @@ class VehicleRepositoryTest {
         repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
         assertTrue(repository.observeRentedPlates().first().isEmpty())
 
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = true)
 
         assertEquals(setOf("B 1235 TF"), repository.observeRentedPlates().first())
     }
@@ -341,14 +335,7 @@ class VehicleRepositoryTest {
     @Test
     fun `a vehicle with a closed contract is not rented`() = runBlocking {
         repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = LocalDate.of(2026, 10, 5),
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = false)
 
         assertTrue(repository.observeRentedPlates().first().isEmpty())
     }
@@ -392,14 +379,7 @@ class VehicleRepositoryTest {
     @Test
     fun `marking servis does not touch the contract row`() = runBlocking {
         repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = true)
 
         // The owner marks the car in service and saves it.
         repository.save(
@@ -415,7 +395,7 @@ class VehicleRepositoryTest {
             setOf("B 1235 TF"),
             repository.observeRentedPlates().first(),
         )
-        val contracts = database.vehicleDao().allContracts().first()
+        val contracts = database.contractDao().allContracts().first()
         assertEquals(1, contracts.size)
         assertEquals(null, contracts.single().endDate)
     }
@@ -431,14 +411,7 @@ class VehicleRepositoryTest {
         repository.save(
             vehicle("B 1235 TF", rate = 250_000L, id = "first").copy(isServis = true),
         )
-        database.vehicleDao().insertContract(
-            ContractEntity(
-                id = "contract-1",
-                vehicleId = "first",
-                startDate = LocalDate.of(2026, 10, 1),
-                endDate = null,
-            ),
-        )
+        insertContract(id = "contract-1", vehicleId = "first", open = true)
 
         // The owner un-marks the car and saves it.
         repository.save(
@@ -450,6 +423,108 @@ class VehicleRepositoryTest {
         // The open contract still reports the plate as rented, so the derived
         // status is `Tersewa`, not `Tersedia`.
         assertEquals(setOf("B 1235 TF"), repository.observeRentedPlates().first())
+    }
+
+    /**
+     * And the two SQL definitions of "open" **agree**, which nothing asserted until
+     * now.
+     *
+     * `VehicleDao.hasOpenContract` asks `endDate IS NULL`; the contract DAO's
+     * `findActiveByVehicleId` asks `activeVehicleId = :vehicleId`. They are the same
+     * condition only because `ContractEntity.init` pins the active columns to
+     * `endDate` — and they are the two halves of the one-active rule that live in
+     * different files, asked by different repositories. If they ever disagreed, the
+     * fleet screen would show a car as `Tersedia` while the contract screen refused to
+     * rent it, or the reverse, with each query individually correct.
+     *
+     * So every state a contract can be in is asserted against both, rather than
+     * assuming the pair. The open case, the ended case, and — the one that would
+     * actually drift — a row written by raw SQL bypassing the entity's guard, where
+     * the two are free to disagree and this is the test that would show it.
+     */
+    @Test
+    fun `the two SQL definitions of open agree in every contract state`() = runBlocking {
+        repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
+
+        // --- no contract at all: both say not-open ---
+        assertFalse(database.vehicleDao().hasOpenContract("first"))
+        assertNull(database.contractDao().findActiveByVehicleId("first"))
+
+        // --- an open contract: both say open ---
+        insertContract(id = "open", vehicleId = "first", open = true)
+        assertTrue(
+            "hasOpenContract and findActiveByVehicleId must agree on an open contract",
+            database.vehicleDao().hasOpenContract("first"),
+        )
+        assertNotNull(database.contractDao().findActiveByVehicleId("first"))
+
+        // --- and after it ends: both say not-open again ---
+        database.contractDao().update(
+            database.contractDao().findById("open")!!.copy(
+                activeVehicleId = null,
+                activeRenterId = null,
+                endDate = LocalDate.of(2026, 10, 5),
+            ),
+        )
+        assertFalse(
+            "hasOpenContract and findActiveByVehicleId must agree on an ended contract",
+            database.vehicleDao().hasOpenContract("first"),
+        )
+        assertNull(database.contractDao().findActiveByVehicleId("first"))
+    }
+
+    /**
+     * And a row whose active columns were written by **raw SQL** cannot even be read
+     * back, which is where the guard's real limit lies.
+     *
+     * This is the case the pair could genuinely drift on: `ContractEntity.init` is a
+     * Kotlin guard, not a SQL `CHECK`, so hand-written SQL *can* land a row where
+     * `endDate` is set while `activeVehicleId` still holds the slot. What the guard
+     * then does is refuse to materialise it — the DAO's query throws as it constructs
+     * the entity, rather than handing back a row whose two "open" definitions disagree.
+     *
+     * So the disagreement is not silently observable at all: it surfaces as a loud
+     * failure the moment anything reads the row. That is the honest statement of the
+     * limit — the guard protects every write this app makes *and* every read of a row
+     * it did not make — and asserting it is what stops the next reader assuming the
+     * schema enforces what only Kotlin does.
+     */
+    @Test
+    fun `a row raw SQL wrote cannot be read back through the DAO`() = runBlocking {
+        repository.save(vehicle("B 1235 TF", rate = 250_000L, id = "first"))
+        insertContract(id = "open", vehicleId = "first", open = true)
+
+        // Bypass the entity entirely: an end date is set, but the active column still
+        // holds the slot. Nothing in app/src/main can produce this row.
+        database.openHelper.writableDatabase.execSQL(
+            "UPDATE contract SET endDate = '2026-10-05' WHERE id = 'open'",
+        )
+
+        // The query that does not construct the entity still answers from the column
+        // it reads, and it says the slot is taken.
+        assertFalse(
+            "endDate IS NULL says this contract is no longer open",
+            database.vehicleDao().hasOpenContract("first"),
+        )
+
+        // And the query that *does* construct the entity refuses the row outright,
+        // rather than returning one whose two "open" definitions disagree.
+        val failure = runCatching {
+            database.contractDao().findActiveByVehicleId("first")
+        }.exceptionOrNull()
+
+        assertNotNull(
+            "an inconsistent row must fail loudly on read, not be returned",
+            failure,
+        )
+        assertTrue(
+            "expected the entity guard to refuse it, got ${failure!!::class.java.name}",
+            failure is IllegalArgumentException,
+        )
+        assertTrue(
+            "the refusal must name the column that disagreed",
+            failure.message!!.contains("activeVehicleId"),
+        )
     }
 
     // ------------------------------------------------------------------ helpers
@@ -471,6 +546,61 @@ class VehicleRepositoryTest {
         dailyRate = 250_000L,
         notes = null,
     )
+
+    /**
+     * Writes a contract row through `ContractDao`, creating the renter it names.
+     *
+     * The seam moved off `VehicleDao` in Story 2.5, when the contract DAO it stood
+     * in for was built, and the `ContractEntity` shape widened with it: `renterId`,
+     * `dailyRate`, `restDay` and the two active columns are all required now, and the
+     * renter is a real foreign key. Both active columns carry the vehicle's and the
+     * renter's id for an open contract and are `NULL` for an ended one — the shape
+     * `ContractEntity.init` pins together — so this builds a row the entity accepts.
+     *
+     * @param open `true` writes `endDate = null`, which is what `observeRentedPlates`
+     *   reads; `false` writes an end date, so the plate is available again.
+     */
+    private suspend fun insertContract(id: String, vehicleId: String, open: Boolean) {
+        ensureRenter()
+        database.contractDao().insertContract(
+            ContractEntity(
+                id = id,
+                renterId = RENTER_ID,
+                vehicleId = vehicleId,
+                startDate = LocalDate.of(2026, 10, 1),
+                dailyRate = 250_000L,
+                restDay = null,
+                activeVehicleId = if (open) vehicleId else null,
+                activeRenterId = if (open) RENTER_ID else null,
+                endDate = if (open) null else LocalDate.of(2026, 10, 5),
+            ),
+        )
+    }
+
+    /**
+     * The renter every fixture contract names.
+     *
+     * `CONTRACT.renterId` carries `onDelete = ForeignKey.RESTRICT` too, so a contract
+     * row cannot be written without a matching renter — the fixture creates one
+     * rather than leaving the column dangling.
+     */
+    private suspend fun ensureRenter() {
+        if (database.renterDao().findById(RENTER_ID) == null) {
+            database.renterDao().insert(
+                RenterEntity(
+                    id = RENTER_ID,
+                    name = "Budi Santoso",
+                    phone = "08123456789",
+                    bankAccount = null,
+                    emergencyContact = "08129876543",
+                ),
+            )
+        }
+    }
+
+    private companion object {
+        const val RENTER_ID = "renter-1"
+    }
 
     private fun vehicle(
         plate: String,

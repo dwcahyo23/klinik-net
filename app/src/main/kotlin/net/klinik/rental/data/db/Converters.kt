@@ -1,6 +1,7 @@
 package net.klinik.rental.data.db
 
 import androidx.room.TypeConverter
+import java.time.DayOfWeek
 import java.time.LocalDate
 
 /**
@@ -41,4 +42,34 @@ class Converters {
 
     @TypeConverter
     fun toLocalDate(value: String?): LocalDate? = value?.let(LocalDate::parse)
+
+    /**
+     * `DayOfWeek?` <-> `INTEGER`, for `CONTRACT.restDay`.
+     *
+     * ## Why an integer and not the enum's name
+     *
+     * [DayOfWeek.getValue] is 1 (Monday) through 7 (Sunday) — ISO-8601's own
+     * numbering, which is what `DayOfWeek.of` parses back. Storing the name
+     * instead would make the column a `TEXT` that sorts alphabetically
+     * (`FRIDAY < MONDAY`), and `ORDER BY restDay` is a plausible thing for a later
+     * screen to want. It would also put the enum's *spelling* in the database,
+     * where a rename in Kotlin becomes a silent data migration.
+     *
+     * ## Why the ordinal is deliberately not used
+     *
+     * `DayOfWeek.ordinal` is 0 (Monday) through 6 (Sunday) and `getValue` is 1
+     * through 7, so the two differ by one. `ordinal` is also documented as
+     * unstable across reorderings of the enum, while `getValue` is fixed by
+     * ISO-8601. Using the ISO value means the stored integer is a standard number
+     * rather than a Kotlin implementation detail.
+     *
+     * Null passes through in both directions: `null` rest day *is* the seven-day
+     * week, and it is a meaningful value rather than an absent one — which is why
+     * the column is nullable and why the entity records `DEFAULT NULL` for it.
+     */
+    @TypeConverter
+    fun fromDayOfWeek(value: DayOfWeek?): Int? = value?.value
+
+    @TypeConverter
+    fun toDayOfWeek(value: Int?): DayOfWeek? = value?.let(DayOfWeek::of)
 }

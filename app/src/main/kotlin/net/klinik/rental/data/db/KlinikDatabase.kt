@@ -7,6 +7,7 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import net.klinik.rental.data.db.dao.ContractDao
 import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.VehicleDao
 import net.klinik.rental.data.db.entity.ContractEntity
@@ -16,8 +17,10 @@ import net.klinik.rental.data.db.entity.VehicleEntity
 /**
  * The app's Room database.
  *
- * Three entities as of Story 2.4: `VEHICLE`, the minimum `CONTRACT` that makes
- * the vehicle-delete refusal enforceable, and `RENTER`.
+ * Three entities as of Story 2.5: `VEHICLE`, `RENTER`, and `CONTRACT` — the last
+ * of which is now the real record (renter, frozen daily rate, schedule) rather
+ * than the three placeholder columns Story 2.2 shipped to make the vehicle-delete
+ * refusal reachable.
  *
  * ## Why the version moves inside Epic 2
  *
@@ -41,7 +44,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
  */
 @Database(
     entities = [VehicleEntity::class, ContractEntity::class, RenterEntity::class],
-    version = 2,
+    version = 3,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -50,6 +53,8 @@ abstract class KlinikDatabase : RoomDatabase() {
     abstract fun vehicleDao(): VehicleDao
 
     abstract fun renterDao(): RenterDao
+
+    abstract fun contractDao(): ContractDao
 
     companion object {
         private const val NAME = "klinik.db"
@@ -109,6 +114,142 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v2 -> v3: `CONTRACT` becomes the real record — renter, frozen rate,
+         * schedule, and the two columns the one-active rule is enforced by.
+         *
+         * ## Why this rebuilds the table instead of altering it
+         *
+         * SQLite cannot add a foreign key with `ALTER TABLE`, so the moment
+         * `contract.renterId` must reference `renter` — and it must, exactly as
+         * `vehicleId` references `vehicle` — the table has to be recreated.
+         *
+         * Recreating it also settles the harder question about legacy rows. A v2
+         * `contract` row has no renter, no rate and no schedule, so there is no
+         * value that could be copied into the new required columns without
+         * producing a row that violates the v3 model: a `dailyRate` defaulted to
+         * `0` is refused by `ContractEntity.init`, and a `renterId` defaulted to
+         * `''` fails the foreign key. No such row can exist in production anyway —
+         * nothing in `app/src/main` has ever written a contract, and the test-only
+         * seam that could have was declared on `VehicleDao` and is now
+         * `ContractDao`'s. The owner's vehicles and renters are untouched, and
+         * `DatabaseMigrationTest` asserts they survive.
+         *
+         * ## What the statements below are, exactly
+         *
+         * They are what Room expects for [ContractEntity], written out rather than
+         * derived:
+         *
+         *  - column names are the Kotlin property names verbatim — no
+         *    `@ColumnInfo(name = …)` rename anywhere
+         *  - `startDate`, `restDay` and `endDate` are converted by `Converters`:
+         *    dates to ISO `yyyy-MM-dd` TEXT, `restDay` to `DayOfWeek.value`
+         *    INTEGER (1 = Monday .. 7 = Sunday)
+         *  - `dailyRate` is `INTEGER NOT NULL` — Room emits a `Long` as INTEGER
+         *  - every nullable column is declared `DEFAULT NULL`, not bare `TEXT` or
+         *    `INTEGER`. That is not decoration: each carries
+         *    `@ColumnInfo(defaultValue = "NULL")`, so Room's *compiled* schema
+         *    records a default of `NULL`, and Room compares recorded defaults when
+         *    it validates a migrated database. A bare declaration produces the same
+         *    nullability but records the default as undefined, and the migration is
+         *    refused wholesale with "Migration didn't properly handle: contract" —
+         *    which is the exact defect `MIGRATION_1_2` shipped with and had to be
+         *    fixed for
+         *  - both foreign keys are declared, with the same
+         *    `ON UPDATE CASCADE ON DELETE RESTRICT` Room derives from the entity's
+         *    `ForeignKey` declarations
+         *  - the four indexes are created separately under the names Room derives
+         *    from the `Index` declarations — `index_contract_vehicleId`,
+         *    `index_contract_renterId`, and the two `UNIQUE` ones
+         *    `index_contract_activeVehicleId` and `index_contract_activeRenterId`
+         *    that are the one-active rule itself
+         *
+         * No `--` comments appear inside these statements. A SQL line comment
+         * inside a Kotlin raw string reaches SQLite verbatim and swallows the rest
+         * of the statement, which surfaces as a bare `near "/": syntax error` with
+         * no line of this file named in it.
+         *
+         * Room validates the resulting schema against the compiled one when the
+         * migration runs, so a column or an index that does not match fails here
+         * rather than on the owner's device. `DatabaseMigrationTest` runs this
+         * against a real v2 database and asserts the fleet and the renters survive.
+         */
+        val MIGRATION_2_3 = object : Migration(2, 3) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                // ## Why this counts before it drops
+                //
+                // The argument for dropping rather than migrating the v2 rows is that
+                // no v2 row can satisfy the v3 model — see the KDoc above. That
+                // argument holds today, but a premise checked only by a grep gate is
+                // one refactor away from silently discarding the owner's rows, and
+                // losing data quietly is the one failure mode this app's whole design
+                // refuses. So the premise is asserted where it is acted on: if any row
+                // exists, this throws and the migration fails loudly, with the table
+                // untouched. A crash on open is recoverable and visible; a fleet whose
+                // contracts vanished is neither.
+                val existingRows = db.query("SELECT COUNT(*) FROM `contract`").use { cursor ->
+                    if (cursor.moveToFirst()) cursor.getInt(0) else 0
+                }
+                if (existingRows > 0) {
+                    throw IllegalStateException(
+                        "MIGRATION_2_3 refuses to drop $existingRows existing contract " +
+                            "row(s): the rebuild assumes no v2 row can satisfy the v3 " +
+                            "model, and that assumption is now false. Migrate them " +
+                            "explicitly instead of dropping the table.",
+                    )
+                }
+
+                // The old table has no renter, no rate and no schedule, and no row
+                // in it can satisfy the v3 model — asserted above, not assumed. The
+                // drop also removes the v2 `index_contract_vehicleId`, which is
+                // recreated below in its v3 form.
+                db.execSQL("DROP TABLE IF EXISTS `contract`")
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `contract` (
+                        `id` TEXT NOT NULL,
+                        `renterId` TEXT NOT NULL,
+                        `vehicleId` TEXT NOT NULL,
+                        `startDate` TEXT NOT NULL,
+                        `dailyRate` INTEGER NOT NULL,
+                        `restDay` INTEGER DEFAULT NULL,
+                        `activeVehicleId` TEXT DEFAULT NULL,
+                        `activeRenterId` TEXT DEFAULT NULL,
+                        `endDate` TEXT DEFAULT NULL,
+                        PRIMARY KEY (`id`),
+                        FOREIGN KEY (`renterId`) REFERENCES `renter` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT,
+                        FOREIGN KEY (`vehicleId`) REFERENCES `vehicle` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT
+                    )
+                    """.trimIndent(),
+                )
+
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_contract_vehicleId` " +
+                        "ON `contract` (`vehicleId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_contract_renterId` " +
+                        "ON `contract` (`renterId`)",
+                )
+                // The one-active rule. Plain UNIQUE indexes over nullable columns
+                // rather than partial indexes, because Room cannot express a
+                // partial index — see `ContractEntity`'s KDoc. SQLite treats NULLs
+                // as distinct in a unique index, so any number of ended contracts
+                // may sit here while at most one open one does.
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_contract_activeVehicleId` " +
+                        "ON `contract` (`activeVehicleId`)",
+                )
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_contract_activeRenterId` " +
+                        "ON `contract` (`activeRenterId`)",
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -127,7 +268,7 @@ abstract class KlinikDatabase : RoomDatabase() {
             Room.databaseBuilder(context, KlinikDatabase::class.java, NAME)
                 // Every schema change ships its migration here. No
                 // `fallbackToDestructiveMigration` — see the class KDoc.
-                .addMigrations(MIGRATION_1_2)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
                 .build()
     }
 }

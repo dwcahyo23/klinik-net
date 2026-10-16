@@ -294,4 +294,131 @@
     <string name="penyewa_error_unexpected">Gagal menyimpan. Coba lagi.</string>
     <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
     <string name="penyewa_saved">%1$s tersimpan</string>
+
+    <!--
+      Story 2.5 — Kontrak (rental contracts).
+
+      The `kontrak_*` prefix mirrors `kendaraan_*` and `penyewa_*` so a screen's
+      whole copy set is findable from its prefix. Same rule as the two blocks
+      above: the repository returns typed exceptions rather than text, so these are
+      the only place the copy for a refusal exists, and a screen cannot invent a
+      second wording that says less.
+    -->
+    <!-- Top bar -->
+    <string name="kontrak_title">Kontrak</string>
+    <!--
+      The contract count. Rendered as "N kontrak", which reads correctly in both
+      singular and plural Indonesian — the same reasoning as `kendaraan_count`.
+    -->
+    <string name="kontrak_count">%1$d kontrak</string>
+
+    <!-- List rows -->
+    <!--
+      The row subtitle is "%1$s · %2$s" — the renter and the plate, which are the
+      two facts that identify a contract. The rate and the start date are the
+      trailing and leading values rather than part of this line.
+    -->
+    <string name="kontrak_row_subtitle">%1$s · %2$s</string>
+    <!--
+      The schedule badge on a row. `Libur Min` for a six-day week — derived from the
+      stored rest day rather than stored beside it, so the two cannot disagree. A
+      seven-day contract shows `kontrak_schedule_seven` instead, which is a label
+      for the absence of a rest day rather than a second stored value.
+    -->
+    <string name="kontrak_row_rest_day">Libur %1$s</string>
+
+    <!-- Empty states -->
+    <!--
+      The AC names both halves: what is missing, and what to do about it. "Belum
+      ada Kontrak" is the state; the body is the instruction. A bare "no data"
+      reads as an error, which the epic context forbids. There is one empty state
+      and not two, because there is no search bar to produce an empty *result*.
+    -->
+    <string name="kontrak_empty_title">Belum ada Kontrak</string>
+    <string name="kontrak_empty_body">Buka kontrak pertama untuk mulai mencatat sewa.</string>
+
+    <!-- Actions -->
+    <string name="kontrak_add">Buka Kontrak</string>
+    <!--
+      The row's affordance, spoken. Names *both* halves of what identifies a rental —
+      who and which car — because the plate alone would be read twice (once here and
+      once as the subtitle) and the renter never. Story 2.7 owns editing and ending a
+      contract, so this names the row rather than promising an action that does not
+      exist yet.
+    -->
+    <string name="kontrak_row_description">Kontrak %1$s dengan %2$s</string>
+
+    <!-- Form sheet -->
+    <string name="kontrak_field_renter">Penyewa</string>
+    <string name="kontrak_field_vehicle">Mobil</string>
+    <string name="kontrak_field_start_date">Tanggal mulai</string>
+    <string name="kontrak_field_rate">Tarif harian</string>
+    <!-- The rate field carries `Rp` as an affix; the numpad carries its own. -->
+    <string name="kontrak_rate_affix">Rp</string>
+    <!--
+      The schedule picker. Two chips rather than the epic context's `workSchedule`
+      string, because `restDay` already expresses both schedules: seven days is a
+      null rest day, six days is one. See the story's design note.
+    -->
+    <string name="kontrak_schedule_label">Jadwal sewa</string>
+    <string name="kontrak_schedule_six">6 hari</string>
+    <string name="kontrak_schedule_seven">7 hari</string>
+    <string name="kontrak_rest_day_label">Hari libur</string>
+    <string name="kontrak_rest_day_hint">Satu hari per minggu tanpa tagihan.</string>
+    <!--
+      The rest-day chips carry no `kontrak_day_*` strings. The seven abbreviations
+      live in one place — `Rupiah.kt`'s weekday table, read through
+      `DayOfWeek.shortLabel()` — because the `Libur Min` badge and every date on this
+      screen render the same seven words, and two lists of them on one screen is how
+      a chip and the badge beside it end up naming different days.
+    -->
+
+    <!-- Pickers -->
+    <string name="kontrak_picker_renter_title">Pilih penyewa</string>
+    <string name="kontrak_picker_vehicle_title">Pilih mobil</string>
+    <!--
+      Per-picker empty copy, naming what is missing *and* where to add it. One
+      sentence for both pickers would tell the owner neither which list is empty nor
+      what to do about it — and an empty picker is exactly the state where both
+      matter, because the fix is on a different screen.
+    -->
+    <string name="kontrak_picker_empty_renter">Belum ada penyewa. Tambahkan penyewa dulu di layar Penyewa.</string>
+    <string name="kontrak_picker_empty_vehicle">Belum ada mobil. Tambahkan mobil dulu di layar Armada.</string>
+    <!-- The read-only field's placeholder before anything is picked. -->
+    <string name="kontrak_picker_renter_hint">Ketuk untuk memilih penyewa</string>
+    <string name="kontrak_picker_vehicle_hint">Ketuk untuk memilih mobil</string>
+
+    <!-- Date picker -->
+    <string name="kontrak_date_hint">Ketuk untuk memilih tanggal</string>
+    <string name="kontrak_date_confirm">Pilih</string>
+    <string name="kontrak_date_dismiss">Batal</string>
+
+    <!-- Hints, hidden by `KnField` until an error replaces them. -->
+    <string name="kontrak_rate_hint">Ketik di keypad angka di bawah</string>
+    <string name="kontrak_save">Simpan Kontrak</string>
+    <string name="kontrak_cancel">Batal</string>
+
+    <!--
+      Validation and save refusals. Each names the fault *and* the fix, per the
+      epic context.
+
+      The blank-selection messages are the shared required-field wording rather
+      than screen-specific synonyms — an unpicked renter *is* a required field left
+      empty — which keeps one wording for one class of fault.
+    -->
+    <string name="kontrak_error_blank_renter">Wajib diisi. Pilih penyewa lalu kirim ulang.</string>
+    <string name="kontrak_error_blank_vehicle">Wajib diisi. Pilih mobil lalu kirim ulang.</string>
+    <string name="kontrak_error_blank_date">Wajib diisi. Pilih tanggal mulai lalu kirim ulang.</string>
+    <string name="kontrak_error_rate_zero">Tarif harian harus lebih dari nol. Ketik angka di keypad lalu simpan.</string>
+    <!--
+      Raised as a typed exception by `ContractRepository` and given its words here.
+      `%1$s` is the blocking plate or person, so the owner knows which one to fix —
+      and it is read back from the row that holds the slot rather than echoed from
+      the input, so the message names something that exists in the list.
+    -->
+    <string name="kontrak_error_vehicle_busy">%1$s masih tersewa. Akhiri kontraknya dulu sebelum membuka yang baru.</string>
+    <string name="kontrak_error_renter_busy">%1$s masih menyewa mobil lain. Akhiri kontraknya dulu sebelum membuka yang baru.</string>
+    <string name="kontrak_error_unexpected">Gagal menyimpan. Coba lagi.</string>
+    <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
+    <string name="kontrak_saved">Kontrak %1$s tersimpan</string>
 </resources>

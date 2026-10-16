@@ -6,7 +6,6 @@ import androidx.room.OnConflictStrategy
 import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
-import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 
 /**
@@ -23,6 +22,15 @@ import net.klinik.rental.data.db.entity.VehicleEntity
  *
  * Note what is *absent*: there is no `status` column, no `currentRenterId`, and
  * no `updateStatus`. There is no query here that could set one.
+ *
+ * ## Why the contract writes are not here
+ *
+ * Story 2.2 declared a contract write and a contract read on this DAO as an
+ * explicit test-only stand-in for the contract DAO that did not exist yet. Story
+ * 2.5 builds that DAO, so both moved to `ContractDao` and this file no longer
+ * imports `ContractEntity` at all — one table, one owner. The contract *reads*
+ * below stay, because `tersewa` is a question about a vehicle and the status
+ * derivation that asks it lives in this file's repository.
  */
 @Dao
 interface VehicleDao {
@@ -130,27 +138,4 @@ interface VehicleDao {
      */
     @Query("DELETE FROM vehicle WHERE id = :id")
     suspend fun deleteById(id: String): Int
-
-    /**
-     * Writes the minimum contract that makes the delete refusal testable.
-     *
-     * Test-only in practice — Story 2.5 opens contracts through its own
-     * repository — but it belongs on this DAO rather than in a test's raw SQL,
-     * so the foreign key and the `ContractEntity` shape are exercised the same
-     * way production would exercise them.
-     */
-    @Insert(onConflict = OnConflictStrategy.ABORT)
-    suspend fun insertContract(contract: ContractEntity)
-
-    /**
-     * Every contract row, as a [Flow], in a stable order.
-     *
-     * Read-only observation used to assert contract-row invariants — Story 2.3's
-     * "marking servis leaves the contract row byte-for-byte untouched" test
-     * queries through this, and a later story can rely on the same stable order
-     * when it adds its own invariants. `startDate` is ISO `yyyy-MM-dd` TEXT, so
-     * lexicographic order equals chronological order; `id` breaks the tie.
-     */
-    @Query("SELECT * FROM contract ORDER BY startDate ASC, id ASC")
-    fun allContracts(): Flow<List<ContractEntity>>
 }

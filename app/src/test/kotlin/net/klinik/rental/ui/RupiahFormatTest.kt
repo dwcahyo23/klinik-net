@@ -3,12 +3,16 @@ package net.klinik.rental.ui
 import net.klinik.rental.ui.format.formatHariTanggal
 import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.format.formatRupiahDigits
+import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.ui.format.formatTanggalHari
+import net.klinik.rental.ui.format.shortLabel
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Assert.assertThrows
 import org.junit.Test
+import java.time.DayOfWeek
+import java.time.LocalDate
 
 /**
  * The money-formatting edge cases from the story's I/O matrix, plus the
@@ -177,6 +181,158 @@ class RupiahFormatTest {
         assertEquals("Sel", formatHariTanggal(2))
         assertEquals("Min", formatHariTanggal(0))
         assertEquals("Sab", formatHariTanggal(6))
+    }
+
+    // ---- the LocalDate entry points, added by Story 2.5 ----
+
+    /**
+     * The contract list's date is the **month** form and carries the month.
+     *
+     * ## Why the month is the thing under test
+     *
+     * The list's job is telling one rental from another. A weekday alone cannot: two
+     * rentals begun on the 23rd of different months both render `23 Jum`, which is
+     * not a date the owner can act on. So `formatTanggalBulan` composes the month
+     * form, and the pair below — same day, different months — is the case a weekday
+     * format collapses into one string.
+     */
+    @Test
+    fun `a LocalDate renders as day plus the Indonesian month`() {
+        assertEquals("1 Okt", formatTanggalBulan(LocalDate.of(2026, 10, 1)))
+        assertEquals("23 Okt", formatTanggalBulan(LocalDate.of(2026, 10, 23)))
+        assertEquals("1 Des", formatTanggalBulan(LocalDate.of(2026, 12, 1)))
+        assertEquals("9 Sep", formatTanggalBulan(LocalDate.of(2026, 9, 9)))
+        assertEquals("31 Agu", formatTanggalBulan(LocalDate.of(2026, 8, 31)))
+        assertEquals("5 Mei", formatTanggalBulan(LocalDate.of(2026, 5, 5)))
+    }
+
+    /**
+     * And two rentals begun on the same day of different months are distinguishable —
+     * the property the weekday form could not provide, and the reason the list uses
+     * this one.
+     */
+    @Test
+    fun `the same day of different months renders differently`() {
+        val august = formatTanggalBulan(LocalDate.of(2026, 8, 23))
+        val october = formatTanggalBulan(LocalDate.of(2026, 10, 23))
+
+        assertEquals("23 Agu", august)
+        assertEquals("23 Okt", october)
+        assertFalse(
+            "two rentals begun on the 23rd of different months must not collide",
+            august == october,
+        )
+    }
+
+    /**
+     * January is the boundary of the month decomposition: the list is zero-based and
+     * `Month` is one-based, so `monthValue - 1` is the only conversion, and an
+     * off-by-one there would render every date one month early — or throw on
+     * December, which indexes past the end.
+     */
+    @Test
+    fun `January and December are the boundaries of the month decomposition`() {
+        assertEquals("1 Jan", formatTanggalBulan(LocalDate.of(2026, 1, 1)))
+        assertEquals("31 Des", formatTanggalBulan(LocalDate.of(2026, 12, 31)))
+    }
+
+    /**
+     * The `LocalDate` weekday form — the renamed function, under the weekday name
+     * rather than the month one.
+     *
+     * ## Why the `% 7` is the thing under test
+     *
+     * `formatHariTanggal` is indexed Monday-is-1 / Sunday-is-0, which is
+     * `DayOfWeek.value % 7` — `value` is ISO-8601's 1..7 with `SUNDAY` as 7. Sunday is
+     * therefore the one day the two numbering schemes disagree about, and a conversion
+     * that forgot the wrap would index 7 into a seven-element list and throw. Every day
+     * of a week is asserted, so a wrong conversion cannot pass by landing on a day that
+     * happens to be right.
+     */
+    @Test
+    fun `a LocalDate renders as day plus the Indonesian weekday`() {
+        // 2026-10-01 is a Thursday.
+        assertEquals("1 Kam", formatHariTanggal(LocalDate.of(2026, 10, 1)))
+        assertEquals("2 Jum", formatHariTanggal(LocalDate.of(2026, 10, 2)))
+        assertEquals("3 Sab", formatHariTanggal(LocalDate.of(2026, 10, 3)))
+        assertEquals("4 Min", formatHariTanggal(LocalDate.of(2026, 10, 4)))
+        assertEquals("5 Sen", formatHariTanggal(LocalDate.of(2026, 10, 5)))
+        assertEquals("6 Sel", formatHariTanggal(LocalDate.of(2026, 10, 6)))
+        assertEquals("7 Rab", formatHariTanggal(LocalDate.of(2026, 10, 7)))
+    }
+
+    /**
+     * Sunday is the boundary of the two numbering schemes, so it is asserted against
+     * a date far from the others as well — a conversion that wrapped the wrong way
+     * could pass one week's worth of dates by accident.
+     */
+    @Test
+    fun `Sunday is the day the two numbering schemes disagree about`() {
+        // 2020-01-05 and 2026-10-04 are both Sundays.
+        assertEquals("5 Min", formatHariTanggal(LocalDate.of(2020, 1, 5)))
+        assertEquals("4 Min", formatHariTanggal(LocalDate.of(2026, 10, 4)))
+    }
+
+    /**
+     * And the two `LocalDate` forms render **different** formats under different names
+     * — the defect that made one name produce two strings.
+     *
+     * The same date is put through both, and the two outputs are asserted to differ.
+     * A rename that accidentally left the weekday form under the month name, or the
+     * reverse, fails here.
+     */
+    @Test
+    fun `the two LocalDate forms differ and carry different information`() {
+        val date = LocalDate.of(2026, 10, 23)
+
+        assertEquals("23 Okt", formatTanggalBulan(date))
+        assertEquals("23 Jum", formatHariTanggal(date))
+        assertFalse(
+            "the month form and the weekday form must not render the same string",
+            formatTanggalBulan(date) == formatHariTanggal(date),
+        )
+    }
+
+    /**
+     * The weekday abbreviation for a `DayOfWeek`, which is what the rest-day chips and
+     * the `Libur Min` badge render.
+     */
+    @Test
+    fun `a DayOfWeek renders as its Indonesian abbreviation`() {
+        assertEquals("Sen", DayOfWeek.MONDAY.shortLabel())
+        assertEquals("Sel", DayOfWeek.TUESDAY.shortLabel())
+        assertEquals("Rab", DayOfWeek.WEDNESDAY.shortLabel())
+        assertEquals("Kam", DayOfWeek.THURSDAY.shortLabel())
+        assertEquals("Jum", DayOfWeek.FRIDAY.shortLabel())
+        assertEquals("Sab", DayOfWeek.SATURDAY.shortLabel())
+        assertEquals("Min", DayOfWeek.SUNDAY.shortLabel())
+    }
+
+    /**
+     * And the abbreviation agrees with the int-indexed table for every day — the
+     * `value % 7` conversion is the only thing that could make them disagree.
+     */
+    @Test
+    fun `the abbreviation agrees with the indexed table for every day`() {
+        DayOfWeek.entries.forEach { day ->
+            assertEquals(
+                "shortLabel must be the same table, indexed the same way, for $day",
+                formatHariTanggal(day.value % 7),
+                day.shortLabel(),
+            )
+        }
+    }
+
+    /** No `LocalDate` can produce an out-of-range index, so neither entry point throws. */
+    @Test
+    fun `every day of a year renders without throwing`() {
+        var date = LocalDate.of(2026, 1, 1)
+        while (date.year == 2026) {
+            formatTanggalBulan(date)
+            formatHariTanggal(date)
+            date.dayOfWeek.shortLabel()
+            date = date.plusDays(1)
+        }
     }
 
     /**
