@@ -25,6 +25,12 @@ local.properties
 .cxx/
 captures/
 
+# Gradle's Kotlin plugin also emits a `bin/` tree beside `src/` - compiled classes
+# plus a verbatim copy of every source file. `.gitignore` covers `build/` but not
+# `bin/`, so it surfaced as 34 untracked files byte-identical to `src/`. A change
+# there is a change here, so committing it would fork the source.
+bin/
+
 *.apk
 *.aab
 *.dex
