@@ -251,9 +251,26 @@ has no entry, and that absence is the failure a reviewer sees first.
 - `git grep -nE "isLoading" app/src/main --files-with-matches` -- expected: all three `*UiState.kt` files. A screen that kept its "deliberately no `isLoading`" KDoc unchanged is a screen whose AC was skipped.
 - `git grep -rn "Story 2.8's contract\|deliberately excludes skeletons\|no skeleton" app/src/main --files-with-matches` -- expected: NO MATCH -- the three deferral comments are what this story discharges, so surviving ones mean the sentence now points at a shipped thing.
 
-**Manual checks (if no CLI):**
-- Run the app on the Redmi Pad 2 target in both orientations and confirm the rail and bottom nav swap over the same content, and that all three destinations open.
-- Confirm a long-press-free rotation mid-form keeps the form sheet and its half-typed digits.
+**Manual checks — DEFERRED to the end of Epic 2, by owner's decision:**
+
+- Run the app on the Redmi Pad 2 target in both orientations and confirm the rail and
+  bottom nav swap over the same content, and that all three destinations open.
+- Confirm a rotation mid-form keeps the form sheet and its half-typed digits.
+
+  **Why deferred, and what it costs.** These need the device; every automated gate in this
+  spec passes. Deferring is not the same as verified, and the exposure is named rather than
+  left implied: both claims rest on structure the tests cannot execute. The rail/bottom-nav
+  swap is `AppShell`'s two branches over one `NavHost`, which `AppShellTest` proves by
+  passing `isLandscape` explicitly in both directions — the production default that
+  `MainActivity` actually takes is exercised by two qualifier-driven tests, not by a real
+  rotation. The form surviving rotation rests on the form living in an Activity-scoped
+  ViewModel, which `MainActivity.kt:47-61` documents and no test asserts; a
+  destination-scoped ViewModel would pass the whole suite and lose the owner's typing.
+
+  **Where to do it.** The Epic 2 retrospective, on a Redmi Pad 2, with the three
+  destinations reachable — that is the first point at which all of Epic 2's screens
+  (including 2.6 and 2.7, which are still backlog) exist to be checked together, and a
+  rotation bug found here would be found with 2.6/2.7 in hand rather than in isolation.
 
 ## Spec Change Log
 
