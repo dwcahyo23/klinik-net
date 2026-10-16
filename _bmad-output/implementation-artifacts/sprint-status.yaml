@@ -46,7 +46,7 @@ development_status:
 
   epic-2: in-progress
   2-1-design-system-dan-komponen-inti-yang-dipakai-semua-layar-ber: done
-  2-8-empat-state-setiap-layar-dan-prinsip-yang-tidak-bisa-dilangg: backlog
+  2-8-empat-state-setiap-layar-dan-prinsip-yang-tidak-bisa-dilangg: done
   2-2-menyimpan-armada-mobil: done
   2-3-melihat-status-ketersediaan-armada: done
   2-4-menyimpan-data-penyewa: done

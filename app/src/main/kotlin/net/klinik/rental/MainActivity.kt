@@ -17,10 +17,14 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.db.KlinikDatabase
+import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
-import net.klinik.rental.ui.screens.kendaraan.KendaraanScreen
 import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
-import net.klinik.rental.ui.screens.kendaraan.VehicleFormSheet
+import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
+import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
+import net.klinik.rental.ui.shell.AppShell
+import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
@@ -37,19 +41,26 @@ import java.time.LocalDate
 class MainActivity : ComponentActivity() {
 
     /**
-     * The fleet screen's ViewModel.
+     * The three ViewModels, one per destination.
      *
      * Constructed by hand rather than by a DI container because there is no
-     * container yet: one Activity, one screen, one repository. `by viewModels()`
-     * scopes it to the Activity, so a rotation keeps the query, the filter and
+     * container yet: one Activity, one shell, three repositories. `by viewModels()`
+     * scopes each to the Activity, so a rotation keeps the query, the filter and
      * any half-typed form input — which is why the form state is held in the
-     * ViewModel rather than in a `remember` inside the sheet.
+     * ViewModel rather than in a `remember` inside the sheet. That is what makes
+     * `ROTATION_WITH_HALF_FORM` hold.
      *
-     * The factory is a lambda so `KlinikDatabase.get` is not called until the
-     * ViewModel is actually constructed; `by viewModels` may evaluate its
-     * factory argument during `onCreate`, and the database touches disk.
+     * The factories are lambdas so `KlinikDatabase.get` is not called until a
+     * ViewModel is actually constructed; `by viewModels` may evaluate its factory
+     * argument during `onCreate`, and the database touches disk.
+     *
+     * Activity-scoped rather than destination-scoped on purpose: a ViewModel
+     * scoped to a nav back-stack entry would be destroyed when the owner
+     * navigates away, taking a refusal message with it. `BANNER_SCOPED_TO_RAISER`
+     * is the acknowledged limit of that choice — the message survives the
+     * destination change but stays attached to its own screen's ViewModel.
      */
-    private val viewModel: KendaraanViewModel by viewModels {
+    private val kendaraanViewModel: KendaraanViewModel by viewModels {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
@@ -57,20 +68,40 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val penyewaViewModel: PenyewaViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createPenyewaViewModel(applicationContext) as T
+        }
+    }
+
+    private val kontrakViewModel: KontrakViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createKontrakViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
 
-        // The desugaring tripwire — see the class KDoc.
+        // The desugaring tripwire — see the class KDoc. Bound to a name rather than
+        // called and discarded so the call cannot be "cleaned up" as dead code: the
+        // crash it produces on a build that lost core-library desugaring is the
+        // whole point of the line.
+        @Suppress("UNUSED_VARIABLE")
         val today = LocalDate.now()
 
         setContent {
             KlinikNetTheme(darkTheme = isSystemInDarkTheme()) {
-                // The date is passed in rather than read here so this composable
-                // stays free of a clock: "today" is the domain `Clock`'s job, and
-                // a UI-layer `LocalDate.now()` would be a second source of truth
-                // that a test could not pin.
-                KlinikNetApp(today = today, viewModel = viewModel)
+                KlinikNetApp(
+                    kendaraan = kendaraanViewModel,
+                    penyewa = penyewaViewModel,
+                    kontrak = kontrakViewModel,
+                )
             }
         }
     }
@@ -90,51 +121,121 @@ internal fun createKendaraanViewModel(context: Context): KendaraanViewModel {
     )
 }
 
+/** The renters' ViewModel over the same singleton. See [createKendaraanViewModel]. */
+internal fun createPenyewaViewModel(context: Context): PenyewaViewModel {
+    val database = KlinikDatabase.get(context)
+    return PenyewaViewModel(
+        // `RenterRepository` takes only its DAO — it has no multi-row write that
+        // needs `withTransaction`, so it never needed the database handle. Adding
+        // a nullable parameter here to match its siblings would be a parameter
+        // nothing uses.
+        repository = RenterRepository(database.renterDao()),
+        strings = RStrings(context),
+    )
+}
+
 /**
- * The app's single screen: the vehicle fleet (Story 2.2).
+ * The contracts' ViewModel, which reads three repositories because a contract row
+ * carries neither a name nor a plate — the list joins them in Kotlin, and the
+ * form's pickers need the whole renter and vehicle set.
+ */
+internal fun createKontrakViewModel(context: Context): KontrakViewModel {
+    val database = KlinikDatabase.get(context)
+    val strings = RStrings(context)
+    return KontrakViewModel(
+        contracts = ContractRepository(database.contractDao(), database),
+        renters = RenterRepository(database.renterDao()),
+        vehicles = VehicleRepository(database.vehicleDao(), database),
+        strings = strings,
+    )
+}
+
+/**
+ * The app shell: one graph, a rail in landscape and a bottom nav in portrait.
  *
- * Stateless by design — everything rendered comes from `KendaraanUiState` and
- * every action goes back through the ViewModel, so a Robolectric test can drive
- * the whole screen with a hand-built state and no database at all.
+ * Stateless by design — every screen is driven from its own `UiState` and every
+ * action goes back through a ViewModel, so a Robolectric test can drive the whole
+ * shell with hand-built state and no database at all.
  *
- * The ViewModel is a parameter rather than read from an enclosing Activity
+ * The ViewModels are parameters rather than read from an enclosing Activity
  * because this is a top-level composable: a private composable *member* would
- * reach it, and coupling the screen to the Activity is exactly the dependency a
+ * reach them, and coupling the shell to the Activity is exactly the dependency a
  * test then cannot supply.
+ *
+ * There is deliberately no `today` parameter and no clock in this function. It
+ * used to take a `LocalDate` that nothing read — "today" belongs to the domain
+ * `Clock`, and a UI-layer `LocalDate.now()` would be a second source of truth no
+ * test could pin. The desugaring tripwire is the one place `LocalDate.now()` is
+ * still called, and it stays in `onCreate` above: if that config is ever lost, it
+ * should crash visibly at startup rather than quietly here.
+ *
+ * This function collects the three screens' flows and hands the results to
+ * [AppShell] as one [Screens]. Collection lives here, at the Activity boundary,
+ * rather than inside the shell — the shell must not hold a ViewModel, or a test
+ * would have to construct three of them to render one nav bar.
  */
 @Composable
 private fun KlinikNetApp(
-    today: LocalDate,
-    viewModel: KendaraanViewModel,
+    kendaraan: KendaraanViewModel,
+    penyewa: PenyewaViewModel,
+    kontrak: KontrakViewModel,
 ) {
-    val state by viewModel.uiState.collectAsStateWithLifecycle()
-    val snackbar by viewModel.snackbarMessage.collectAsStateWithLifecycle()
+    val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
+    val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
+    val penyewaState by penyewa.uiState.collectAsStateWithLifecycle()
+    val penyewaSnackbar by penyewa.snackbarMessage.collectAsStateWithLifecycle()
+    val kontrakState by kontrak.uiState.collectAsStateWithLifecycle()
+    val kontrakSnackbar by kontrak.snackbarMessage.collectAsStateWithLifecycle()
+    val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
+    val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
         color = MaterialTheme.knColors.bgPage,
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
-        KendaraanScreen(
-            state = state,
-            onQueryChange = viewModel::onQueryChange,
-            onFilterChange = viewModel::onFilterChange,
-            onClearQuery = viewModel::clearQuery,
-            onAdd = viewModel::openAddForm,
-            onEdit = viewModel::openEditForm,
-            snackbarMessage = snackbar,
-            onSnackbarDismiss = viewModel::consumeMessage,
+        AppShell(
+            screens = Screens(
+                kendaraan = Screens.Kendaraan(
+                    state = kendaraanState,
+                    snackbarMessage = kendaraanSnackbar,
+                    onQueryChange = kendaraan::onQueryChange,
+                    onFilterChange = kendaraan::onFilterChange,
+                    onClearQuery = kendaraan::clearQuery,
+                    onAdd = kendaraan::openAddForm,
+                    onEdit = kendaraan::openEditForm,
+                    onCloseForm = kendaraan::closeForm,
+                    onFormChange = kendaraan::onFormChange,
+                    onSave = kendaraan::saveForm,
+                    onSnackbarDismiss = kendaraan::consumeMessage,
+                    onErrorDismiss = kendaraan::consumeError,
+                ),
+                penyewa = Screens.Penyewa(
+                    state = penyewaState,
+                    snackbarMessage = penyewaSnackbar,
+                    onQueryChange = penyewa::onQueryChange,
+                    onClearQuery = penyewa::clearQuery,
+                    onAdd = penyewa::openAddForm,
+                    onEdit = penyewa::openEditForm,
+                    onCloseForm = penyewa::closeForm,
+                    onFormChange = penyewa::onFormChange,
+                    onSave = penyewa::saveForm,
+                    onSnackbarDismiss = penyewa::consumeMessage,
+                    onErrorDismiss = penyewa::consumeError,
+                ),
+                kontrak = Screens.Kontrak(
+                    state = kontrakState,
+                    snackbarMessage = kontrakSnackbar,
+                    renterOptions = renterOptions,
+                    vehicleOptions = vehicleOptions,
+                    onOpen = kontrak::openAddForm,
+                    onCloseForm = kontrak::closeForm,
+                    onFormChange = kontrak::onFormChange,
+                    onSave = kontrak::saveForm,
+                    onSnackbarDismiss = kontrak::consumeMessage,
+                    onErrorDismiss = kontrak::consumeError,
+                ),
+            ),
         )
-
-        // The form is a sheet *over* the list rather than a second destination,
-        // so dismissing it restores the owner's place in the fleet.
-        state.form?.let { form ->
-            VehicleFormSheet(
-                state = form,
-                onDismissRequest = viewModel::closeForm,
-                onChange = viewModel::onFormChange,
-                onSave = viewModel::saveForm,
-            )
-        }
     }
 }

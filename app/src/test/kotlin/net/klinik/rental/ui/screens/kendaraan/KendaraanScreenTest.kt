@@ -487,6 +487,11 @@ class KendaraanScreenTest {
             onClearQuery = {},
             onAdd = {},
             onEdit = {},
+            // Required rather than defaulted: an alias of `onSnackbarDismiss`
+            // would let a partial wiring dismiss a refusal through the
+            // confirmation's setter, and a no-op default would make the banner
+            // unreachable with nothing at the call site saying so.
+            onErrorDismiss = {},
         )
     }
 

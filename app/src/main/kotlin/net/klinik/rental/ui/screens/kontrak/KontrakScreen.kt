@@ -34,6 +34,7 @@ import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
+import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.format.formatTanggalBulan
@@ -68,9 +69,14 @@ import java.time.LocalDate
  *
  * ## What is deliberately absent
  *
- * No KPI tile grid, no nav rail, no bottom nav, no skeleton, and no end-contract
- * action. All of those are Stories 2.7, 2.8 and 4.3. The one feedback surface is a
- * snackbar, and it appears over the page without changing it.
+ * No KPI tile grid, no nav rail, no bottom nav, and no end-contract action. The
+ * nav rail and bottom nav are the shell's, and the end-contract action is Story
+ * 2.7's.
+ *
+ * Loading is a skeleton and a refusal is a banner, both added by Story 2.8,
+ * which discharged the "no skeleton" note that used to sit here. The four states
+ * are: skeleton, empty, a Danger banner over unchanged content, and a Success
+ * snackbar over unchanged content.
  *
  * Every rupiah figure and every date on this screen arrives already formatted in
  * [ContractRow]. There is no `formatRupiah` call in this file — money is converted
@@ -122,7 +128,11 @@ fun KontrakScreen(
     // exactly what a sibling screen's composition does — gets an error banner
     // dismissed through the *confirmation's* setter, so the error stays on screen
     // and the confirmation clears invisibly. Two different messages, two handlers.
-    onErrorDismiss: () -> Unit = {},
+    //
+    // And now not defaulted to `{}` either: a no-op default produces the same
+    // symptom by a different route — the banner is unreachable, and nothing at the
+    // call site says so. A required parameter turns that into a compile error.
+    onErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -161,10 +171,24 @@ fun KontrakScreen(
                 )
 
                 Box(Modifier.weight(1f)) {
-                    if (state.isEmpty) {
-                        KontrakEmpty(onOpen = onOpen)
-                    } else {
-                        LazyColumn(
+                    when {
+                        // Loading first, and mutually exclusive with everything
+                        // below. Room's first emission *is* an empty list, so
+                        // without this branch the owner reads "Belum ada Kontrak"
+                        // on every single load — the exact
+                        // empty-looks-like-a-new-account failure the story exists
+                        // to prevent.
+                        state.isLoading -> KnSkeletonList(
+                            rows = SKELETON_ROWS,
+                            modifier = Modifier.padding(
+                                start = spacing.lg,
+                                end = spacing.lg,
+                                top = spacing.lg,
+                            ),
+                        )
+
+                        state.isEmpty -> KontrakEmpty(onOpen = onOpen)
+                        else -> LazyColumn(
                             modifier = Modifier.fillMaxSize(),
                             contentPadding = PaddingValues(
                                 start = spacing.lg,
@@ -380,6 +404,16 @@ internal const val TAG_ADD_ACTION = "kontrak-add-action"
 internal const val TAG_BANNER = "kontrak-banner"
 internal const val TAG_EMPTY = "kontrak-empty"
 
+/**
+ * How many placeholder rows the skeleton draws.
+ *
+ * A count rather than one block so the loading state has the *shape* of the list
+ * it stands in for. Six matches the stated fleet scale without pretending to
+ * know the real count — a skeleton showing exactly the final row count would
+ * need the count, which is what is still loading.
+ */
+private const val SKELETON_ROWS = 6
+
 @Preview(showBackground = true)
 @Composable
 private fun KontrakScreenPreview() {
@@ -392,6 +426,7 @@ private fun KontrakScreenPreview() {
             onCloseForm = {},
             onFormChange = {},
             onSave = {},
+            onErrorDismiss = {},
         )
     }
 }

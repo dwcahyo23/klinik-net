@@ -195,4 +195,28 @@ class RStrings(private val context: Context) {
      */
     fun kontrakErrorUnexpected(): String =
         context.getString(R.string.kontrak_error_unexpected)
+
+    // -------------------------------------------------------------- Story 2.8
+
+    /**
+     * The app could not read its own stored data.
+     *
+     * ## Why this is the only 2.8 message here
+     *
+     * Every other string this story needs is chrome — nav labels, the retry
+     * button — and every other screen already resolves that copy with
+     * `stringResource` at the composable, exactly as `Navigation.kt` does for its
+     * own back description. Only this one is a *domain* failure: something below
+     * the UI raised it, and it belongs with the other domain messages.
+     *
+     * ## Why the copy refuses to sound like an empty account
+     *
+     * The epic context's rule is that a failure may never look like a fresh
+     * account, and the prototype broke exactly that — `init()` swallowed a parse
+     * error and reset to defaults, so the owner saw an empty app, re-entered
+     * their fleet, and overwrote history. So this names the failure and the
+     * consequence, and it does not offer a blank slate.
+     */
+    fun dataReadFailed(): String =
+        context.getString(R.string.error_read_title)
 }

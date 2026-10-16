@@ -42,6 +42,7 @@ import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSearchBar
+import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -62,10 +63,14 @@ import net.klinik.rental.ui.theme.knTypography
  *
  * ## What is deliberately absent
  *
- * No KPI tile grid, no nav rail, no bottom nav, no skeleton, no error state, no
- * FAB. All of those are Story 2.8 and Story 4.3, and a card of four figures
- * nobody asked for is not this story. The one feedback surface here is a
- * snackbar, and it appears over the page without changing it.
+ * No KPI tile grid, no nav rail, no bottom nav, no FAB. Those are Story 2.8's
+ * shell and Story 4.3's, and a card of four figures nobody asked for is not this
+ * story.
+ *
+ * Loading is a skeleton and a refusal is a banner — both added by Story 2.8,
+ * which is what discharged the "no skeleton, no error state" note that used to
+ * sit here. The four states are: skeleton, empty (two variants), a Danger banner
+ * over unchanged content, and a Success snackbar over unchanged content.
  *
  * Every rupiah figure on this screen arrives already formatted in
  * [VehicleRow.rateText]. There is no `formatRupiah` call in this file — money is
@@ -86,6 +91,10 @@ fun KendaraanScreen(
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
     onSnackbarDismiss: () -> Unit = {},
+    // Required, and deliberately not aliased to `onSnackbarDismiss`. The two
+    // dismiss different messages; aliasing them is how a refusal ends up cleared
+    // through the confirmation's setter and stays on screen forever.
+    onErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -129,6 +138,21 @@ fun KendaraanScreen(
 
                 Box(Modifier.weight(1f)) {
                     when {
+                        // Loading first, and mutually exclusive with everything
+                        // below. Room's first emission *is* an empty list, so
+                        // without this branch the owner reads "Belum ada
+                        // Kendaraan" on every single load — the exact
+                        // empty-looks-like-a-new-account failure the story exists
+                        // to prevent.
+                        state.isLoading -> KnSkeletonList(
+                            rows = SKELETON_ROWS,
+                            modifier = Modifier.padding(
+                                start = spacing.lg,
+                                end = spacing.lg,
+                                top = spacing.lg,
+                            ),
+                        )
+
                         // Two different emptinesses with two different messages.
                         // A stored-but-unmatched search is not an error and must
                         // not read like an empty account.
@@ -164,14 +188,40 @@ fun KendaraanScreen(
 
             // Over the page, not replacing it: a confirmation must not change
             // screen state, so the list behind stays exactly where it was.
-            snackbarMessage?.let { message ->
+            //
+            // One bar, never two — the same rule `PenyewaScreen` documents. Both
+            // messages are `BottomCenter` with the same padding, so drawing them
+            // independently stacks two bars on the same pixels, and they are not
+            // exclusive upstream: a success followed by a failure leaves both
+            // non-null. The error wins, because it is the one that has to be read.
+            //
+            // This screen previously drew *neither* error — `state.errorMessage`
+            // was set by the ViewModel and never rendered, so a refused write
+            // (a duplicate plate, a zero rate) failed silently.
+            val banner: Pair<String, KnBadgeTone>? = state.errorMessage?.let {
+                it to KnBadgeTone.Danger
+            } ?: snackbarMessage?.let { it to KnBadgeTone.Success }
+
+            banner?.let { (message, tone) ->
                 KnSnackbar(
                     message = message,
-                    tone = KnBadgeTone.Success,
+                    tone = tone,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(spacing.lg),
-                    onDismiss = onSnackbarDismiss,
+                        .padding(spacing.lg)
+                        .testTag(TAG_BANNER),
+                    onDismiss = {
+                        // Branch on the tone rather than on state.errorMessage, because
+                        // the tone is what was actually *drawn*. These two screens have no
+                        // sheet of their own, so the selection above always falls through
+                        // to the error when one exists and the two agree —
+                        // but reading the state instead would be a second thing to keep in
+                        // step with the first, and it is KontrakScreen (which does have a
+                        // sheet, and therefore *can* draw the confirmation over a pending
+                        // error) that shows why: there, rrorMessage != null is true while
+                        // the confirmation is the bar on screen.
+                        if (tone == KnBadgeTone.Danger) onErrorDismiss() else onSnackbarDismiss()
+                    },
                 )
             }
         }
@@ -355,6 +405,20 @@ internal const val TAG_ADD = "kendaraan-add"
 internal const val TAG_EMPTY_FLEET = "kendaraan-empty-fleet"
 internal const val TAG_EMPTY_SEARCH = "kendaraan-empty-search"
 
+/** The single banner, whatever its tone — so one test can address it. */
+internal const val TAG_BANNER = "kendaraan-banner"
+
+/**
+ * How many placeholder rows the skeleton draws.
+ *
+ * A count rather than one block so the loading state has the *shape* of the list
+ * it is standing in for, which is the story's AC ("skeleton dengan bentuk yang
+ * sama dengan isi akhirnya"). Six matches the stated fleet scale of 20 vehicles
+ * without pretending to know the real count — a skeleton that showed exactly the
+ * final row count would need the count, which is what is still loading.
+ */
+private const val SKELETON_ROWS = 6
+
 @Preview(showBackground = true)
 @Composable
 private fun KendaraanScreenPreview() {
@@ -366,6 +430,7 @@ private fun KendaraanScreenPreview() {
             onClearQuery = {},
             onAdd = {},
             onEdit = {},
+            onErrorDismiss = {},
         )
     }
 }

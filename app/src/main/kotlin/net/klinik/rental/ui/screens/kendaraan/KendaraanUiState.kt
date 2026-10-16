@@ -58,12 +58,34 @@ data class VehicleRow(
  * The whole screen in one value.
  *
  * Built with `combine` + `stateIn` + `distinctUntilChanged()` over the Room flow
- * (see `KendaraanViewModel`). There is deliberately no `isLoading` flag and no
- * skeleton here: loading-as-skeleton is Story 2.8's contract across every
- * screen, and this story explicitly excludes skeletons. Room's first emission is
- * an empty list, which is what the empty state renders — which is honest, since
- * an empty database and a not-yet-read one are not distinguishable to the owner
- * and neither is a failure.
+ * (see `KendaraanViewModel`).
+ *
+ * @param isLoading true while the Room flow has not emitted anything yet.
+ *
+ *   ## Why this is a separate field and not `rows.isEmpty()`
+ *
+ *   Room's first emission *is* an empty list, so "no rows" cannot distinguish
+ *   "still reading" from "read, and the fleet is empty" — and the second must
+ *   render an invitation to add a car. Story 2.8's whole subject is that
+ *   distinction: a skeleton drawn *over* an empty state reproduces "empty data
+ *   that looks like a new account" on every single load, because during every load
+ *   `rows` is empty.
+ *
+ *   ## Why it defaults to `false`
+ *
+ *   Every fixture in every test builds a state with rows already in hand, and a
+ *   default of `true` would make each of them a loading screen. The
+ *   ViewModel's `stateIn(initialValue = …)` passes `isLoading = true`
+ *   explicitly, because *that* value genuinely is still loading — so the default
+ *   describes a hand-built state and the initial value describes a real one.
+ *
+ *   ## Why it is derived rather than a mutable flag
+ *
+ *   The ViewModel combines a `flow { emit(false); … }`-shaped source into the
+ *   existing `combine`. A `MutableStateFlow<Boolean>` set to `true` on entry and
+ *   cleared on first emission would be a second thing to keep in step with the
+ *   subscription — and a screen whose flag says "loaded" while its list is empty
+ *   is the exact failure this flag exists to prevent.
  *
  * @param errorMessage Indonesian copy for the last refused write, or `null`.
  *   Already-resolved text rather than an exception, because the exception's whole
@@ -77,6 +99,7 @@ data class KendaraanUiState(
     val counts: Map<VehicleFilter, Int> = emptyMap(),
     val form: VehicleFormState? = null,
     val errorMessage: String? = null,
+    val isLoading: Boolean = false,
 ) {
     /** The rows the list renders: query, then status filter. */
     val visibleRows: List<VehicleRow> = filterByStatus(matchesQuery(rows, query), filter)

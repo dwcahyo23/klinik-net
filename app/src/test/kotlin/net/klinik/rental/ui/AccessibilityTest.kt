@@ -1,6 +1,7 @@
 package net.klinik.rental.ui
 
 import androidx.compose.foundation.layout.Column
+import androidx.compose.runtime.Composable
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -50,7 +51,6 @@ import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnIconButton
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnModal
-import net.klinik.rental.ui.components.KnNavItem
 import net.klinik.rental.ui.components.KnNavRail
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.components.KnPinGrid
@@ -59,6 +59,11 @@ import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTableCell
 import net.klinik.rental.ui.components.KnTableRow
 import net.klinik.rental.ui.components.KnTopBar
+import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
+import net.klinik.rental.ui.screens.kontrak.KontrakUiState
+import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
+import net.klinik.rental.ui.shell.AppShell
+import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knTypography
 import org.junit.Assert.assertTrue
@@ -322,16 +327,17 @@ class AccessibilityTest {
     fun `every clickable node in the nav rail clears the floor`() {
         compose.setContent {
             KlinikNetTheme(darkTheme = false) {
-                KnNavRail(
-                    items = NAV_ITEMS,
-                    selectedIndex = 0,
-                    onSelect = {},
-                    modifier = Modifier.testTag(TAG_RAIL),
-                )
+                AppShell(screens = navScreens(), isLandscape = true)
             }
         }
+        // The *real* shell, not a hand-built `KnNavRail`.
+        //
+        // The previous version composed the component with a four-item fixture, so
+        // it measured a rail that no production caller has ever built: three
+        // destinations here, and a rail the shell itself wraps rather than one a
+        // test conjures. The floor is measured on the nodes the app actually draws.
         compose.onAllNodes(
-            hasClickAction() and taggedOrInside(TAG_RAIL),
+            hasClickAction() and taggedOrInside(SHELL_RAIL),
         ).assertAllAtLeast("nav rail destination")
     }
 
@@ -345,16 +351,11 @@ class AccessibilityTest {
     fun `every clickable node in the bottom nav clears the floor`() {
         compose.setContent {
             KlinikNetTheme(darkTheme = false) {
-                KnBottomNav(
-                    items = NAV_ITEMS,
-                    selectedIndex = 1,
-                    onSelect = {},
-                    modifier = Modifier.testTag(TAG_BOTTOM_NAV),
-                )
+                AppShell(screens = navScreens(), isLandscape = false)
             }
         }
         compose.onAllNodes(
-            hasClickAction() and taggedOrInside(TAG_BOTTOM_NAV),
+            hasClickAction() and taggedOrInside(SHELL_BOTTOM_NAV),
         ).assertAllAtLeast("bottom nav destination")
     }
 
@@ -654,6 +655,56 @@ class AccessibilityTest {
 
     // ------------------------------------------------------------------ helper
 
+    /**
+     * The shell wired to hand-built, empty state.
+     *
+     * The floor is a property of the chrome, so nothing on the screens needs to
+     * be real — empty states are enough, and they keep this file about touch
+     * targets rather than about list content.
+     */
+    @Composable
+    private fun navScreens() = Screens(
+        kendaraan = Screens.Kendaraan(
+            state = KendaraanUiState(),
+            snackbarMessage = null,
+            onQueryChange = {},
+            onFilterChange = {},
+            onClearQuery = {},
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+        penyewa = Screens.Penyewa(
+            state = PenyewaUiState(),
+            snackbarMessage = null,
+            onQueryChange = {},
+            onClearQuery = {},
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+        kontrak = Screens.Kontrak(
+            state = KontrakUiState(),
+            snackbarMessage = null,
+            renterOptions = emptyList(),
+            vehicleOptions = emptyList(),
+            onOpen = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+    )
+
     private fun tag(variant: KnButtonVariant, size: KnButtonSize) =
         "btn-${variant.name}-${size.name}"
 
@@ -720,8 +771,15 @@ class AccessibilityTest {
         const val TAG_DARK_ICON = "dark-icon"
         const val TAG_DARK_SMALL = "dark-small-button"
         const val TAG_CARD_CLICKABLE = "card-clickable"
-        const val TAG_RAIL = "nav-rail"
-        const val TAG_BOTTOM_NAV = "bottom-nav"
+        /**
+         * The shell's own chrome tags.
+         *
+         * Distinct from the `KnNavRail`/`KnBottomNav` fixture tags these tests
+         * used before: this file now hosts the real `AppShell`, so it addresses
+         * the tags the shell itself declares.
+         */
+        const val SHELL_RAIL = "shell-nav-rail"
+        const val SHELL_BOTTOM_NAV = "shell-bottom-nav"
         const val TAG_TOP_BAR = "top-bar"
         const val TAG_TOP_BAR_NAV = "top-bar-nav"
         const val TAG_PIN_GRID = "pin-grid"
@@ -735,11 +793,6 @@ class AccessibilityTest {
         const val TAG_LIST_ROW = "list-row"
         const val TAG_TABLE_ROW = "table-row"
 
-        val NAV_ITEMS = listOf(
-            KnNavItem("Beranda", Lucide.House),
-            KnNavItem("Armada", Lucide.CarFront),
-            KnNavItem("Penyewa", Lucide.Users),
-            KnNavItem("Setelan", Lucide.Settings),
-        )
+
     }
 }

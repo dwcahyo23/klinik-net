@@ -49,13 +49,15 @@ data class ContractRow(
  * The whole screen in one value.
  *
  * Built with `combine` + `stateIn` + `distinctUntilChanged()` over three Room flows
- * (see `KontrakViewModel`). There is deliberately no `isLoading` flag and no
- * skeleton here: loading-as-skeleton is Story 2.8's contract across every screen,
- * and Room's first emission is an empty list, which is what the empty state
- * renders — which is honest, since an empty database and a not-yet-read one are not
- * distinguishable to the owner and neither is a failure.
+ * (see `KontrakViewModel`).
  *
- * There is also deliberately no search query and no filter. No acceptance criterion
+ * @param isLoading true while the contract flow has not emitted anything yet.
+ *   See `KendaraanUiState.isLoading`: Room's first emission is an empty list, so
+ *   a screen that branched on emptiness showed "Belum ada Kontrak" during every
+ *   load. The default is `false` for hand-built fixtures; `KontrakViewModel`'s
+ *   `stateIn` initial value passes `true`.
+ *
+ * There is deliberately no search query and no filter. No acceptance criterion
  * asks for either, and the search bar's IME bug (`spec-2-4:224` —
  * `onSearch = { (onSubmit ?: onClear ?: {})() }` clears the query when no
  * `onSubmit` is passed) would come with it. A filter row is a later story's, when
@@ -64,14 +66,13 @@ data class ContractRow(
  * @param errorMessage Indonesian copy for the last refused write, or `null`.
  *   Already-resolved text rather than an exception, because the exception's whole
  *   purpose is to survive until here and pick its words. It is *rendered* by the
- *   screen as a snackbar — `KendaraanUiState.errorMessage` exists but
- *   `KendaraanScreen` never draws it, which is dead state this screen does not
- *   copy.
+ *   screen as a snackbar.
  */
 data class KontrakUiState(
     val rows: List<ContractRow> = emptyList(),
     val form: ContractFormState? = null,
     val errorMessage: String? = null,
+    val isLoading: Boolean = false,
 ) {
     /**
      * Whether the empty state applies.

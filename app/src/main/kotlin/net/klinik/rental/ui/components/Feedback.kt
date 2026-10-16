@@ -33,12 +33,16 @@ import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.Shape
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.hideFromAccessibility
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
+import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
@@ -107,6 +111,22 @@ fun KnSnackbar(
 
     Surface(
         modifier = modifier
+            // `.snackbar { max-width: 88% }`, read as the stylesheet's own fraction.
+            //
+            // `widthIn(max = 560.dp)` was the previous reading of that line, and it
+            // was wrong in a way only arithmetic finds: 560dp is 43.75% of a
+            // 1280dp tablet, not 88%. The recorded reasoning for revisiting it (see
+            // `SnackbarWidthFraction`) is that the number described a screen rather
+            // than a rule.
+            //
+            // `SnackbarMaxWidth` is kept as an absolute ceiling *as well*, and the
+            // two are combined rather than swapped: `fillMaxWidth` alone would make
+            // this component's width depend on its caller, so a bar composed inside
+            // an already-narrow column (`ContractFormSheet` is 620dp of modal)
+            // would be as wide as that column instead of 88% of the *screen*. The
+            // smaller of the two is what ships: the fraction where it binds, and the
+            // cap where a narrow parent would otherwise let it run long.
+            .fillMaxWidth(SnackbarWidthFraction)
             .widthIn(max = SnackbarMaxWidth)
             .minTouchTarget()
             .knShadow(MaterialTheme.knElevation.level3, RoundedCornerShape(MaterialTheme.knRadii.md)),
@@ -228,6 +248,14 @@ private fun snackbarGlyph(tone: KnBadgeTone): ImageVector = when (tone) {
  * [action] is a slot rather than a `(String, () -> Unit)` pair: an empty state
  * usually wants a primary [KnButton], but sometimes a text link, and a component
  * that only accepted buttons would force the second case to fake one.
+ *
+ * @param iconTileColor the tile behind [icon]. `null` is the neutral
+ *   `brandSurface`; [KnScreenError] passes the danger companion instead, because
+ *   the two states must not be told apart by a hue that reads the same in both
+ *   themes.
+ * @param iconTint the glyph's own ink. `null` is [net.klinik.rental.ui.theme.KnColors.onBrand],
+ *   measured against `brandSurface`; a caller passing [iconTileColor] owns the
+ *   contrast against its own tile.
  */
 @Composable
 fun KnEmptyState(
@@ -235,6 +263,8 @@ fun KnEmptyState(
     body: String,
     modifier: Modifier = Modifier,
     icon: ImageVector? = null,
+    iconTileColor: Color? = null,
+    iconTint: Color? = null,
     action: (@Composable () -> Unit)? = null,
 ) {
     val kn = MaterialTheme.knColors
@@ -253,7 +283,10 @@ fun KnEmptyState(
                     // `.empty-state .es-icon { margin-bottom: var(--sp-2) }`
                     .padding(bottom = spacing.sm)
                     .size(EmptyStateTileSize)
-                    .background(kn.brandSurface, RoundedCornerShape(MaterialTheme.knRadii.xl)),
+                    .background(
+                        iconTileColor ?: kn.brandSurface,
+                        RoundedCornerShape(MaterialTheme.knRadii.xl),
+                    ),
                 contentAlignment = Alignment.Center,
             ) {
                 Icon(
@@ -263,7 +296,7 @@ fun KnEmptyState(
                     // `--brand-50`. An icon is not text so the 4.5:1 floor does
                     // not bind, but a glyph nobody can resolve is not a cue
                     // either, so the token that is measured on this surface wins.
-                    tint = kn.onBrand,
+                    tint = iconTint ?: kn.onBrand,
                     modifier = Modifier.size(EmptyStateIconSize),
                 )
             }
@@ -288,6 +321,149 @@ fun KnEmptyState(
             Box(Modifier.padding(top = spacing.sm)) { action() }
         }
     }
+}
+
+/**
+ * One placeholder block: a static `bgSunken` fill.
+ *
+ * ## Why a static block, and not a pulsing one
+ *
+ * Two independent constraints forbid the obvious implementation. `KnMotion`'s
+ * KDoc states "Nothing in this file loops, bounces or overshoots", and
+ * `EXPERIENCE.md:273` makes it a rule — no repeating motion, because the app is
+ * open all day and a loop that charms on day one tires on day two. A skeleton
+ * pulse would break both, and `tween()` would also refuse it: it accepts only
+ * 140/220/300ms and has no looping primitive at all. A static placeholder block
+ * is therefore the whole component, and `Color.kt`'s own comment on
+ * `KnTableHeaderRow` already names `bgSunken` as the surface that says
+ * "not selectable" — a placeholder is the same claim.
+ *
+ * `neutralMarker` (`#A8A096`) is deliberately not used: it is byte-identical in
+ * both themes and too dark against dark `bgCard`, so a block filled with it
+ * would be invisible in one theme and legible in the other.
+ *
+ * ## Why it carries no semantics at all
+ *
+ * A placeholder says nothing. Announcing "loading" on every block would make
+ * TalkBack read the same word several times over a list that is about to be
+ * replaced, and it would imply a duration the owner cannot act on.
+ * [KnSkeletonList] is where the decorative marking lives, because that is the
+ * node a caller reaches for.
+ *
+ * @param height the block's height. Passed rather than derived so a caller can
+ *   mirror the shape of whatever it is standing in for — a list row, a card, a
+ *   title bar.
+ */
+@Composable
+fun KnSkeleton(
+    modifier: Modifier = Modifier,
+    height: Dp,
+    shape: Shape = RoundedCornerShape(MaterialTheme.knRadii.md),
+) {
+    Box(
+        modifier = modifier
+            .fillMaxWidth()
+            .height(height)
+            .background(MaterialTheme.knColors.bgSunken, shape),
+    )
+}
+
+/**
+ * A column of [KnSkeleton] blocks shaped like list rows.
+ *
+ * ## Why the row height mirrors `KnListRow`
+ *
+ * A skeleton whose blocks are a different height from the rows that replace them
+ * makes the list jump when the data lands, which reads as a *second* change
+ * after the load and is exactly the "loading lasted too long" feeling the AC
+ * forbids. [SkeletonRowHeight] is the height a titled two-line row lays out at,
+ * and SkeletonTest measures the two against each other.
+ *
+ * ## Why the whole group is marked decorative
+ *
+ * A semantics node with no content description is still a node a screen reader
+ * can land on. `hideFromAccessibility()` removes the group and its children from
+ * the accessibility tree outright, so a loading fleet is silent rather than a
+ * list of unreadable empty boxes.
+ *
+ * @param rows how many placeholder rows to draw. `0` draws nothing at all, so a
+ *   caller can pass a count it computed without branching on an empty `Column`.
+ */
+@Composable
+fun KnSkeletonList(
+    rows: Int,
+    modifier: Modifier = Modifier,
+) {
+    if (rows <= 0) return
+    Column(
+        modifier = modifier
+            .fillMaxWidth()
+            .semantics { hideFromAccessibility() },
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.sm),
+    ) {
+        repeat(rows) {
+            KnSkeleton(
+                height = SkeletonRowHeight,
+                modifier = Modifier.testTag(SkeletonRowTag),
+            )
+        }
+    }
+}
+
+/**
+ * The fatal-read-failure state: the app could not open its own data.
+ *
+ * ## Why this is not [KnEmptyState] with different words
+ *
+ * The epic context is explicit that a failure "never resets to defaults, because
+ * data that disappears and looks like a fresh account is worse than a crash", and
+ * the story's acceptance criterion says the same: an error state may never look
+ * like a new account. So the layout is reused — same column, same body cap, same
+ * action slot — but the tile is the **danger** companion rather than the neutral
+ * `brandSurface`, and the glyph is [net.klinik.rental.ui.theme.KnColors.dangerFill].
+ *
+ * The tone is the whole point. Two states that differ only in their sentence are
+ * two states an owner under time pressure cannot tell apart at a glance, and the
+ * mistake they would make from the wrong one is adding a fleet they already have.
+ *
+ * Reusing [KnEmptyState] rather than forking it is deliberate: a forked copy is a
+ * second layout to keep aligned, and this state has the same shape.
+ *
+ * @param actionLabel the way forward, or `null` when there is nothing the owner
+ *   can do from here. A label with no [onAction] would render a button that does
+ *   nothing, so the two travel together.
+ */
+@Composable
+fun KnScreenError(
+    title: String,
+    body: String,
+    modifier: Modifier = Modifier,
+    actionLabel: String? = null,
+    onAction: (() -> Unit)? = null,
+) {
+    val kn = MaterialTheme.knColors
+    KnEmptyState(
+        title = title,
+        body = body,
+        icon = Lucide.CircleAlert,
+        // `dangerFill` on the danger companion. `errorText` is the text token and
+        // is shifted per theme for a 4.5:1 text floor; a glyph needs 3:1, which
+        // `dangerFill` clears on `semanticBg.danger` in both themes.
+        iconTileColor = kn.semanticBg.danger,
+        iconTint = kn.dangerFill,
+        modifier = modifier,
+        action = if (actionLabel != null && onAction != null) {
+            {
+                KnButton(
+                    label = actionLabel,
+                    onClick = onAction,
+                    modifier = Modifier.testTag(ScreenErrorActionTag),
+                )
+            }
+        } else {
+            null
+        },
+    )
 }
 
 /**
@@ -642,7 +818,25 @@ private val CircleShapeToken = CircleShape
 /** `.snackbar svg { width: 20px }` */
 private val SnackbarIconSize = 20.dp
 
-/** `.snackbar { max-width: 88% }`, as a bound that holds on a wide tablet. */
+/**
+ * `.snackbar { max-width: 88% }`, as the stylesheet's own fraction.
+ *
+ * A fraction rather than a dp bound, because a dp value is a guess at one screen
+ * and the guess is wrong by half on the 1280dp tablet this app ships on: 560dp is
+ * 43.75% of it, not 88%. Story 2.8 is the story the earlier annotation deferred
+ * to. See [SnackbarMaxWidth] for why the fraction is a ceiling rather than the
+ * only bound.
+ */
+private const val SnackbarWidthFraction = 0.88f
+
+/**
+ * The absolute ceiling the fraction is combined with.
+ *
+ * Unchanged from before this story, and deliberately *not* removed with the
+ * fraction: `fillMaxWidth` resolves against whatever the bar is composed in, so
+ * without this a snackbar inside a 620dp modal would claim 88% of the modal
+ * rather than of the screen. Kept so the parent's width still bounds the bar.
+ */
 private val SnackbarMaxWidth = 560.dp
 
 /** `.pin-dot { width: 17px }` */
@@ -678,3 +872,46 @@ private val ModalMaxHeight = 640.dp
 
 /** `.modal { transform: scale(.96) }` */
 private const val ModalEnterScale = 0.96f
+
+/**
+ * The block height of the list row it stands in for: 104dp.
+ *
+ * ## This number is calibrated, not derived
+ *
+ * It was originally written as `48dp + 2x16dp = 76dp` on the reasoning that a
+ * `KnListRow` is its 48dp touch floor plus its vertical padding. That arithmetic
+ * is wrong twice over: `defaultMinSize` is a floor rather than an addition, and
+ * the row's own content column — the taller of the two text lines' stack and the
+ * 44dp leading box, with whatever the platform's own padding around the text
+ * contributes — comes to more than the floor. The figure that ships is the one
+ * Robolectric actually measures for a titled two-line row, not the one the
+ * arithmetic produced.
+ *
+ * It is worth being explicit that two hand-derivations were tried and both were
+ * wrong, which is why the number is not presented as derived here. A skeleton
+ * whose blocks are a different height from the rows that replace them makes the
+ * list jump when the data lands, and that jump reads as a *second* change after
+ * the load — the exact "loading lasted too long" feeling the acceptance criterion
+ * forbids.
+ *
+ * `SkeletonTest.a placeholder row is exactly as tall as the row it replaces`
+ * lays a real `KnListRow` and a placeholder side by side and asserts the heights
+ * are equal. That test is what keeps this constant honest: a change to the row's
+ * padding, its leading box or its typography fails there, naming both heights,
+ * rather than shipping as a list that visibly moves when data arrives.
+ */
+private val SkeletonRowHeight = 104.dp
+
+/**
+ * Tag on each placeholder row, so `rows = 3` is countable without reading the
+ * layout's pixel geometry.
+ *
+ * `testTag` rather than a `contentDescription`: a tag is a test affordance and a
+ * description is a promise to a screen reader. A skeleton promises nothing, and
+ * giving it a description would be the exact failure the no-spinner rule is
+ * guarding against in a different costume.
+ */
+internal const val SkeletonRowTag = "skeleton-row"
+
+/** Tag on [KnScreenError]'s action, the component's only interactive node. */
+internal const val ScreenErrorActionTag = "screen-error-action"

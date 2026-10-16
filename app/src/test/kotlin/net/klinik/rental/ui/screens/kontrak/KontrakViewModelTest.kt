@@ -25,6 +25,7 @@ import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.strings.RStrings
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -666,6 +667,47 @@ class KontrakViewModelTest {
         backgroundScope.launch(dispatcher) { viewModel.renterOptions.collect { } }
         backgroundScope.launch(dispatcher) { viewModel.vehicleOptions.collect { } }
         return viewModel
+    }
+
+    /**
+     * `isLoading` is true before the first emission and false after it.
+     *
+     * Both halves, because either alone is satisfiable by an implementation that
+     * does nothing useful: "true at the start" alone passes a flag that never
+     * clears, and "false at the end" alone passes a flag that is never set — which
+     * renders "Belum ada Kontrak" on every load, the exact
+     * empty-looks-like-a-new-account failure the flag exists to prevent.
+     *
+     * The start is read before the scheduler runs, because `runTest` does not
+     * advance virtual time until the body suspends: at that point `stateIn`'s
+     * `initialValue` is in force, and that is the value a screen draws on a cold
+     * open.
+     *
+     * Built directly rather than through `observingViewModel`, because that helper
+     * subscribes first — and subscribing is exactly the event that ends the
+     * loading state.
+     */
+    @Test
+    fun `isLoading is true before the first emission and false after`() = runTest(dispatcher) {
+        val viewModel = KontrakViewModel(
+            ContractRepository(database.contractDao()),
+            renters,
+            vehicles,
+            strings,
+        )
+
+        assertTrue(
+            "a cold open must not read as an empty contract list",
+            viewModel.uiState.value.isLoading,
+        )
+
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(
+            "an emitted (empty) contract list is not a loading state",
+            viewModel.uiState.value.isLoading,
+        )
     }
 
     /**

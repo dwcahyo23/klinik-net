@@ -3,11 +3,14 @@ package net.klinik.rental.ui.screens.penyewa
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.RenterRepository
@@ -34,12 +37,11 @@ import net.klinik.rental.ui.strings.RStrings
  * one [PenyewaUiState] and `distinctUntilChanged()`d, so a query change that does
  * not alter the result set does not recompose the list.
  *
- * ## Why this screen is not mounted
+ * ## Why this screen is reachable
  *
- * It is not reachable from `MainActivity`. UX-DR13 asks for master-detail in
- * landscape, but AR-18 makes `WindowSizeClass` an Activity decision and no
- * `NavHost` exists in `app/src/main` yet — so this ships fully tested and
- * unreachable, and Story 2.8 wires it. See the story's design note.
+ * Story 2.8 built the shell: `AppNavGraph` routes to this screen from
+ * `Destination.Penyewa`, and it mounts the same way `KendaraanScreen` does —
+ * a sheet over the list, not a second destination.
  */
 class PenyewaViewModel(
     private val repository: RenterRepository,
@@ -61,6 +63,20 @@ class PenyewaViewModel(
     private val saving = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
+     * The renters plus "has the read happened yet", as one flow.
+     *
+     * A derived flag rather than a `MutableStateFlow<Boolean>`: a flag set in the
+     * constructor and cleared on the first emission is a second thing to keep in
+     * step with the subscription, and a screen whose flag disagrees with its list
+     * is exactly what the flag exists to prevent. Wrapping the *same*
+     * `observeRenters()` call the list reads means one subscription, one query.
+     */
+    private fun rentersWithLoadFlag(): Flow<Pair<List<Renter>, Boolean>> =
+        repository.observeRenters()
+            .map { it to true }
+            .onStart { emit(emptyList<Renter>() to false) }
+
+    /**
      * The screen state.
      *
      * Nesting two `combine` calls rather than one over four flows, for the same
@@ -69,10 +85,10 @@ class PenyewaViewModel(
      * overload, which would hand the lambda an `Array<Any?>`.
      */
     val uiState: StateFlow<PenyewaUiState> = combine(
-        repository.observeRenters(),
+        rentersWithLoadFlag(),
         query,
-    ) { renters, currentQuery ->
-        ListSnapshot(renters.map { RenterRow(it) }, currentQuery)
+    ) { (renters, hasEmitted), currentQuery ->
+        ListSnapshot(renters.map { RenterRow(it) }, currentQuery, !hasEmitted)
     }
         .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { list, formSnapshot ->
             PenyewaUiState(
@@ -80,6 +96,7 @@ class PenyewaViewModel(
                 query = list.query,
                 form = formSnapshot.form,
                 errorMessage = formSnapshot.error,
+                isLoading = list.isLoading,
             )
         }
         // Distinct *after* the projection, so a Room emission that produces an
@@ -91,7 +108,11 @@ class PenyewaViewModel(
             // `WhileSubscribed(5_000)` keeps the combine alive across a rotation
             // instead of re-running Room's query on every configuration change.
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = PenyewaUiState(),
+            // `isLoading = true`: before the first emission there is genuinely
+            // nothing to show, and the field's `false` default would render
+            // "Belum ada Penyewa" — an invitation to add a person the owner has
+            // already added — for the frame before the read lands.
+            initialValue = PenyewaUiState(isLoading = true),
         )
 
     /** A transient confirmation. Success does not change screen state. */
@@ -107,6 +128,7 @@ class PenyewaViewModel(
     private data class ListSnapshot(
         val rows: List<RenterRow>,
         val query: String,
+        val isLoading: Boolean,
     )
 
     /** The interaction half: the open form and the last refusal's message. */

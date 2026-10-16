@@ -17,13 +17,15 @@ data class RenterRow(val renter: Renter)
  * The whole screen in one value.
  *
  * Built with `combine` + `stateIn` + `distinctUntilChanged()` over the Room flow
- * (see `PenyewaViewModel`). There is deliberately no `isLoading` flag and no
- * skeleton here: loading-as-skeleton is Story 2.8's contract across every
- * screen, and this story explicitly excludes skeletons. Room's first emission is
- * an empty list, which is what the empty state renders — which is honest, since
- * an empty database and a not-yet-read one are not distinguishable to the owner
- * and neither is a failure.
+ * (see `PenyewaViewModel`).
  *
+ * @param isLoading true while the Room flow has not emitted anything yet.
+ *   See `KendaraanUiState.isLoading` for why this cannot be `rows.isEmpty()`:
+ *   Room's first emission is an empty list, so during every load a screen that
+ *   branched on emptiness showed "Belum ada Penyewa" — an invitation to add a
+ *   person the owner already added. The default is `false` because a hand-built
+ *   fixture already holds its rows; `PenyewaViewModel`'s `stateIn` initial value
+ *   passes `true` explicitly.
  * @param errorMessage Indonesian copy for the last refused write, or `null`.
  *   Already-resolved text rather than an exception, because the exception's
  *   whole purpose is to survive until here and pick its words.
@@ -35,12 +37,13 @@ data class PenyewaUiState(
     /**
      * Carried and *rendered*.
      *
-     * `KendaraanUiState.errorMessage` exists but `KendaraanScreen` never draws
-     * it — dead state that made a refusal invisible. This one is rendered by the
+     * `KendaraanUiState.errorMessage` was not drawn by its screen until Story 2.8
+     * — dead state that made a refusal invisible. This one is rendered by the
      * screen as a snackbar, so a name that is not unique never leaves the owner
      * guessing whether the save landed.
      */
     val errorMessage: String? = null,
+    val isLoading: Boolean = false,
 ) {
     /** The rows the list renders: the query narrowed, in place. */
     val visibleRows: List<RenterRow> = filterByQuery(rows, query)

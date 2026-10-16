@@ -31,6 +31,7 @@ import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSearchBar
+import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -50,9 +51,13 @@ import net.klinik.rental.ui.theme.knSpacing
  *
  * ## What is deliberately absent
  *
- * No KPI tile grid, no nav rail, no bottom nav, no skeleton, no FAB. All of
- * those are Story 2.8 and Story 4.3. The one feedback surface here is a
- * snackbar, and it appears over the page without changing it.
+ * No KPI tile grid, no nav rail, no bottom nav, no FAB. Those are the shell's
+ * (Story 2.8) and Story 4.3's.
+ *
+ * Loading is a skeleton and a refusal is a banner — both added by Story 2.8,
+ * which discharged the "no skeleton" note that used to sit here. The four states
+ * are: skeleton, empty (two variants), a Danger banner over unchanged content,
+ * and a Success snackbar over unchanged content.
  *
  * There is no money on this screen at all, so unlike `KendaraanScreen` there is
  * no `formatRupiah` call in this file — money is converted in exactly one place
@@ -71,7 +76,11 @@ fun PenyewaScreen(
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
     onSnackbarDismiss: () -> Unit = {},
-    onErrorDismiss: () -> Unit = onSnackbarDismiss,
+    // Promoted from `= onSnackbarDismiss`. The alias was wrong: the two dismiss
+    // different messages, so aliasing them means a caller wiring only the
+    // confirmation's setter clears refusals through the wrong path — and this
+    // screen's own KDoc records a sibling where exactly that left a banner stuck.
+    onErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -104,6 +113,21 @@ fun PenyewaScreen(
 
                 Box(Modifier.weight(1f)) {
                     when {
+                        // Loading first, and mutually exclusive with everything
+                        // below. Room's first emission *is* an empty list, so
+                        // without this branch the owner reads "Belum ada
+                        // Penyewa" on every single load — the exact
+                        // empty-looks-like-a-new-account failure the story exists
+                        // to prevent.
+                        state.isLoading -> KnSkeletonList(
+                            rows = SKELETON_ROWS,
+                            modifier = Modifier.padding(
+                                start = spacing.lg,
+                                end = spacing.lg,
+                                top = spacing.lg,
+                            ),
+                        )
+
                         // Two different emptinesses with two different messages.
                         // A stored-but-unmatched search is not an error and must
                         // not read like an empty account.
@@ -155,11 +179,25 @@ fun PenyewaScreen(
                     tone = tone,
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
-                        .padding(spacing.lg),
+                        .padding(spacing.lg)
+                        // So the banner's own dismiss control can be addressed, matching the
+                        // two sibling screens. The control is a bare glyph inside it with no
+                        // label of its own, so without a tag a test can only reach it by
+                        // guessing at the surrounding layout.
+                        .testTag(TAG_BANNER),
                     onDismiss = {
                         // Dismiss whichever is actually showing, so a queued
                         // confirmation is not silently dropped behind an error.
-                        if (state.errorMessage != null) onErrorDismiss() else onSnackbarDismiss()
+                                                // Branch on the tone rather than on state.errorMessage, because
+                        // the tone is what was actually *drawn*. This screen has no sheet of
+                        // its own, so the selection above always falls through to the error
+                        // when one exists and the two agree " + [char]0x2014 + "
+                        // but reading the state instead would be a second thing to keep in
+                        // step with the first, and KontrakScreen (which does have a sheet,
+                        // and therefore *can* draw the confirmation over a pending error)
+                        // shows why: there, rrorMessage != null is true while the
+                        // confirmation is the bar on screen.
+                        if (tone == KnBadgeTone.Danger) onErrorDismiss() else onSnackbarDismiss()
                     },
                 )
             }
@@ -264,6 +302,19 @@ internal const val TAG_ADD = "penyewa-add"
 internal const val TAG_EMPTY_LIST = "penyewa-empty-list"
 internal const val TAG_EMPTY_SEARCH = "penyewa-empty-search"
 
+/** The single banner, whatever its tone — so one test can address it. */
+internal const val TAG_BANNER = "penyewa-banner"
+
+/**
+ * How many placeholder rows the skeleton draws.
+ *
+ * A count rather than one block so the loading state has the *shape* of the list
+ * it stands in for. Six matches the stated fleet scale without pretending to
+ * know the real count — a skeleton showing exactly the final row count would
+ * need the count, which is what is still loading.
+ */
+private const val SKELETON_ROWS = 6
+
 @Preview(showBackground = true)
 @Composable
 private fun PenyewaScreenPreview() {
@@ -274,6 +325,7 @@ private fun PenyewaScreenPreview() {
             onClearQuery = {},
             onAdd = {},
             onEdit = {},
+            onErrorDismiss = {},
         )
     }
 }

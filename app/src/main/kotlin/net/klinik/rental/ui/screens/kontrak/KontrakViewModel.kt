@@ -9,11 +9,14 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
@@ -47,13 +50,11 @@ import net.klinik.rental.ui.strings.RStrings
  * blanking the row. The foreign keys make that unreachable in practice, and a row
  * that showed nothing at all would be a worse outcome than one naming an id.
  *
- * ## Why this screen is not mounted
+ * ## Why this screen is reachable
  *
- * It is not reachable from `MainActivity`, which composes only `KendaraanScreen`.
- * UX-DR13 asks for master-detail in landscape and AR-18 makes `WindowSizeClass` an
- * Activity decision, and no `NavHost` exists in `app/src/main` yet — so this ships
- * fully tested and unreachable, and Story 2.8 wires it. `PenyewaScreen` carries the
- * same deferral for the same reason.
+ * Story 2.8 built the shell: `AppNavGraph` routes to this screen from
+ * `Destination.Kontrak`. `PenyewaScreen` was reachable the same way, a story
+ * earlier than the two before it shipped unreachable.
  */
 class KontrakViewModel(
     private val contracts: ContractRepository,
@@ -99,37 +100,56 @@ class KontrakViewModel(
     private val vehicleRows: Flow<List<Vehicle>> = vehicles.observeVehicles()
 
     /**
+     * Contracts plus "has the read happened yet", as one flow.
+     *
+     * A derived flag rather than a `MutableStateFlow<Boolean>`: a flag set in the
+     * constructor and cleared on the first emission is a second thing to keep in
+     * step with the subscription, and a screen whose flag disagrees with its list
+     * is exactly what the flag exists to prevent. Wrapping the *same*
+     * `observeContracts()` call the list reads means one subscription, one query.
+     */
+    private fun contractsWithLoadFlag(): Flow<Pair<List<Contract>, Boolean>> =
+        contracts.observeContracts()
+            .map { it to true }
+            .onStart { emit(emptyList<Contract>() to false) }
+
+    /**
      * The screen state.
      *
      * ## Why the three `combine` calls nest
      *
-     * The typed overloads stop at five flows, and this screen has five sources —
-     * contracts, renters, vehicles, the form and the error message. Nesting keeps
-     * every source typed rather than reaching for the `vararg` overload, which would
-     * hand the lambda an `Array<Any?>` and push the inference problem into the body.
-     * `KendaraanViewModel` and `PenyewaViewModel` nest for exactly this reason.
+     * The typed overloads stop at five flows, and this screen has six sources —
+     * contracts, renters, vehicles, the form, the error message and the load flag.
+     * Nesting keeps every source typed rather than reaching for the `vararg`
+     * overload, which would hand the lambda an `Array<Any?>` and push the
+     * inference problem into the body. `KendaraanViewModel` and `PenyewaViewModel`
+     * nest for exactly this reason.
      *
      * `distinctUntilChanged()` is applied *after* the projection, so a Room
      * emission that produces an identical list does not push a new state downstream
      * and recompose every row for no visible change.
      */
     val uiState: StateFlow<KontrakUiState> = combine(
-        contracts.observeContracts(),
+        contractsWithLoadFlag(),
         renterRows,
         vehicleRows,
-    ) { contractRows, renters, vehicles ->
+    ) { (contractRows, hasEmitted), renters, vehicles ->
         // The join, in Kotlin rather than in SQL — see the class KDoc. `associate`
         // once per emission rather than per row, so the whole projection is linear in
         // the number of contracts.
         val renterNames = renters.associate { it.id to it.name }
         val vehiclePlates = vehicles.associate { it.id to it.plate }
-        contractRows.map { it.toRow(renterNames, vehiclePlates) }
+        JoinSnapshot(
+            rows = contractRows.map { it.toRow(renterNames, vehiclePlates) },
+            isLoading = !hasEmitted,
+        )
     }
-        .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { rows, formSnapshot ->
+        .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { join, formSnapshot ->
             KontrakUiState(
-                rows = rows,
+                rows = join.rows,
                 form = formSnapshot.form,
                 errorMessage = formSnapshot.error,
+                isLoading = join.isLoading,
             )
         }
         .distinctUntilChanged()
@@ -139,8 +159,18 @@ class KontrakViewModel(
             // instead of re-running Room's three queries on every configuration
             // change.
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = KontrakUiState(),
+            // `isLoading = true`: before the first emission there is genuinely
+            // nothing to show, and the field's `false` default would render
+            // "Belum ada Kontrak" — an invitation to open a contract the owner has
+            // already opened — for the frame before the read lands.
+            initialValue = KontrakUiState(isLoading = true),
         )
+
+    /** What the data half of the combine produces. */
+    private data class JoinSnapshot(
+        val rows: List<ContractRow>,
+        val isLoading: Boolean,
+    )
 
     /**
      * The renters the picker offers.

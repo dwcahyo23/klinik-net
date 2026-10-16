@@ -2,12 +2,14 @@ package net.klinik.rental.ui.screens.kendaraan
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.VehicleRepository
@@ -49,7 +51,23 @@ class KendaraanViewModel(
     private val message = MutableStateFlow<String?>(null)
 
     /**
-     * The screen state.
+     * "Has the fleet read not happened yet", as a flow rather than a flag.
+     *
+     * A `MutableStateFlow<Boolean>` would be a second thing to keep in step with
+     * the subscription — set true in the constructor, cleared on the first
+     * emission — and a screen whose flag disagrees with its list is precisely the
+     * failure the flag exists to prevent. `distinctUntilChanged()` makes the
+     * second and every later emission a no-op, so the flag settles once.
+     *
+     * Wrapping the *same* [VehicleRepository.observeVehicles] call the list reads
+     * means one subscription and one query, not two.
+     */
+    private fun vehiclesWithLoadFlag(): Flow<Pair<List<Vehicle>, Boolean>> =
+        repository.observeVehicles()
+            .map { it to true }
+            .onStart { emit(emptyList<Vehicle>() to false) }
+
+    /** The screen state.
      *
      * `flatMapLatest` on the rented-plate set keeps status derivation in one
      * place: the repository exposes which plates have an open contract, and the
@@ -62,11 +80,11 @@ class KendaraanViewModel(
      * the lambda an `Array<Any?>` and push the inference problem into the body.
      */
     val uiState: StateFlow<KendaraanUiState> = combine(
-        repository.observeVehicles(),
+        vehiclesWithLoadFlag(),
         repository.observeRentedPlates(),
         query,
         filter,
-    ) { vehicles, rentedPlates, currentQuery, currentFilter ->
+    ) { (vehicles, hasEmitted), rentedPlates, currentQuery, currentFilter ->
         val rows = vehicles.map { vehicle ->
             VehicleRow(
                 vehicle = vehicle,
@@ -79,9 +97,10 @@ class KendaraanViewModel(
                 rateText = formatRupiah(vehicle.dailyRate),
             )
         }
-        // `Intermediate(rows, query, filter)` rather than returning the finished
-        // state, because the form and the error message are combined separately.
-        FleetSnapshot(rows, currentQuery, currentFilter)
+        // `FleetSnapshot(rows, query, filter, isLoading)` rather than returning the
+        // finished state, because the form and the error message are combined
+        // separately.
+        FleetSnapshot(rows, currentQuery, currentFilter, !hasEmitted)
     }
         .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { fleet, formSnapshot ->
             KendaraanUiState(
@@ -93,6 +112,7 @@ class KendaraanViewModel(
                 counts = countByStatus(matchesQuery(fleet.rows, fleet.query)),
                 form = formSnapshot.form,
                 errorMessage = formSnapshot.error,
+                isLoading = fleet.isLoading,
             )
         }
         // Distinct *after* the projection, so a Room emission that produces an
@@ -104,7 +124,11 @@ class KendaraanViewModel(
             // `WhileSubscribed(5_000)` keeps the combine alive across a rotation
             // instead of re-running Room's query on every configuration change.
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = KendaraanUiState(),
+            // `isLoading = true`, unlike the field's default. Before the flow has
+            // emitted there is genuinely nothing to show, and the default's `false`
+            // would render the empty state — "your fleet is empty, add a car" —
+            // for the frame between here and the first emission.
+            initialValue = KendaraanUiState(isLoading = true),
         )
 
     /**
@@ -119,6 +143,7 @@ class KendaraanViewModel(
         val rows: List<VehicleRow>,
         val query: String,
         val filter: VehicleFilter,
+        val isLoading: Boolean,
     )
 
     /** The interaction half: the open form and the last refusal's message. */

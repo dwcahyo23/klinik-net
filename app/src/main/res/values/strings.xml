@@ -421,4 +421,26 @@
     <string name="kontrak_error_unexpected">Gagal menyimpan. Coba lagi.</string>
     <!-- Confirmation that a save landed. A snackbar, not a screen state change. -->
     <string name="kontrak_saved">Kontrak %1$s tersimpan</string>
+
+    <!--
+      Story 2.8 — Empat state & kerangka.
+
+      Nav labels are flat and unprefixed rather than `nav_kendaraan`-style per
+      screen: the rail and the bottom nav are shell surfaces, and the same label
+      has to read the same in both orientations. A prefix would mean the shell
+      owned screen vocabulary it does not own.
+
+      The read-failure block is the fourth state. Its copy deliberately differs
+      from every `*_empty_body` in this file: an empty list invites the owner to
+      add the first record, and this one tells them the app stopped rather than
+      that there is nothing yet — because the prototype's `init()` did exactly the
+      first while having swallowed a parse error, so the owner re-entered data
+      that was already there.
+    -->
+    <string name="nav_kendaraan">Kendaraan</string>
+    <string name="nav_penyewa">Penyewa</string>
+    <string name="nav_kontrak">Kontrak</string>
+    <string name="error_read_title">Data tidak bisa dibaca</string>
+    <string name="error_read_body">Aplikasi dihentikan agar riwayat tidak hilang. Coba buka lagi setelah data tersimpan.</string>
+    <string name="error_read_action">Coba lagi</string>
 </resources>

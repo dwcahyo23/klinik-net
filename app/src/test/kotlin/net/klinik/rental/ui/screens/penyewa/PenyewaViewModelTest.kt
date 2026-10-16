@@ -20,6 +20,7 @@ import net.klinik.rental.domain.validation.DuplicateNameException
 import net.klinik.rental.ui.strings.RStrings
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
@@ -582,6 +583,40 @@ class PenyewaViewModelTest {
             viewModel.uiState.collect { }
         }
         return viewModel
+    }
+
+    /**
+     * `isLoading` is true before the first emission and false after it.
+     *
+     * Both halves, because either alone is satisfiable by an implementation that
+     * does nothing useful: asserting only "true at the start" passes a flag that
+     * never clears, and asserting only "false at the end" passes a flag that is
+     * never set — which renders "Belum ada Penyewa" on every load, the exact
+     * empty-looks-like-a-new-account failure the flag exists to prevent.
+     *
+     * The start is read before the scheduler runs, because `runTest` does not
+     * advance virtual time until the body suspends: at that point `stateIn`'s
+     * `initialValue` is what is in force, and that is the value a screen draws on
+     * a cold open.
+     */
+    @Test
+    fun `isLoading is true before the first emission and false after`() = runTest(dispatcher) {
+        val viewModel = PenyewaViewModel(repository, strings)
+
+        // Before subscribing, `stateIn` hands out its initial value — the frame a
+        // screen draws before the Room flow has said anything.
+        assertTrue(
+            "a cold open must not read as an empty renter list",
+            viewModel.uiState.value.isLoading,
+        )
+
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(
+            "an emitted (empty) renter list is not a loading state",
+            viewModel.uiState.value.isLoading,
+        )
     }
 
     /**

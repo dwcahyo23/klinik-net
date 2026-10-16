@@ -340,6 +340,10 @@ class PenyewaScreenTest {
             onClearQuery = {},
             onAdd = {},
             onEdit = {},
+            // Required rather than defaulted: this screen's alias
+            // `onErrorDismiss = onSnackbarDismiss` was wrong — the two dismiss
+            // different messages.
+            onErrorDismiss = {},
         )
     }
 
