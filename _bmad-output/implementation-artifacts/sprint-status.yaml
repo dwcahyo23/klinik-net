@@ -51,7 +51,7 @@ development_status:
   2-3-melihat-status-ketersediaan-armada: done
   2-4-menyimpan-data-penyewa: done
   2-5-membuka-kontrak-sewa: done
-  2-6-menandai-hari-tanpa-tagihan: backlog
+  2-6-menandai-hari-tanpa-tagihan: done
   2-7-mengakhiri-kontrak-sewa: backlog
   epic-2-retrospective: optional
 
