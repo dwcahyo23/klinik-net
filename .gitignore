@@ -57,3 +57,6 @@ node_modules/
 .DS_Store
 Thumbs.db
 desktop.ini
+.bmad-loop/runs/
+.bmad-loop/cache/
+.bmad-loop/policy.toml
