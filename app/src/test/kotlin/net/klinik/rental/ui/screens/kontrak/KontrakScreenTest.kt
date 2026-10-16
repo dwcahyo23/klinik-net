@@ -15,6 +15,7 @@ import androidx.compose.ui.test.hasContentDescription
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -22,9 +23,12 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.model.Contract
+import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.ui.theme.KlinikNetTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -384,23 +388,293 @@ class KontrakScreenTest {
     }
 
     /**
-     * A row carries no click action.
+     * The row carries a click action, and the tap invokes `onOpenExceptions` **with
+     * that row's contract**.
      *
-     * Story 2.7 owns ending a contract and Story 2.6 owns editing its exceptions, and
-     * neither exists yet. A tappable row that opened nothing would be a gesture-only
-     * path to an action the app cannot perform, which is the opposite of the epic
-     * context's "a gesture is never the only path to an important action" — a tap that
-     * does nothing is worse than no tap at all.
+     * ## Why this replaced the "not clickable" test it stands in for
+     *
+     * That test asserted the *absence* of a verb, and its own KDoc named this story as
+     * the one that would supply it — so it was a deferral sentence pointing at a thing
+     * that now exists, and the row's only verb would have arrived unexercised. Both
+     * halves are asserted here: a row that carries a click action (so `onClick = {}`
+     * fails) and a tap that reaches the handler **with the right row** (so a tap wired
+     * to some other row also fails — a sheet for the wrong contract is exactly as
+     * broken as no sheet at all, and only the payload assertion catches it).
      */
     @Test
-    fun `a row is not clickable until a story gives it something to do`() {
+    fun `a row is clickable and opens its own contract exceptions`() {
+        var opened: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onOpenExceptions = { opened = it })
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-c1")
+            .assertExists()
+            .assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertNotNull("tapping a row must reach the handler", opened)
+        assertEquals("c1", opened!!.contract.id)
+    }
+
+    /**
+     * And the tap carries **that** row, not whichever row happens to be first.
+     *
+     * The second row is tapped here and the assertion names `c2`. A handler wired to a
+     * row captured from the previous composition would pass the test above and fail
+     * this one, and the pair is what makes "the row's own contract" a measured claim
+     * rather than an assumption.
+     */
+    @Test
+    fun `tapping the second row opens the second row exceptions`() {
+        var opened: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onOpenExceptions = { opened = it })
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-c2")
+            .assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals("c2", opened!!.contract.id)
+    }
+
+    /**
+     * The exception count badge renders on a row that has exceptions, and is **absent**
+     * on one that has none.
+     *
+     * Both halves, because the AC asks the owner to see which rentals carry
+     * compensation days *before* opening anything — and a badge drawn unconditionally
+     * would satisfy the first half while making the second meaningless. A `0` on every
+     * row is a claim about data nobody asked for, and a badge that is always there
+     * stops being read as news.
+     */
+    @Test
+    fun `the exception count badge shows only on a row that has exceptions`() {
+        val populated = populatedState().rows
+        compose.setContent {
+            theme {
+                Screen(
+                    state = KontrakUiState(
+                        rows = listOf(
+                            populated[0].copy(exceptionCount = 2),
+                            populated[1],
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithText("2 pengecualian").assertExists()
+        assertTrue(
+            "an uncounted row must carry no badge at all",
+            compose.onAllNodes(hasText("0 pengecualian")).fetchSemanticsNodes().isEmpty(),
+        )
+        // The uncounted row is still on screen, so the assertion above is about the
+        // badge rather than about a list that failed to render.
+        compose.onNodeWithTag("kontrak-row-c2").assertExists()
+    }
+
+    // ------------------------------------------------- the exception sheet mounts
+
+    /**
+     * The screen mounts the exception sheet when its state says one is open, and not
+     * otherwise.
+     *
+     * The sheet is the only path to this story's verb, and the row test above asserts
+     * the *tap*; this asserts the sheet's own presence and absence, because a screen
+     * that invokes the handler and renders nothing is the other half of the same
+     * defect class Story 2.5's review found for the open form.
+     */
+    @Test
+    fun `the exception sheet mounts when the sheet state is open`() {
+        compose.setContent { theme { Screen(state = stateWithExceptionSheet()) } }
+
+        compose.onNodeWithTag(TAG_EXCEPTION_SHEET).assertExists()
+    }
+
+    @Test
+    fun `the exception sheet is absent when the sheet state is null`() {
         compose.setContent { theme { Screen(state = populatedState()) } }
 
         assertTrue(
-            "a row that opens nothing must not look tappable",
-            compose.onAllNodes(
-                hasTestTag("kontrak-row-c1") and hasClickAction(),
-            ).fetchSemanticsNodes().isEmpty(),
+            "a closed sheet must leave nothing over the list",
+            compose.onAllNodes(hasTestTag(TAG_EXCEPTION_SHEET)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * And the screen's banner is suppressed while the exception sheet is up, because a
+     * `ModalBottomSheet` is a separate window and a banner drawn here would be
+     * *beneath* it.
+     *
+     * The banner's own tag is asserted absent and the sheet's error slot asserted
+     * present with the same message. Robolectric sees both windows in one tree, so "the
+     * text exists" would pass either way — the tags are what distinguishes the two
+     * surfaces.
+     */
+    @Test
+    fun `the screen banner is suppressed while the exception sheet is up`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = stateWithExceptionSheet().copy(
+                        errorMessage = "Gagal menyimpan pengecualian. Coba lagi.",
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXCEPTION_ERROR).assertExists()
+        compose.onNodeWithText("Gagal menyimpan pengecualian. Coba lagi.").assertExists()
+        assertTrue(
+            "the screen's banner must not be drawn beneath the sheet",
+            compose.onAllNodes(hasTestTag(TAG_BANNER)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * And the screen's own confirmation is suppressed for the same reason: the sheet
+     * covers this window, so a snackbar drawn here is invisible until the sheet closes.
+     *
+     * Asserting the **banner's absence** rather than the message's is the point. The
+     * message is still shown — inside the sheet, in the window that is actually on
+     * top — because "shown exactly once, where the owner can see it" is the goal; an
+     * assertion that the text appears nowhere would demand the owner be told *nothing*
+     * and pass an implementation that simply dropped the confirmation.
+     *
+     * Both halves are asserted: no banner node here, and the sheet's own copy present.
+     */
+    @Test
+    fun `the screen confirmation is suppressed while the exception sheet is up`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = stateWithExceptionSheet(),
+                    snackbarMessage = "14 Okt ditandai tanpa tagihan",
+                )
+            }
+        }
+
+        assertTrue(
+            "a banner beneath the sheet is invisible and reads as nothing happened",
+            compose.onAllNodes(hasTestTag(TAG_BANNER)).fetchSemanticsNodes().isEmpty(),
+        )
+        assertTrue(
+            "and the confirmation is not simply lost: the sheet draws it in its own window",
+            compose.onAllNodes(hasTestTag(TAG_EXCEPTION_SUCCESS)).fetchSemanticsNodes().isNotEmpty(),
+        )
+        compose.onNodeWithText("14 Okt ditandai tanpa tagihan").assertExists()
+    }
+
+    // -------------------------------------------------------- the remove controls
+
+    /**
+     * Every remove control on the exception sheet clears the 48dp floor.
+     *
+     * ## Why the sheet's rows need this and the list's did not
+     *
+     * These are the first bare `KnIconButton`s this screen has had — every other
+     * control on it is a `KnButton`, a `KnChip` or a whole `KnListRow`, all of which
+     * carry the floor internally. An icon button is exactly the shape that *looks*
+     * small: a 20dp glyph in a row, which is the node a reviewer skims past and the
+     * one the accessibility criterion names ("including badges, chips, and in-row icon
+     * buttons"). `KnIconButton` applies `minTouchTarget` itself, and this is the test
+     * that keeps it from being dropped.
+     *
+     * A taller viewport (`qualifiers` below) because the sheet's rows sit below the
+     * Robolectric window's bottom edge, and a node past the bottom edge measures zero
+     * — which would make this pass or fail for a reason that has nothing to do with
+     * touch targets.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `every remove control clears the touch floor`() {
+        compose.setContent {
+            theme { Screen(state = stateWithExceptionSheet(rows = exceptionRows())) }
+        }
+
+        val remove = compose.onNodeWithTag(exceptionRemoveTag("exception-1"))
+        remove.assertExists().assertHasClickAction()
+        remove.assertAtLeast(MIN_TARGET, "exception remove control")
+    }
+
+    /**
+     * And the row's remove is wired: the tap reaches `onRequestRemove` **with that
+     * row's id**, which is the only handle the delete is keyed on.
+     */
+    @Test
+    fun `a row remove asks for that row id`() {
+        var requested: String? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = stateWithExceptionSheet(rows = exceptionRows()),
+                    onRequestRemove = { requested = it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(exceptionRemoveTag("exception-1"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals("exception-1", requested)
+    }
+
+    /**
+     * And its spoken label names the **day**, not just "a button exists".
+     *
+     * A bare `Hapus` on a row says *that* something is removable and not *what* — and
+     * the owner may be several rows down a list when they hear it. The date is the
+     * thing they are looking at, so it is what the label names.
+     */
+    @Test
+    fun `each remove control names the day it removes`() {
+        compose.setContent {
+            theme { Screen(state = stateWithExceptionSheet(rows = exceptionRows())) }
+        }
+
+        compose.onNodeWithContentDescription("Hapus 14 Okt").assertExists()
+        compose.onNodeWithContentDescription("Hapus 16 Okt").assertExists()
+    }
+
+    /**
+     * And an **ended** contract's sheet renders its rows while unmounting every
+     * remove control.
+     *
+     * Unmounted, not disabled: a greyed-out icon on a contract that cannot be edited
+     * still says it can. The rows are asserted *present* in the same test, because
+     * reading an ended contract's record of what was not billed is the one thing that
+     * record is for — a sheet that hid them would be hiding the answer to a question
+     * the owner opened it to ask.
+     */
+    @Test
+    fun `an ended contract shows its rows with no remove control at all`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = stateWithExceptionSheet(
+                        rows = exceptionRows(),
+                        isReadOnly = true,
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXCEPTION_SHEET).assertExists()
+        compose.onNodeWithTag(exceptionRowTag("exception-1")).assertExists()
+        compose.onNodeWithText("Ganti ban, mobil di bengkel").assertExists()
+        assertTrue(
+            "an ended contract must not offer a remove control",
+            compose.onAllNodes(hasTestTag(exceptionRemoveTag("exception-1")))
+                .fetchSemanticsNodes().isEmpty(),
         )
     }
 
@@ -542,6 +816,10 @@ class KontrakScreenTest {
      *
      * `snackbarMessage` is a parameter rather than a fixed `null` so the banner
      * branch's confirmation half can be rendered — see the banner tests above.
+     *
+     * Every callback the screen now takes is a parameter here too, for the reason
+     * the screen makes them required: a helper that filled one in itself would be a
+     * test that cannot tell a wired control from an unwired one.
      */
     @Composable
     private fun Screen(
@@ -551,8 +829,17 @@ class KontrakScreenTest {
         onCloseForm: () -> Unit = {},
         onFormChange: ((ContractFormState) -> ContractFormState) -> Unit = {},
         onSave: () -> Unit = {},
+        onOpenExceptions: (ContractRow) -> Unit = {},
+        onCloseExceptions: () -> Unit = {},
+        onExceptionChange: ((ExceptionFormState) -> ExceptionFormState) -> Unit = {},
+        onAddException: () -> Unit = {},
+        onRequestRemove: (String) -> Unit = {},
+        onConfirmRemove: () -> Unit = {},
+        onCancelRemove: () -> Unit = {},
         onSnackbarDismiss: () -> Unit = {},
         onErrorDismiss: () -> Unit = {},
+        exceptionErrorMessage: String? = null,
+        onExceptionErrorDismiss: () -> Unit = {},
     ) {
         KontrakScreen(
             state = state,
@@ -563,14 +850,71 @@ class KontrakScreenTest {
             onCloseForm = onCloseForm,
             onFormChange = onFormChange,
             onSave = onSave,
+            // And the exception sheet's seven, for the same reason: a row that opens
+            // nothing, and a sheet whose Add is wired to `{}`, are the same defect at
+            // two depths.
+            onOpenExceptions = onOpenExceptions,
+            onCloseExceptions = onCloseExceptions,
+            onExceptionChange = onExceptionChange,
+            onAddException = onAddException,
+            onRequestRemove = onRequestRemove,
+            onConfirmRemove = onConfirmRemove,
+            onCancelRemove = onCancelRemove,
             snackbarMessage = snackbarMessage,
             // Both supplied explicitly, and deliberately not aliased to one another:
             // the aliasing is what let a refusal be cleared through the
             // confirmation's setter.
             onSnackbarDismiss = onSnackbarDismiss,
             onErrorDismiss = onErrorDismiss,
+            // The sheet's own banner, supplied explicitly and deliberately not
+            // aliased: it is a different window from the screen's banner.
+            exceptionErrorMessage = exceptionErrorMessage,
+            onExceptionErrorDismiss = onExceptionErrorDismiss,
         )
     }
+
+    /**
+     * A state with the exception sheet open on `c1`.
+     *
+     * The rows default to [exceptionRows] so a test that is about the *sheet* does not
+     * have to restate them, and `isReadOnly` is a parameter because the read-only
+     * case is the one with the interesting absence in it.
+     */
+    private fun stateWithExceptionSheet(
+        rows: List<ServiceExceptionRow> = exceptionRows(),
+        isReadOnly: Boolean = false,
+    ) = KontrakUiState(
+        rows = populatedState().rows,
+        exceptionSheet = ExceptionFormState(
+            contractId = "c1",
+            contractLabel = "Budi Santoso · B 1235 TF",
+            isReadOnly = isReadOnly,
+        ),
+        exceptionRows = rows,
+    )
+
+    /**
+     * Two stored exceptions, built through the *real* projection.
+     *
+     * `toRow()` rather than a hand-built `ServiceExceptionRow`, for the reason
+     * `populatedState` gives: a literal `dateText` here would be a second, unchecked
+     * spelling of the format the sheet renders, and the fixture would keep describing
+     * the old one after a change.
+     */
+    private fun exceptionRows(): List<ServiceExceptionRow> = listOf(
+        ServiceException(
+            id = "exception-1",
+            contractId = "c1",
+            date = LocalDate.of(2026, 10, 14),
+            reason = "Ganti ban, mobil di bengkel",
+        ).toRow(),
+        ServiceException(
+            id = "exception-2",
+            contractId = "c1",
+            date = LocalDate.of(2026, 10, 16),
+            reason = "Antre servis",
+        ).toRow(),
+    )
 
     /** One six-day contract and one seven-day contract, so both badges are covered. */
     private fun populatedState() = KontrakUiState(

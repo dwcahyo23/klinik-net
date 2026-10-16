@@ -2,6 +2,7 @@ package net.klinik.rental.ui.screens.kontrak
 
 import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.parse.parseRupiahInput
 import net.klinik.rental.ui.components.NUMPAD_MAX_DIGITS
@@ -34,6 +35,11 @@ import java.time.LocalDate
  *   list's job is telling one rental from another and a weekday cannot: two
  *   rentals begun on the 23rd of different months both render `23 Jum`. See
  *   `formatTanggalBulan`.
+ * @param exceptionCount how many days this contract is *not* charged. Carried on
+ *   the row rather than read from a second list so the badge needs no lookup and
+ *   is drawn on the first frame: the AC wants the owner to see which rentals carry
+ *   compensation days *before* opening anything. Zero draws no badge at all — a
+ *   "0" on every row would be a claim about data the owner did not ask for.
  */
 data class ContractRow(
     val contract: Contract,
@@ -43,12 +49,13 @@ data class ContractRow(
     val rateText: String,
     /** `formatTanggalBulan(contract.startDate)`, e.g. `23 Okt`. Carries the month. */
     val dateText: String,
+    val exceptionCount: Int = 0,
 )
 
 /**
  * The whole screen in one value.
  *
- * Built with `combine` + `stateIn` + `distinctUntilChanged()` over three Room flows
+ * Built with `combine` + `stateIn` + `distinctUntilChanged()` over four Room flows
  * (see `KontrakViewModel`).
  *
  * @param isLoading true while the contract flow has not emitted anything yet.
@@ -67,12 +74,27 @@ data class ContractRow(
  *   Already-resolved text rather than an exception, because the exception's whole
  *   purpose is to survive until here and pick its words. It is *rendered* by the
  *   screen as a snackbar.
+ *
+ * @param exceptionSheet the open-contract exception editor, or `null`. A sheet
+ *   rather than a destination, mounted by `KontrakScreen` beside the open-form
+ *   sheet — never by `KontrakRoute`, because two `ModalBottomSheet` windows over one
+ *   state is the defect Story 2.8's review found as its only `high`.
+ *
+ * @param exceptionRows the *stored* exceptions of whichever contract the sheet is
+ *   open for, or every contract when no sheet is up — the same list the contract
+ *   rows' count badges are drawn from. Derived in the ViewModel's `combine` and
+ *   **never** stored inside [exceptionSheet]: a snapshot inside the sheet state
+ *   would make every write have to write it back, which is the manual invalidation
+ *   signal `epic-2-context.md:44` forbids. Room's tracker re-emits, so a delete makes
+ *   the row disappear on its own.
  */
 data class KontrakUiState(
     val rows: List<ContractRow> = emptyList(),
     val form: ContractFormState? = null,
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
+    val exceptionSheet: ExceptionFormState? = null,
+    val exceptionRows: List<ServiceExceptionRow> = emptyList(),
 ) {
     /**
      * Whether the empty state applies.
@@ -166,10 +188,17 @@ val DEFAULT_REST_DAY: DayOfWeek = DayOfWeek.SUNDAY
  *
  * @param renterNames renter id -> stored name.
  * @param vehiclePlates vehicle id -> normalised plate.
+ * @param exceptionCounts contract id -> how many days that contract is not charged.
+ *   Grouped **once per emission** rather than per row, for the same reason the two
+ *   maps are: a contract list is walked once and each row reads from a lookup that
+ *   was built outside the loop. A row that counted exceptions by filtering the full
+ *   list would be O(contracts x exceptions), and would still be a second reader of
+ *   the same table from inside a projection that is meant to be pure.
  */
 fun Contract.toRow(
     renterNames: Map<String, String>,
     vehiclePlates: Map<String, String>,
+    exceptionCounts: Map<String, Int> = emptyMap(),
 ): ContractRow = ContractRow(
     contract = this,
     renterName = renterNames[renterId] ?: renterId,
@@ -179,6 +208,19 @@ fun Contract.toRow(
     // screens. The month form, not the weekday form — see `ContractRow.dateText`.
     rateText = formatRupiah(dailyRate),
     dateText = formatTanggalBulan(startDate),
+    exceptionCount = exceptionCounts[id] ?: 0,
+)
+
+/**
+ * Projects one stored exception into its row.
+ *
+ * The counterpart to [toRow], and the reason the sheet's list needs no lookup of
+ * its own: the date is formatted once per emission, in the ViewModel, so the sheet
+ * renders what it is handed and two screens cannot spell a date two ways.
+ */
+fun ServiceException.toRow(): ServiceExceptionRow = ServiceExceptionRow(
+    exception = this,
+    dateText = formatTanggalBulan(date),
 )
 
 // ------------------------------------------------------------ pure form edits
@@ -384,4 +426,175 @@ enum class ContractField {
     StartDate,
     Rate,
     RestDay,
+}
+
+// ------------------------------------------------------------ Story 2.6: exceptions
+
+/**
+ * One stored exception, plus the date already formatted for display.
+ *
+ * `dateText` rather than the raw `LocalDate` for the same reason `ContractRow` has
+ * one: `formatTanggalBulan` is called once per emission, in the ViewModel, so two
+ * screens cannot disagree about how a date looks and no composable formats anything.
+ *
+ * The **month** form (`14 Okt`), not the weekday form. A weekday cannot tell two
+ * exceptions apart — `14 Jum` and `14 Rab` are the only two things a weekday gives
+ * you, and a list of marked days read against a bill is a list that has to be
+ * unambiguous. See `formatTanggalBulan` and `Rupiah.kt:104-146`.
+ */
+data class ServiceExceptionRow(
+    val exception: ServiceException,
+    val dateText: String,
+)
+
+/**
+ * The exception sheet's own state: **which** contract, whether it can be edited,
+ * and the two add fields.
+ *
+ * ## Why it holds the form and never the rows
+ *
+ * The stored exceptions are derived in the ViewModel's `combine` from the observed
+ * flow, exactly as the list's renter names and plates are derived in Kotlin rather
+ * than joined in SQL. Snapping them into this state would make every write have to
+ * write them back — a manual invalidation signal, which `epic-2-context.md:44`
+ * forbids precisely because a second mechanism can only ever disagree with Room's.
+ * A consequence worth stating: the sheet cannot be open before the read lands,
+ * because it is reached from a row and rows come from a flow that has not emitted
+ * while `isLoading` is true. So it needs no skeleton of its own, and the four-state
+ * contract is discharged structurally rather than by a test.
+ *
+ * ## Why `isReadOnly` is state and not a lookup
+ *
+ * It answers "may this contract take an exception?", and the answer is
+ * `contract.isOpen` — a derivation over `endDate`, not a stored flag. The UI half of
+ * the rule *unmounts* the add block and every remove control when it is true, and
+ * the data half refuses the write in `ContractRepository`; the two are separate on
+ * purpose, because a screen check is a courtesy and this is the rule.
+ *
+ * @param contractLabel the title's text, pre-resolved by the ViewModel from the
+ *   renter and plate flows. Held as a string because the sheet needs to name the
+ *   rental in one heading and looking both halves up again in a composable would be
+ *   a second reader of `renter` and `vehicle`.
+ * @param addDate the day being marked, or `null` while nothing is picked. Empty
+ *   rather than defaulted to today, for the reason `ContractFormState.startDate` is:
+ *   a visible default is the prototype's hidden one wearing a label.
+ * @param addReason the owner's own words, or `""` untouched.
+ */
+data class ExceptionFormState(
+    val contractId: String,
+    val contractLabel: String,
+    val isReadOnly: Boolean = false,
+    val addDate: LocalDate? = null,
+    val addReason: String = "",
+    /** One slot per field that can be refused, for the reason `ContractFormState` has. */
+    val dateError: String? = null,
+    val reasonError: String? = null,
+    /**
+     * The row awaiting the impact dialog's confirmation, or `null`.
+     *
+     * ViewModel state rather than a `remember` inside the sheet, so a rotation mid-
+     * confirmation does not silently drop a dialog the owner had already opened. The
+     * dialog's *visibility* is therefore state rather than a composable's memory,
+     * which is what lets the sheet assert "the dialog is open because the ViewModel
+     * says so" instead of asserting its own local flag.
+     */
+    val pendingRemovalId: String? = null,
+)
+
+/**
+ * The fields an exception refusal can land on.
+ *
+ * **Not** an extension of [ContractField]: that enum is the *open-contract form's*
+ * refusal set, and this sheet adds no field to that form. Making this one a subclass
+ * would tie two independent forms' error slots together, so a field added to either
+ * would silently appear in the other's `when` — which is the kind of shared namespace
+ * that makes an exhaustive `when` a lie.
+ */
+enum class ExceptionField {
+    Date,
+    Reason,
+}
+
+/**
+ * Applies a date selection to the exception form.
+ *
+ * Clears its own error because the selection **is** the fix, and an error that
+ * survived it would accuse the owner of a field they have already filled in — the
+ * same rule `selectRenter` and `selectStartDate` follow.
+ */
+fun ExceptionFormState.selectExceptionDate(date: LocalDate): ExceptionFormState = copy(
+    addDate = date,
+    dateError = null,
+)
+
+/**
+ * Applies a reason edit, clearing its own error as the owner types.
+ *
+ * Pure and top-level so the refusal-clearing is testable with no device, no database
+ * and no ViewModel, and so the ViewModel's handler is a one-line delegation rather
+ * than a place logic can hide.
+ */
+fun ExceptionFormState.setExceptionReason(reason: String): ExceptionFormState = copy(
+    addReason = reason,
+    reasonError = null,
+)
+
+/**
+ * The first field that is not yet answerable, or `null` when the form is complete.
+ *
+ * ## Why the reason is second
+ *
+ * The order is the order the fields appear on the sheet, top to bottom, so the
+ * message lands on the first thing the owner would notice. It is deliberately *not*
+ * `ContractFormState.firstMissingField`'s shape extended with the read-only case: a
+ * read-only sheet has no add block at all, so asking which add field is missing is
+ * asking about a form that is not on screen.
+ */
+fun ExceptionFormState.firstMissingExceptionField(): ExceptionField? = when {
+    addDate == null -> ExceptionField.Date
+    addReason.isBlank() -> ExceptionField.Reason
+    else -> null
+}
+
+/**
+ * Whether Add is allowed.
+ *
+ * A **blank** reason rather than a missing one: the reason field opens empty and is
+ * typed into, so emptiness is the "not yet answered" state, exactly as the date's
+ * `null` is. `ServiceException`'s own `require(reason.isNotBlank())` is the data-layer
+ * half of the same rule — a caller holding a blank reason cannot construct one either.
+ *
+ * A read-only sheet answers `false` unconditionally, so `canAddException` is safe to
+ * read even in the state where the button is not composed at all.
+ */
+val ExceptionFormState.canAddException: Boolean
+    get() = !isReadOnly && firstMissingExceptionField() == null
+
+/**
+ * Builds the exception this form describes, or `null` when the form is incomplete.
+ *
+ * ## Why `null` rather than throwing
+ *
+ * An incomplete form is a state the caller already knows how to report — it is what
+ * [firstMissingExceptionField] names — so this returns `null` and lets the ViewModel
+ * put the message on the field that caused it. Throwing would collapse "you have not
+ * picked a day" into the same path as a genuinely unexpected failure, and the owner
+ * would read the generic message instead of being told what to fill in.
+ *
+ * @param id the new exception's id, from
+ *   `ContractRepository.newServiceExceptionId()`. Passed in rather than generated
+ *   here, so this stays pure and a test can pin it — the same choice
+ *   `ContractFormState.toContract` makes.
+ */
+fun ExceptionFormState.toServiceException(id: String): ServiceException? {
+    if (firstMissingExceptionField() != null) return null
+    val date = addDate ?: return null
+    return ServiceException(
+        id = id,
+        contractId = contractId,
+        date = date,
+        // Verbatim, not trimmed: the reason is owner-visible text in their own
+        // words, and what is stored is what the sheet reads back.
+        reason = addReason,
+    )
 }

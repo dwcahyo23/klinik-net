@@ -135,8 +135,32 @@ internal class Screens(
         val onCloseForm: () -> Unit,
         val onFormChange: ((ContractFormState) -> ContractFormState) -> Unit,
         val onSave: () -> Unit,
+        // The exception sheet's seven. Required for the same reason the three above
+        // are — see `KontrakScreen`'s KDoc, where the defaulted lambda this replaced
+        // is described. `onRequestRemove` carries the row's id because the id is what
+        // the delete is keyed on.
+        val onOpenExceptions: (net.klinik.rental.ui.screens.kontrak.ContractRow) -> Unit,
+        val onCloseExceptions: () -> Unit,
+        val onExceptionChange:
+            ((net.klinik.rental.ui.screens.kontrak.ExceptionFormState) -> net.klinik.rental.ui.screens.kontrak.ExceptionFormState) -> Unit,
+        val onAddException: () -> Unit,
+        val onRequestRemove: (String) -> Unit,
+        val onConfirmRemove: () -> Unit,
+        val onCancelRemove: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
+        /**
+         * The exception sheet's own failure message, separate from
+         * `state.errorMessage`.
+         *
+         * Its own slot because the sheet is a different **window**: the screen's
+         * banner sits behind it and would be invisible while the sheet is up, which is
+         * the AC's "the failure renders inside the sheet" clause. Not defaulted to
+         * `onErrorDismiss` either — one handler wired to both would clear one message
+         * through the other's setter and leave it on screen.
+         */
+        val exceptionErrorMessage: String? = null,
+        val onExceptionErrorDismiss: () -> Unit = {},
     )
 }
 
@@ -200,13 +224,17 @@ private fun PenyewaRoute(wiring: Screens.Penyewa) {
 /**
  * The contracts destination.
  *
- * ## Why this route does not mount the form sheet
+ * ## Why this route mounts no sheet at all
  *
- * `KontrakScreen` is the one screen that owns its own sheet — it has since Story
- * 2.5, and it is why that screen takes `onCloseForm`/`onFormChange`/`onSave` as
- * *required* parameters. Mounting `ContractFormSheet` here as well would compose
- * two `ModalBottomSheet` windows over the same `state.form` and render
- * `errorMessage` twice.
+ * `KontrakScreen` is the one screen that owns its sheets — `ContractFormSheet` since
+ * Story 2.5 and `ExceptionFormSheet` since 2.6 — and it is why that screen takes
+ * `onCloseForm`/`onFormChange`/`onSave` and the exception sheet's seven callbacks as
+ * *required* parameters. Mounting either sheet here as well would compose two
+ * `ModalBottomSheet` windows over the same state and render `errorMessage` twice.
+ *
+ * Two windows over one state was the only `high` Story 2.8's review found, and it is
+ * the reason the exception surface is **one** sheet carrying three blocks rather than
+ * a list sheet with a nested add sheet.
  *
  * `KendaraanRoute` and `PenyewaRoute` are the opposite case and keep their sheet
  * mounts: those two screens have no private sheet host, so the graph is the only
@@ -221,9 +249,22 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
         onCloseForm = wiring.onCloseForm,
         onFormChange = wiring.onFormChange,
         onSave = wiring.onSave,
+        onOpenExceptions = wiring.onOpenExceptions,
+        onCloseExceptions = wiring.onCloseExceptions,
+        onExceptionChange = wiring.onExceptionChange,
+        onAddException = wiring.onAddException,
+        onRequestRemove = wiring.onRequestRemove,
+        onConfirmRemove = wiring.onConfirmRemove,
+        onCancelRemove = wiring.onCancelRemove,
         snackbarMessage = wiring.snackbarMessage,
         onSnackbarDismiss = wiring.onSnackbarDismiss,
         onErrorDismiss = wiring.onErrorDismiss,
+        // The sheet's own banner. Forwarded as its own pair for the reason
+        // `Screens.Kontrak.exceptionErrorMessage` gives — and required to be passed
+        // rather than omitted, because an omitted pair is a sheet whose failure
+        // banner never renders and never clears.
+        exceptionErrorMessage = wiring.exceptionErrorMessage,
+        onExceptionErrorDismiss = wiring.onExceptionErrorDismiss,
         renterOptions = wiring.renterOptions,
         vehicleOptions = wiring.vehicleOptions,
     )

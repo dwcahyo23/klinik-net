@@ -118,6 +118,25 @@ fun KnField(
     onTrailingIconClick: (() -> Unit)? = null,
     keyboardType: KeyboardType = KeyboardType.Text,
     singleLine: Boolean = true,
+    /**
+     * How many lines the input grows to before it scrolls.
+     *
+     * **Mirrors `BasicTextField`'s own default expression**, which is
+     * `maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE` — and that is the whole
+     * reason the default is that expression rather than a bare `Int.MAX_VALUE`. A bare
+     * default would hand every existing `KnField` call site an unbounded multi-line box,
+     * changing the three sheets that work today: a caller passing `singleLine = true`
+     * and nothing else would get `maxLines = Int.MAX_VALUE` on a field that declares
+     * itself single-line, and `BasicTextField` derives its single-line *height* from
+     * this value — so the box would grow with its content while claiming to be one
+     * line.
+     *
+     * It exists because [singleLine] can only say "one line" and not "up to three".
+     * The reason field on the exception sheet is the first free-text input in the app
+     * and it lives inside a `verticalScroll` sheet: an unbounded field grows the sheet
+     * without limit, which is a layout defect rather than a preference.
+     */
+    maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     enabled: Boolean = true,
     /**
      * Invoked by the keyboard's action key.
@@ -201,6 +220,10 @@ fun KnField(
                     onValueChange = onValueChange,
                     enabled = enabled,
                     singleLine = singleLine,
+                    // Forwarded rather than left to `BasicTextField`'s own default:
+                    // the two defaults are the *same expression*, so every existing
+                    // call site behaves identically — see [maxLines].
+                    maxLines = maxLines,
                     textStyle = MaterialTheme.knTypography.body.copy(color = kn.textPrimary),
                     cursorBrush = SolidColor(MaterialTheme.knColors.primaryFill),
                     interactionSource = interaction,

@@ -423,6 +423,92 @@
     <string name="kontrak_saved">Kontrak %1$s tersimpan</string>
 
     <!--
+      Story 2.6 — Pengecualian servis (service exceptions).
+
+      The `kontrak_exception_*` and `kontrak_error_exception_*` prefixes sit inside
+      the `kontrak_*` namespace rather than beside it, so a screen's whole copy set
+      stays findable from one prefix — the same rule as `kendaraan_*` and
+      `penyewa_*`. Same rule as those two blocks as well: the repository raises typed
+      exceptions rather than text, so this is the only place the copy for a refusal
+      exists, and a screen cannot invent a second wording that says less.
+    -->
+    <!-- Sheet -->
+    <!--
+      The sheet's title. Both halves of what identifies a rental — who and which
+      car — because the owner has just tapped one row out of a list of several and
+      has to know which one this sheet belongs to.
+    -->
+    <string name="kontrak_exception_title">Pengecualian — %1$s</string>
+    <!-- The add block's heading. Reads as a section, not as a button. -->
+    <string name="kontrak_exception_add_label">Tandai hari tanpa tagihan</string>
+    <string name="kontrak_exception_field_date">Tanggal pengecualian</string>
+    <!--
+      The reason field's label and hint. The field is free text, so the hint has to
+      say what a reason *is* — an enum here would make the common reasons selectable
+      and the next one need a schema change.
+    -->
+    <string name="kontrak_exception_field_reason">Alasan</string>
+    <string name="kontrak_exception_reason_hint">Contoh: ganti ban, mobil di bengkel</string>
+    <string name="kontrak_exception_add">Tandai</string>
+
+    <!--
+      The list. Rendered chronologically rather than newest-first, because this list
+      is a billing statement the owner reads against an invoice — the same reason
+      `ServiceExceptionDao.observeAll` orders ascending, and the opposite of the
+      contract list's own order.
+    -->
+    <string name="kontrak_exception_list_label">Hari yang tidak ditagihkan</string>
+    <string name="kontrak_exception_empty_title">Belum ada pengecualian</string>
+    <string name="kontrak_exception_empty_body">Tandai hari tanpa tagihan di atas kalau mobil tidak dipakai atau sedang diperbaiki.</string>
+    <!--
+      The remove control, spoken. Names *what* is removed rather than only that a
+      button exists, and the date is the thing the owner is looking at — so a row's
+      remove announces "Hapus 14 Okt" rather than a bare "Hapus".
+    -->
+    <string name="kontrak_exception_remove_description">Hapus %1$s</string>
+
+    <!-- The impact dialog. Names the day and the consequence, which is the point. -->
+    <string name="kontrak_exception_remove_title">Hapus pengecualian?</string>
+    <string name="kontrak_exception_remove_body">Pengecualian %1$s dihapus, dan tanggal itu kembali ditagihkan ke penyewa.</string>
+    <string name="kontrak_exception_remove_confirm">Hapus</string>
+    <string name="kontrak_exception_remove_dismiss">Batal</string>
+
+    <!--
+      The row's count badge on the contract list. The AC asks the owner to see which
+      rentals carry compensation days *before* opening anything, so this is on the row
+      rather than inside the sheet. `%1$d` is the count; a contract with none draws no
+      badge at all rather than a "0" on every row.
+    -->
+    <string name="kontrak_exception_count">%1$d pengecualian</string>
+
+    <!--
+      Refusals. Each names the fault *and* the fix, per the epic context.
+
+      The duplicate names the *stored* date, read back from the row that holds the
+      pair rather than echoed from the input — the same rule
+      `kendaraan_error_duplicate_plate` and `kontrak_error_vehicle_busy` follow.
+
+      The before-start message names the contract's own start date rather than the
+      offending one, because the fix is "pick a day on or after the contract began"
+      and the owner cannot act on that without knowing which day that was. The day
+      they typed is already in the field they typed it into.
+
+      There is deliberately **no** "reason required" refusal in the shared
+      `field_required_error` shape: a blank reason is not a missing field, it is the
+      one piece of owner-visible text this row carries, and the message says what to
+      write in it rather than only that something is absent.
+    -->
+    <string name="kontrak_error_exception_duplicate">%1$s sudah ditandai tanpa tagihan di kontrak ini. Pilih tanggal lain.</string>
+    <string name="kontrak_error_exception_before_start">Kontrak dimulai %1$s. Pengecualian hanya bisa ditandai pada tanggal setelah atau sama dengan tanggal mulai.</string>
+    <string name="kontrak_error_exception_blank_date">Wajib diisi. Pilih tanggal pengecualian lalu kirim ulang.</string>
+    <string name="kontrak_error_exception_blank_reason">Tulis alasan singkat, misalnya mobil di bengkel. Pengecualian tanpa alasan tidak bisa ditampilkan di daftar.</string>
+    <string name="kontrak_error_exception_ended">Kontrak ini sudah berakhir, jadi pengecualiannya hanya bisa dibaca.</string>
+    <string name="kontrak_error_exception_unexpected">Gagal menyimpan pengecualian. Coba lagi.</string>
+    <!-- Confirmations. A snackbar, not a screen state change. -->
+    <string name="kontrak_exception_added">%1$s ditandai tanpa tagihan</string>
+    <string name="kontrak_exception_removed">Pengecualian %1$s dihapus</string>
+
+    <!--
       Story 2.8 — Empat state & kerangka.
 
       Nav labels are flat and unprefixed rather than `nav_kendaraan`-style per

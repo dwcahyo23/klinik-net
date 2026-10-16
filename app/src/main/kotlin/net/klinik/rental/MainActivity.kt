@@ -143,7 +143,15 @@ internal fun createKontrakViewModel(context: Context): KontrakViewModel {
     val database = KlinikDatabase.get(context)
     val strings = RStrings(context)
     return KontrakViewModel(
-        contracts = ContractRepository(database.contractDao(), database),
+        contracts = ContractRepository(
+            database.contractDao(),
+            // The exception DAO, in `ContractRepository` rather than in a repository
+            // of its own — see that class's KDoc. `MainActivity` gains a line
+            // because that class grew a second DAO, and gains nothing else: no
+            // constructor parameter on the ViewModel, no second `Screens` field.
+            database.serviceExceptionDao(),
+            database,
+        ),
         renters = RenterRepository(database.renterDao()),
         vehicles = VehicleRepository(database.vehicleDao(), database),
         strings = strings,
@@ -186,6 +194,9 @@ private fun KlinikNetApp(
     val penyewaSnackbar by penyewa.snackbarMessage.collectAsStateWithLifecycle()
     val kontrakState by kontrak.uiState.collectAsStateWithLifecycle()
     val kontrakSnackbar by kontrak.snackbarMessage.collectAsStateWithLifecycle()
+    // Story 2.6's sheet has its **own** banner, because it is a separate window and
+    // the screen's is behind it — see `Screens.Kontrak.exceptionErrorMessage`.
+    val kontrakExceptionError by kontrak.exceptionErrorMessage.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
 
@@ -232,8 +243,27 @@ private fun KlinikNetApp(
                     onCloseForm = kontrak::closeForm,
                     onFormChange = kontrak::onFormChange,
                     onSave = kontrak::saveForm,
+                    // Story 2.6's seven. `createKontrakViewModel` itself is unchanged
+                    // by that story: `KontrakViewModel` already held
+                    // `ContractRepository`, and extending that repository with the
+                    // second DAO is what kept this wiring line the only place the
+                    // feature touched. A second repository would have added a
+                    // constructor parameter *and* a line here.
+                    onOpenExceptions = kontrak::openExceptions,
+                    onCloseExceptions = kontrak::closeExceptions,
+                    onExceptionChange = kontrak::onExceptionChange,
+                    onAddException = kontrak::addException,
+                    onRequestRemove = kontrak::requestRemoveException,
+                    onConfirmRemove = kontrak::confirmRemoveException,
+                    onCancelRemove = kontrak::cancelRemoveException,
                     onSnackbarDismiss = kontrak::consumeMessage,
                     onErrorDismiss = kontrak::consumeError,
+                    // The exception sheet's own banner pair, and its own handlers: it
+                    // is a different window from the screen's banner, so sharing
+                    // either setter would clear one message through the other's
+                    // channel while it stayed on screen.
+                    exceptionErrorMessage = kontrakExceptionError,
+                    onExceptionErrorDismiss = kontrak::consumeExceptionError,
                 ),
             ),
         )

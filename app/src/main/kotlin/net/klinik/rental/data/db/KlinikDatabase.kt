@@ -9,18 +9,20 @@ import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
 import net.klinik.rental.data.db.dao.ContractDao
 import net.klinik.rental.data.db.dao.RenterDao
+import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.VehicleDao
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
+import net.klinik.rental.data.db.entity.ServiceExceptionEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 
 /**
  * The app's Room database.
  *
- * Three entities as of Story 2.5: `VEHICLE`, `RENTER`, and `CONTRACT` — the last
- * of which is now the real record (renter, frozen daily rate, schedule) rather
- * than the three placeholder columns Story 2.2 shipped to make the vehicle-delete
- * refusal reachable.
+ * Four entities as of Story 2.6: `VEHICLE`, `RENTER`, `CONTRACT` — the real
+ * record, renter and frozen daily rate and all, rather than the three placeholder
+ * columns Story 2.2 shipped to make the vehicle-delete refusal reachable — and
+ * `SERVICE_EXCEPTION`, the days a contract was *not* charged.
  *
  * ## Why the version moves inside Epic 2
  *
@@ -37,14 +39,20 @@ import net.klinik.rental.data.db.entity.VehicleEntity
  * ## Why `fallbackToDestructiveMigration` stays unused
  *
  * Because the KDoc's own warning is right: it would make dropping the owner's
- * fleet — and now their renters — one line away, and dropping the owner's data is
- * not a direction to be wrong in. A missing migration fails loudly at open; the
- * fallback fails quietly by deleting the fleet, which is precisely the
- * "disappears and looks like a fresh account" outcome the epic context forbids.
+ * fleet — and now their renters and their contracts — one line away, and dropping
+ * the owner's data is not a direction to be wrong in. A missing migration fails
+ * loudly at open; the fallback fails quietly by deleting the fleet, which is
+ * precisely the "disappears and looks like a fresh account" outcome the epic
+ * context forbids.
  */
 @Database(
-    entities = [VehicleEntity::class, ContractEntity::class, RenterEntity::class],
-    version = 3,
+    entities = [
+        VehicleEntity::class,
+        ContractEntity::class,
+        RenterEntity::class,
+        ServiceExceptionEntity::class,
+    ],
+    version = 4,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -55,6 +63,8 @@ abstract class KlinikDatabase : RoomDatabase() {
     abstract fun renterDao(): RenterDao
 
     abstract fun contractDao(): ContractDao
+
+    abstract fun serviceExceptionDao(): ServiceExceptionDao
 
     companion object {
         private const val NAME = "klinik.db"
@@ -250,6 +260,84 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v3 -> v4: adds `SERVICE_EXCEPTION`.
+         *
+         * ## Why this has none of `MIGRATION_2_3`'s "refuse to drop rows" machinery
+         *
+         * `MIGRATION_2_3` counts `contract` rows and throws if any exist, because it
+         * drops and recreates a table, and a premise checked only by a grep gate is
+         * one refactor away from discarding the owner's records. This migration runs
+         * `CREATE TABLE` and `CREATE UNIQUE INDEX` on a name that does not exist and
+         * touches **no existing table**, so there is nothing it can lose and a
+         * row-count guard would be theatre. What replaces the guard is the test: the
+         * v3 fixture asserts the vehicle, renter *and* contract rows survive the step,
+         * and the duplicate provocation proves the index was really created in the
+         * migrated file rather than only in the compiled schema. The failure being
+         * guarded against is unchanged — a hand-written migration that is subtly
+         * wrong — and the *mechanism* for catching it is the fixture, not the
+         * migration.
+         *
+         * ## What the statements below are, exactly
+         *
+         * They are what Room expects for [ServiceExceptionEntity], written out rather
+         * than derived:
+         *
+         *  - column names are the Kotlin property names verbatim — no
+         *    `@ColumnInfo(name = …)` rename anywhere
+         *  - `date` is converted by [Converters] to ISO `yyyy-MM-dd` TEXT
+         *  - **no column is nullable**, so there is no `DEFAULT NULL` anywhere and
+         *    nothing for `@ColumnInfo(defaultValue)` to declare. That is the one
+         *    thing this table does differently from the other three, and it is why the
+         *    statements are so much shorter than `MIGRATION_2_3`'s — see
+         *    [ServiceExceptionEntity]'s KDoc on why no column may become nullable
+         *    here without also changing this SQL
+         *  - the foreign key is declared with the same
+         *    `ON UPDATE CASCADE ON DELETE RESTRICT` Room derives from the entity's
+         *    `ForeignKey` declaration
+         *  - the unique index is created separately under the name Room derives from
+         *    `Index(value = ["contractId", "date"], unique = true)` —
+         *    `index_service_exception_contractId_date`. **Room's derived name,
+         *    verbatim**: an index created under any other name is refused wholesale at
+         *    open, because `SchemaInfoUtilKt.readIndices` compares the index set for
+         *    equality. `DatabaseMigrationTest`'s `indexesOf` assertion is what proves
+         *    the name is right rather than merely plausible.
+         *
+         * No `--` comments appear inside these statements. A SQL line comment inside
+         * a Kotlin raw string reaches SQLite verbatim and swallows the rest of the
+         * statement, which surfaces as a bare `near "/": syntax error` with no line of
+         * this file named in it — the exact defect the two migrations above record.
+         *
+         * Room validates the resulting schema against the compiled one when the
+         * migration runs, so a column or an index that does not match fails here
+         * rather than on the owner's device. `DatabaseMigrationTest` runs this
+         * against a real v3 database and asserts the fleet, the renters and the
+         * contracts survive.
+         */
+        val MIGRATION_3_4 = object : Migration(3, 4) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `service_exception` (
+                        `id` TEXT NOT NULL,
+                        `contractId` TEXT NOT NULL,
+                        `date` TEXT NOT NULL,
+                        `reason` TEXT NOT NULL,
+                        PRIMARY KEY (`id`),
+                        FOREIGN KEY (`contractId`) REFERENCES `contract` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT
+                    )
+                    """.trimIndent(),
+                )
+                // The duplicate rule, and the foreign key's index at the same time.
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                        "`index_service_exception_contractId_date` " +
+                        "ON `service_exception` (`contractId`, `date`)",
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -268,7 +356,7 @@ abstract class KlinikDatabase : RoomDatabase() {
             Room.databaseBuilder(context, KlinikDatabase::class.java, NAME)
                 // Every schema change ships its migration here. No
                 // `fallbackToDestructiveMigration` — see the class KDoc.
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
                 .build()
     }
 }

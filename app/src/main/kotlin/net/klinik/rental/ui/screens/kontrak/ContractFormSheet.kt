@@ -74,9 +74,17 @@ import java.time.ZoneOffset
  * ## What this form deliberately does not have
  *
  * No end-date field (Story 2.7 ends a contract), no settled-through-date (Epic 3),
- * no service-exception editor (Story 2.6), and no `workSchedule` string beside the
- * rest day — two encodings of one fact can disagree. The schedule is the 6/7-day
- * chip pair plus, for six days, the rest-day chip row.
+ * and no `workSchedule` string beside the rest day — two encodings of one fact can
+ * disagree. The schedule is the 6/7-day chip pair plus, for six days, the rest-day
+ * chip row.
+ *
+ * Service exceptions are **not** here either, and that is a boundary rather than an
+ * omission: a service exception is a *day the contract is not charged*, and it has
+ * to be marked against a specific stored row on a contract the owner has already
+ * opened. `ExceptionFormSheet` is that surface — mounted over the contract list by
+ * `KontrakScreen` when the owner taps a row — and putting an editor for the contract's
+ * *compensation* days on the form for *opening* it would offer a control for a
+ * contract that does not exist yet.
  *
  * ## Why the sheet renders its own failure rather than leaving it to the screen
  *

@@ -3,6 +3,7 @@ package net.klinik.rental.ui.strings
 import android.content.Context
 import androidx.annotation.StringRes
 import net.klinik.rental.R
+import net.klinik.rental.ui.format.formatTanggalBulan
 
 /**
  * Indonesian copy for the screens that raise typed domain exceptions.
@@ -195,6 +196,115 @@ class RStrings(private val context: Context) {
      */
     fun kontrakErrorUnexpected(): String =
         context.getString(R.string.kontrak_error_unexpected)
+
+    // -------------------------------------------------------------- Story 2.6
+
+    /**
+     * Formats a marked day the one way this screen spells a date.
+     *
+     * ## Why this is on `RStrings` rather than left to the caller
+     *
+     * The two places that name an exception's date — the confirmation and the
+     * duplicate refusal — are reached from the ViewModel, which has no composition
+     * and therefore no `stringResource`. So the formatter that produces `14 Okt` has
+     * to be callable from here, and putting it here is what keeps it *the same*
+     * formatter the sheet's rows use: one path, so the date the owner is told about
+     * and the date the owner sees in the list cannot differ.
+     *
+     * The **month** form, not the weekday form — see `formatTanggalBulan`, and the
+     * two exceptions on `14 Jum` and `14 Okt` that a weekday cannot tell apart.
+     */
+    fun formatExceptionDate(date: java.time.LocalDate): String =
+        formatTanggalBulan(date)
+
+    /** A marked day's confirmation. Names the day, which is what the owner just chose. */
+    fun kontrakExceptionAdded(date: String): String =
+        context.getString(R.string.kontrak_exception_added, date)
+
+    /**
+     * And the confirmation for a removal, naming the day that is billable again.
+     *
+     * Takes a `LocalDate` rather than an already-formatted `String` — unlike the two
+     * *refusals* above, which receive the raw date from an exception and format it
+     * here — because this one is handed a date that may already be `null`: the row is
+     * gone from Room's flow by the time the dialog is confirmed, so the ViewModel
+     * reads it *before* the delete. A `null` reads as the sentence without the day,
+     * which is still grammatical and does not need a placeholder that would look like
+     * a data problem.
+     */
+    fun kontrakExceptionRemoved(date: java.time.LocalDate?): String =
+        context.getString(
+            R.string.kontrak_exception_removed,
+            date?.let(::formatExceptionDate).orEmpty(),
+        )
+
+    /**
+     * A date this contract already carries an exception for.
+     *
+     * The exception carries the *stored* date, read back from the row that holds the
+     * `(contractId, date)` pair rather than echoed from the submitted value — the same
+     * rule [kontrakErrorVehicleBusy] and [kendaraanErrorDuplicatePlate] follow. After
+     * the repository's pre-check or after its translation of the index's refusal, the
+     * date in the message always comes from a row that exists in the sheet's list.
+     */
+    fun kontrakErrorExceptionDuplicate(date: java.time.LocalDate): String =
+        context.getString(R.string.kontrak_error_exception_duplicate, formatExceptionDate(date))
+
+    /**
+     * A day before the contract began.
+     *
+     * Names the contract's **own start date**, not the offending day, because the fix
+     * is "pick a day on or after the contract began" and the owner cannot act on that
+     * without knowing which day that was — and the day they typed is already sitting
+     * in the field they typed it into.
+     */
+    fun kontrakErrorExceptionBeforeStart(startDate: java.time.LocalDate): String =
+        context.getString(R.string.kontrak_error_exception_before_start, formatExceptionDate(startDate))
+
+    /**
+     * An unpicked day.
+     *
+     * Not the shared `KnFieldError.Required` wording the two pickers use, because
+     * this is not a picker: it is a date the owner has to *choose* from a calendar,
+     * and the fix in the sentence is the one that names which calendar.
+     */
+    fun kontrakErrorExceptionBlankDate(): String =
+        context.getString(R.string.kontrak_error_exception_blank_date)
+
+    /**
+     * A blank reason.
+     *
+     * Not the shared required-field wording either, and deliberately: a blank reason
+     * is not a field the owner forgot but a *piece of text this row carries* — the
+     * acceptance criterion requires the exception to be shown with its reason, and a
+     * row with an empty "keterangan" line is indistinguishable from a row whose reason
+     * was lost. So the message says what to write in it rather than only that
+     * something is absent.
+     */
+    fun kontrakErrorExceptionBlankReason(): String =
+        context.getString(R.string.kontrak_error_exception_blank_reason)
+
+    /**
+     * A contract that has ended.
+     *
+     * One wording for both the add and the remove refusal, because they are one fact:
+     * this contract is finished. It has no field of its own to land on — the whole add
+     * block is about to go away — so it lands on the sheet's own banner, in the window
+     * that is actually on top.
+     */
+    fun kontrakErrorExceptionEnded(): String =
+        context.getString(R.string.kontrak_error_exception_ended)
+
+    /**
+     * A write that failed for a reason this screen does not model.
+     *
+     * Says nothing about what went wrong because nothing is known: naming a cause here
+     * would be a guess shown to the owner as fact. It reads "pengecualian" where
+     * [kontrakErrorUnexpected] reads "menyimpan", so the owner knows *which* write
+     * failed when both screens have banners in their own windows.
+     */
+    fun kontrakErrorExceptionUnexpected(): String =
+        context.getString(R.string.kontrak_error_exception_unexpected)
 
     // -------------------------------------------------------------- Story 2.8
 

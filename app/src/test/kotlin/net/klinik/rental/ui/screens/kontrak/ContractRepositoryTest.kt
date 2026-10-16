@@ -6,13 +6,19 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.ContractDao
+import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
+import net.klinik.rental.data.db.entity.ServiceExceptionEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.domain.model.Contract
+import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
+import net.klinik.rental.domain.validation.ContractNotOpenException
+import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.InvalidAmountException
+import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -64,7 +70,11 @@ class ContractRepositoryTest {
             // Every assertion here is a suspend function driven by `runBlocking`, so
             // there is no main-thread query to forbid.
             .build()
-        repository = ContractRepository(database.contractDao(), database)
+        repository = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+            database,
+        )
     }
 
     @After
@@ -357,7 +367,7 @@ class ContractRepositoryTest {
         database.contractDao().insertContract(openEntity(id = "first"))
 
         val blinded = BlindPreCheckDao(database.contractDao())
-        val racing = ContractRepository(blinded, database)
+        val racing = ContractRepository(blinded, database.serviceExceptionDao(), database)
 
         val error = assertThrows(ContractAlreadyActiveException::class.java) {
             runBlocking { racing.open(contract(id = "second")) }
@@ -390,7 +400,7 @@ class ContractRepositoryTest {
         database.contractDao().insertContract(openEntity(id = "first"))
 
         val blinded = BlindPreCheckDao(database.contractDao())
-        val racing = ContractRepository(blinded, database)
+        val racing = ContractRepository(blinded, database.serviceExceptionDao(), database)
 
         val error = assertThrows(ContractAlreadyActiveException::class.java) {
             runBlocking { racing.open(contract(id = "second", vehicleId = "vehicle-2")) }
@@ -684,6 +694,310 @@ class ContractRepositoryTest {
         assertEquals(4, repository.observeContracts().first().size)
     }
 
+    // ----------------------------------------------- the EXCEPTION_* matrix rows
+
+    /**
+     * `EXCEPTION_ADD` — the happy path, read back through the flow.
+     *
+     * A `Flow` rather than a one-shot read, for the same reason the contract tests
+     * use one: it is what the sheet subscribes to, and it is what makes the AC's "no
+     * manual refresh" a structural fact rather than a promise — Room's tracker
+     * re-emits with no signal from anywhere in the app.
+     */
+    @Test
+    fun `an exception is stored and observed on its contract`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+
+        repository.addServiceException(
+            ServiceException(
+                id = EXCEPTION_ID,
+                contractId = CONTRACT_ID,
+                date = EXCEPTION_DAY,
+                reason = "Ganti ban, mobil di bengkel",
+            )
+        )
+
+        val stored = repository.observeServiceExceptions().first()
+        assertEquals(1, stored.size)
+        assertEquals(EXCEPTION_ID, stored.single().id)
+        assertEquals(CONTRACT_ID, stored.single().contractId)
+        assertEquals(EXCEPTION_DAY, stored.single().date)
+        assertEquals("Ganti ban, mobil di bengkel", stored.single().reason)
+    }
+
+    /**
+     * `EXCEPTION_DUPLICATE` — the same date twice on one contract is refused, nothing
+     * is written, and the refusal names the **stored** date.
+     *
+     * The message naming the stored row is the part worth pinning: the owner has to
+     * learn *which* day is already marked, and the submitted date happens to equal it
+     * here — which is exactly why a test that only checked the exception *type* would
+     * pass an implementation that carried the wrong value.
+     */
+    @Test
+    fun `a duplicate date on one contract is refused and names the stored date`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
+
+        val error = assertThrows(DuplicateServiceExceptionDateException::class.java) {
+            runBlocking { repository.addServiceException(exception(id = "other", date = EXCEPTION_DAY)) }
+        }
+
+        assertEquals(EXCEPTION_DAY, error.date)
+        assertEquals(CONTRACT_ID, error.contractId)
+        assertEquals("the row count must not move", 1, repository.observeServiceExceptions().first().size)
+    }
+
+    /**
+     * `EXCEPTION_DUPLICATE_INDEX` — the **index** refuses, and the refusal arrives as
+     * the duplicate exception rather than a raw `SQLiteConstraintException`.
+     *
+     * Without the wrapper below, `insertServiceExceptionEntity`'s catch is dead code:
+     * a pre-check that can see the row always refuses first. So the pre-check is
+     * blinded exactly once and the write goes through to the real `UNIQUE` index —
+     * which is the AC's own claim ("the refusal arrives as the duplicate exception
+     * naming the stored date, not as a raw `SQLiteConstraintException`").
+     */
+    @Test
+    fun `the index refusal is translated when the pre-check cannot see the row`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
+
+        val blinded = BlindPreCheckExceptionDao(database.serviceExceptionDao())
+        val racing = ContractRepository(database.contractDao(), blinded, database)
+
+        val error = assertThrows(DuplicateServiceExceptionDateException::class.java) {
+            runBlocking { racing.addServiceException(exception(id = "other", date = EXCEPTION_DAY)) }
+        }
+
+        assertEquals("names the stored date", EXCEPTION_DAY, error.date)
+        assertEquals("the index must hold the row count at one", 1, repository.observeServiceExceptions().first().size)
+    }
+
+    /**
+     * The re-read's **untouched** branch: a `SQLiteConstraintException` for which no
+     * row is found is rethrown, not relabelled as a duplicate.
+     *
+     * The load-bearing case is a **primary-key** clash on `id` while the date is free.
+     * Relabelling that as "this date is already marked" would tell the owner a date is
+     * taken when it is not — and the re-read is what distinguishes the two, so it has
+     * to be exercised on its own rather than only through the duplicate path.
+     */
+    @Test
+    fun `a constraint failure with no stored row is rethrown untouched`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
+
+        // Same *id*, different date: the date index is free, so the only thing that
+        // can refuse is the primary key.
+        val error = assertThrows(android.database.sqlite.SQLiteConstraintException::class.java) {
+            runBlocking {
+                repository.addServiceException(
+                    exception(id = EXCEPTION_ID, date = EXCEPTION_DAY.plusDays(1))
+                )
+            }
+        }
+
+        assertTrue(
+            "the raw SQLite failure must reach the caller, unlabelled: ${error::class.java.name}",
+            error is android.database.sqlite.SQLiteConstraintException,
+        )
+        assertEquals(
+            "and only the first row exists",
+            1,
+            repository.observeServiceExceptions().first().size,
+        )
+    }
+
+    /**
+     * `EXCEPTION_BEFORE_START` — a date before the contract's start is refused, and
+     * the refusal names the start date.
+     *
+     * The reasoning is arithmetic, not policy: `chargeDaysIn` filters
+     * `it >= contractStart` *before* it reaches the exception filter, so a row before
+     * the start could never stop a charge. Storing it would be an inert row that looks
+     * like a working one.
+     */
+    @Test
+    fun `a date before the contract start is refused and names the start date`() = runBlocking {
+        seed()
+        val start = LocalDate.of(2026, 10, 1)
+        repository.open(contract(id = CONTRACT_ID, startDate = start))
+
+        val error = assertThrows(ServiceExceptionBeforeContractStartException::class.java) {
+            runBlocking {
+                repository.addServiceException(
+                    exception(
+                        id = EXCEPTION_ID,
+                        date = start.minusDays(1),
+                    )
+                )
+            }
+        }
+
+        assertEquals("the message names the start date", start, error.startDate)
+        assertEquals("nothing is written", 0, repository.observeServiceExceptions().first().size)
+    }
+
+    /**
+     * `EXCEPTION_ENDED_ADD` — an ended contract refuses the write.
+     *
+     * Written against the **repository**, not the UI: the AC is explicit that the
+     * read-only rule is not a UI check, so a test that only asserted a disabled button
+     * would leave the actual guarantee unverified. `isReadOnly` in the sheet is a
+     * rendering of this fact, and it can drift.
+     */
+    @Test
+    fun `an ended contract refuses a new exception`() = runBlocking {
+        seed()
+        database.contractDao().insertContract(endedEntity(id = CONTRACT_ID))
+
+        assertThrows(ContractNotOpenException::class.java) {
+            runBlocking {
+                repository.addServiceException(
+                    exception(id = EXCEPTION_ID, date = LocalDate.of(2026, 9, 15))
+                )
+            }
+        }
+
+        assertEquals("nothing is written", 0, repository.observeServiceExceptions().first().size)
+    }
+
+    /**
+     * `EXCEPTION_ENDED_REMOVE` — and the same refusal on the way out. The row stays.
+     *
+     * One exception type covers both directions on purpose: "this contract has ended"
+     * is one fact, and two classes would let one of the two paths forget to check it.
+     */
+    @Test
+    fun `an ended contract refuses removing an exception and the row stays`() = runBlocking {
+        seed()
+        // The row is written while the contract is still open, then the contract ends:
+        // an ended contract could not have had one added, so this is the only way to
+        // reach the state the matrix row describes.
+        repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2026, 9, 1)))
+        repository.addServiceException(
+            exception(id = EXCEPTION_ID, date = LocalDate.of(2026, 9, 15))
+        )
+        database.contractDao().update(
+            endedEntity(id = CONTRACT_ID, startDate = LocalDate.of(2026, 9, 1))
+        )
+
+        assertThrows(ContractNotOpenException::class.java) {
+            runBlocking { repository.removeServiceException(EXCEPTION_ID, CONTRACT_ID) }
+        }
+
+        assertEquals(
+            "the row must survive a refused removal",
+            1,
+            repository.observeServiceExceptions().first().size,
+        )
+    }
+
+    /**
+     * `EXCEPTION_PER_CONTRACT` — the same date on two contracts of **one vehicle** is
+     * two rows, because exceptions are keyed on the contract.
+     *
+     * Two constraints interleave here and the ordering is the whole test. Only one
+     * contract per vehicle can be open at a time (Story 2.5), and a *write* on an
+     * ended contract is refused (this story) — so the only sequence that produces two
+     * exceptions on one vehicle is: open the first, mark a day on it, end it, open the
+     * second, mark the same day on that. Written any other way, one of the two
+     * refusals fires first and the test would be asserting the wrong rule.
+     *
+     * The second date is 14 Oct and the first is 1 Sep: both are the same day-of-month
+     * minus nothing, which is what makes a per-vehicle key observable as "only one row
+     * survived".
+     */
+    @Test
+    fun `the same date on two contracts of one vehicle is two rows`() = runBlocking {
+        seedTwoRenters()
+
+        // First contract: open, then marked while it is open.
+        repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2026, 9, 1)))
+        repository.addServiceException(
+            exception(id = "e1", date = LocalDate.of(2026, 9, 14))
+        )
+
+        // End it through the DAO, which frees the vehicle slot.
+        database.contractDao().update(
+            endedEntity(
+                id = CONTRACT_ID,
+                startDate = LocalDate.of(2026, 9, 1),
+                endDate = LocalDate.of(2026, 9, 30),
+            )
+        )
+
+        // Second contract on the same vehicle, then the same day marked on it.
+        repository.open(
+            contract(
+                id = CONTRACT_ID_2,
+                startDate = LocalDate.of(2026, 10, 1),
+                renterId = RENTER_ID_2,
+            )
+        )
+        repository.addServiceException(
+            exception(id = "e2", contractId = CONTRACT_ID_2, date = LocalDate.of(2026, 10, 14))
+        )
+
+        val stored = repository.observeServiceExceptions().first()
+        assertEquals("one row per contract", 2, stored.size)
+        assertEquals(
+            setOf(CONTRACT_ID, CONTRACT_ID_2),
+            stored.map { it.contractId }.toSet(),
+        )
+        assertEquals(
+            "both carry day 14 of their own month, which a per-vehicle key could not hold",
+            setOf(14),
+            stored.map { it.date.dayOfMonth }.toSet(),
+        )
+    }
+
+    /**
+     * `EXCEPTION_REMOVE` — the row is gone and the flow re-emits on its own.
+     *
+     * Also pins the **scoping** the delete predicate buys, using a *real* second
+     * contract rather than a made-up id: `requireOpenContract` refuses an id nobody
+     * holds, so a fabricated id would raise before the delete ran and this would test
+     * the guard instead of the predicate. The right row id paired with the wrong
+     * contract removes nothing — which is what keeps a delete from being aimed at any
+     * contract the caller happens to hold a row id for.
+     */
+    @Test
+    fun `removing an exception takes the row away and leaves other contracts alone`() = runBlocking {
+        seedTwoRenters()
+        // A second **open** contract on a second vehicle. Open, because
+        // `requireOpenContract` refuses both an unknown id and an ended one — so a
+        // fabricated id or an ended contract would raise before the delete ran, and
+        // this would end up testing the guard rather than the predicate. The row under
+        // test belongs to the *first* contract.
+        database.vehicleDao().insert(vehicleEntity(id = VEHICLE_ID_2, plate = "B 9999 TF"))
+        repository.open(contract(id = CONTRACT_ID))
+        repository.open(
+            contract(id = CONTRACT_ID_2, vehicleId = VEHICLE_ID_2, renterId = RENTER_ID_2)
+        )
+        repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
+
+        // The right id, the wrong contract: a no-op, not a delete.
+        repository.removeServiceException(EXCEPTION_ID, CONTRACT_ID_2)
+        assertEquals(
+            "a delete must be scoped to its own contract",
+            1,
+            repository.observeServiceExceptions().first().size,
+        )
+
+        repository.removeServiceException(EXCEPTION_ID, CONTRACT_ID)
+        assertEquals(
+            "the flow re-emits with the row gone, no manual refresh",
+            0,
+            repository.observeServiceExceptions().first().size,
+        )
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /** The vehicle and the renter every fixture contract names. */
@@ -696,6 +1010,24 @@ class ContractRepositoryTest {
                 phone = "08123456789",
                 bankAccount = null,
                 emergencyContact = "08129876543",
+            ),
+        )
+    }
+
+    /**
+     * [seed] plus a second renter, for the one exception test that needs two contracts
+     * on one vehicle — which needs two renters, because `UNIQUE(renter.name)` and the
+     * one-active-per-renter rule both stand in the way of reusing the first.
+     */
+    private suspend fun seedTwoRenters() {
+        seed()
+        database.renterDao().insert(
+            RenterEntity(
+                id = RENTER_ID_2,
+                name = RENTER_NAME_2,
+                phone = "08123456788",
+                bankAccount = null,
+                emergencyContact = "08129876544",
             ),
         )
     }
@@ -723,9 +1055,10 @@ class ContractRepositoryTest {
         startDate: LocalDate = LocalDate.of(2026, 10, 1),
         rate: Long = 250_000L,
         restDay: DayOfWeek? = DayOfWeek.SUNDAY,
+        renterId: String = RENTER_ID,
     ) = Contract(
         id = id,
-        renterId = RENTER_ID,
+        renterId = renterId,
         vehicleId = vehicleId,
         startDate = startDate,
         dailyRate = rate,
@@ -734,30 +1067,82 @@ class ContractRepositoryTest {
     )
 
     /** A raw open row, bypassing the repository and the domain model. */
-    private fun openEntity(id: String) = ContractEntity(
+    private fun openEntity(id: String, renterId: String = RENTER_ID) = ContractEntity(
         id = id,
-        renterId = RENTER_ID,
+        renterId = renterId,
         vehicleId = VEHICLE_ID,
         startDate = LocalDate.of(2026, 10, 1),
         dailyRate = 250_000L,
         restDay = null,
         activeVehicleId = VEHICLE_ID,
-        activeRenterId = RENTER_ID,
+        activeRenterId = renterId,
         endDate = null,
     )
 
     /** A raw ended row: both active columns `NULL`, which is what frees the slots. */
-    private fun endedEntity(id: String) = ContractEntity(
+    private fun endedEntity(
+        id: String,
+        startDate: LocalDate = LocalDate.of(2026, 9, 1),
+        endDate: LocalDate = LocalDate.of(2026, 9, 10),
+        renterId: String = RENTER_ID,
+    ) = ContractEntity(
         id = id,
-        renterId = RENTER_ID,
+        renterId = renterId,
         vehicleId = VEHICLE_ID,
-        startDate = LocalDate.of(2026, 9, 1),
+        startDate = startDate,
         dailyRate = 250_000L,
         restDay = null,
         activeVehicleId = null,
         activeRenterId = null,
-        endDate = LocalDate.of(2026, 9, 10),
+        endDate = endDate,
     )
+
+    /**
+     * A domain service exception, ready to store.
+     *
+     * [date] defaults to a Wednesday inside the fixture contract's period, so the
+     * rest day is never in play and a failure can only be about the exception.
+     */
+    private fun exception(
+        id: String,
+        date: LocalDate = EXCEPTION_DAY,
+        contractId: String = CONTRACT_ID,
+        reason: String = "Ganti ban, mobil di bengkel",
+    ) = ServiceException(
+        id = id,
+        contractId = contractId,
+        date = date,
+        reason = reason,
+    )
+
+    /**
+     * The real exception DAO with **only its duplicate pre-check blinded, and only
+     * once**.
+     *
+     * The same shape and the same reason as [BlindPreCheckDao]: `addServiceException`
+     * asks `findByContractAndDate` twice — once as the pre-check, again inside the
+     * catch to find out *who* holds the `(contractId, date)` slot. Blinding it outright
+     * would blind both, so the catch would find nothing, rethrow the raw
+     * `SQLiteConstraintException`, and the test would assert the opposite of what it
+     * claims. `null` on the first call and the real answer afterwards reproduces the
+     * race exactly.
+     */
+    private class BlindPreCheckExceptionDao(
+        private val delegate: ServiceExceptionDao,
+    ) : ServiceExceptionDao by delegate {
+        private val preCheckDone = java.util.concurrent.atomic.AtomicBoolean(false)
+
+        /** `null` for the pre-check; the real row for the catch block's re-read. */
+        override suspend fun findByContractAndDate(
+            contractId: String,
+            date: LocalDate,
+        ): ServiceExceptionEntity? =
+            if (preCheckDone.compareAndSet(false, true)) {
+                null
+            } else {
+                delegate.findByContractAndDate(contractId, date)
+            }
+    }
 
     /**
      * The real DAO with **only its two pre-check lookups blinded, and only once each**.
@@ -815,6 +1200,14 @@ class ContractRepositoryTest {
         const val RENTER_ID = "renter-1"
         const val RENTER_NAME = "Budi Santoso"
         const val CONTRACT_ID = "contract-1"
+        const val CONTRACT_ID_2 = "contract-2"
+        const val RENTER_ID_2 = "renter-2"
+        const val RENTER_NAME_2 = "Siti Aminah"
+        const val VEHICLE_ID_2 = "vehicle-2"
+        const val EXCEPTION_ID = "exception-1"
+
+        /** A Wednesday inside the fixture contract's October period. */
+        val EXCEPTION_DAY: LocalDate = LocalDate.of(2026, 10, 14)
 
         /** A canonical UUID string — 8-4-4-4-12 hex digits. */
         val UUID_PATTERN =

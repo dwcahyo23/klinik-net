@@ -94,6 +94,29 @@ import java.time.LocalDate
  * Navigation is still Story 2.8's: nothing routes *to* this screen yet. Mounting the
  * sheet is not navigation — it is the screen owning the form it opened.
  *
+ * ## Why this screen also owns the exception sheet
+ *
+ * `NavGraph.kt` mounts `ContractFormSheet` from *this* screen and deliberately does
+ * not mount a second sheet of its own — two `ModalBottomSheet` windows over one state
+ * was the only `high` Story 2.8's review found, and nesting one sheet's window inside
+ * another's is the same shape. So `ExceptionFormSheet` is mounted here too, beside
+ * the open-form sheet, and never from `KontrakRoute`.
+ *
+ * Only one of the two can be open at a time: the exception sheet is reached by
+ * tapping a row of the *list*, which is behind the open-form sheet's scrim, and the
+ * two hold separate state with separate confirmations. That is a consequence of the
+ * geometry rather than an invariant somebody has to maintain — which is the point.
+ *
+ * ## Why the screen's banner is suppressed while either sheet is up
+ *
+ * A `ModalBottomSheet` is a separate window layered above this one, so a banner
+ * composed here would sit *beneath* it and be invisible. While the open form is up
+ * the error is handed down to `ContractFormSheet`; while the exception sheet is up it
+ * is handed down to `ExceptionFormSheet`. Either way it is still shown exactly once,
+ * in the window that is actually on top. The tone travels with the message that
+ * produced it, so the dismiss handler closes the banner that was *drawn* — see the
+ * `onDismiss` comment below.
+ *
  * @param onOpen opens the form for a new contract. A sheet over this screen, not a
  *   navigation, so returning from it restores the owner's place.
  * @param onCloseForm the sheet's scrim tap and back gesture. Both are wired: a sheet
@@ -103,6 +126,33 @@ import java.time.LocalDate
  * @param onSave submits the form.
  * @param formErrorMessage the sheet's *own* error slot. See [ContractFormSheet] on
  *   why an unexpected write failure cannot be shown by the screen's banner.
+ *
+ * @param onOpenExceptions opens the exception sheet on one contract. Required, not
+ *   defaulted, for the reason `onCloseForm` is: a defaulted lambda produces a control
+ *   that renders and silently does nothing — and this one is the row's only verb.
+ * @param onCloseExceptions the exception sheet's scrim tap and back gesture.
+ * @param onExceptionChange the exception sheet's state transform, hoisted for the
+ *   same reason `onFormChange` is.
+ * @param onAddException submits the exception form.
+ * @param onRequestRemove opens the impact dialog for one row; the row's id travels.
+ * @param onConfirmRemove the confirmed half of the remove.
+ * @param onCancelRemove the impact dialog's dismissal — scrim, back and Ghost button,
+ *   which are one decision and therefore one handler.
+ * @param exceptionErrorMessage the exception sheet's *own* banner slot, for the same
+ *   window reason as [formErrorMessage].
+ *
+ * ## Where a successful write is confirmed
+ *
+ * The confirmation is **the sheet's**, not this screen's, while the sheet is up. A
+ * snackbar drawn here is in the window beneath the sheet, so it would stay invisible
+ * until the owner dismissed the sheet — which is exactly the moment they want
+ * to read it, and an owner who marked a day and saw nothing would reasonably mark it
+ * again. So `snackbarMessage` is handed down to the sheet and drawn there, and this
+ * screen's own banner stays suppressed for as long as either sheet is up.
+ *
+ * Once the sheet is gone the same message draws here, over the list, because by then
+ * there is no window above it. One message, two windows it can be drawn in, one
+ * setter, so a dismissal cannot leave the bar stuck whichever window was showing it.
  */
 @Composable
 fun KontrakScreen(
@@ -117,8 +167,23 @@ fun KontrakScreen(
     onCloseForm: () -> Unit,
     onFormChange: ((ContractFormState) -> ContractFormState) -> Unit,
     onSave: () -> Unit,
+    // Six more, required for exactly the same reason. A row that opens nothing is the
+    // defect this set exists to close, and a sheet of exception rows whose Add is
+    // wired to `{}` is the same defect one level down.
+    onOpenExceptions: (ContractRow) -> Unit,
+    onCloseExceptions: () -> Unit,
+    onExceptionChange: ((ExceptionFormState) -> ExceptionFormState) -> Unit,
+    onAddException: () -> Unit,
+    onRequestRemove: (String) -> Unit,
+    onConfirmRemove: () -> Unit,
+    // The seventh, and separate from `onRequestRemove` on purpose: tapping a row
+    // asks which row is about to be removed, and dismissing the dialog retracts that
+    // question. One handler wired to both would make a cancelled confirmation arm a
+    // delete the owner never confirmed.
+    onCancelRemove: () -> Unit,
     modifier: Modifier = Modifier,
     formErrorMessage: String? = null,
+    exceptionErrorMessage: String? = null,
     renterOptions: List<Renter> = emptyList(),
     vehicleOptions: List<Vehicle> = emptyList(),
     snackbarMessage: String? = null,
@@ -133,6 +198,16 @@ fun KontrakScreen(
     // symptom by a different route — the banner is unreachable, and nothing at the
     // call site says so. A required parameter turns that into a compile error.
     onErrorDismiss: () -> Unit,
+    /**
+     * The exception sheet's own error dismiss.
+     *
+     * Its own handler rather than aliased to [onErrorDismiss], for the same reason
+     * [onErrorDismiss] is not aliased to [onSnackbarDismiss]: the two dismiss
+     * different messages, and sharing a setter is how one message is cleared through
+     * the other's channel while staying on screen. Not defaulted to `{}` either —
+     * that makes the sheet's banner unreachable and nothing at the call site says so.
+     */
+    onExceptionErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -205,7 +280,7 @@ fun KontrakScreen(
                                 // saved state onto a different rental.
                                 key = { it.contract.id },
                             ) { row ->
-                                KontrakRow(row = row)
+                                KontrakRow(row = row, onClick = { onOpenExceptions(row) })
                             }
                         }
                     }
@@ -221,15 +296,20 @@ fun KontrakScreen(
             // followed by a failure leaves both non-null, because neither clears the
             // other. So the error wins — it is the one that has to be read.
             //
-            // While the sheet is open, though, the error belongs *inside* it: this
-            // banner is composed in the screen's own window and the sheet is a
-            // separate window layered above, so a banner here would be invisible.
-            // The error is therefore suppressed here and handed to the sheet — it is
-            // still shown exactly once, in the window that is actually on top.
-            val banner: Pair<String, KnBadgeTone>? = state.errorMessage
-                ?.takeIf { state.form == null }
-                ?.let { it to KnBadgeTone.Danger }
-                ?: snackbarMessage?.let { it to KnBadgeTone.Success }
+            // While **either** sheet is open **both** messages belong *inside* it: this
+            // banner is composed in the screen's own window and a sheet is a separate
+            // window layered above, so a bar drawn here would be invisible. They are
+            // therefore suppressed here and handed down to whichever sheet is up —
+            // each is still shown exactly once, in the window that is actually on top.
+            val banner: Pair<String, KnBadgeTone>? = if (state.form != null || state.exceptionSheet != null) {
+                // Suppressed entirely, confirmation included: both are handed to
+                // whichever sheet is up, and a bar drawn here would be beneath it.
+                null
+            } else {
+                state.errorMessage
+                    ?.let { it to KnBadgeTone.Danger }
+                    ?: snackbarMessage?.let { it to KnBadgeTone.Success }
+            }
 
             banner?.let { (message, tone) ->
                 KnSnackbar(
@@ -277,11 +357,40 @@ fun KontrakScreen(
                 onSave = onSave,
             )
         }
+
+        // And the exception sheet, mounted from **this** file beside the open form
+        // and never from `KontrakRoute` — see the class KDoc on why two sheets over
+        // one state is the defect. `onCancelRemove` shares one handler across the
+        // dialog's scrim, back gesture and Ghost button because those are one
+        // decision, not three.
+        state.exceptionSheet?.let { sheet ->
+            ExceptionFormSheet(
+                state = sheet,
+                rows = state.exceptionRows,
+                errorMessage = exceptionErrorMessage ?: state.errorMessage,
+                onClose = onCloseExceptions,
+                onChange = onExceptionChange,
+                onAdd = onAddException,
+                onRequestRemove = onRequestRemove,
+                onConfirmRemove = onConfirmRemove,
+                onCancelRemove = onCancelRemove,
+                // Both messages into the sheet's own window — see the class KDoc on
+                // where a successful write is confirmed, and why "after the sheet closes"
+                // is too late to be useful.
+                successMessage = snackbarMessage,
+                // The *same* setter, not a second one: it is one message, and two
+                // setters is how a dismissal ends up clearing something the owner did
+                // not dismiss.
+                onDismissSuccess = onSnackbarDismiss,
+                onDismissError = onExceptionErrorDismiss,
+            )
+        }
     }
 }
 
 /**
- * One contract: who rents it and which car, with the rate and the start date.
+ * One contract: who rents it and which car, with the rate, the start date and how
+ * many days it is not charged.
  *
  * ## Why the row's spoken label names both the renter and the car
  *
@@ -291,18 +400,27 @@ fun KontrakScreen(
  * names both, which is also the pair the visual row leads with (the renter's name as
  * the title, the plate in the subtitle).
  *
- * ## Why this row is not clickable
+ * ## Why the row is now clickable, and what it opens
  *
- * Story 2.7 owns ending a contract and Story 2.6 owns editing its exceptions, and
- * neither exists yet. A tappable row that opened nothing would be a gesture-only
- * path to an action the app cannot perform, which is the opposite of the epic
- * context's "a gesture is never the only path to an important action" — a tap that
- * does nothing is worse than no tap at all, because it teaches the owner the screen
- * is broken. So the row is read-only and the tests assert it carries no click
- * action.
+ * It was deliberately not: Story 2.7 owns ending a contract and this story owns
+ * editing its exceptions, and a tappable row that opened nothing would be a
+ * gesture-only path to an action the app cannot perform. This is the story that gives
+ * it the verb, so the row now opens the exception sheet — a sheet *over the list*,
+ * not a destination, so dismissing restores the owner's place.
+ *
+ * ## Why the exception count is on the row
+ *
+ * The AC asks the owner to see which rentals carry compensation days **before**
+ * opening anything, so the count cannot live only inside the sheet. It is drawn only
+ * when it is non-zero: a `0` on every row would be a claim about data nobody asked
+ * for, and a badge that is always there stops being read as news.
  */
 @Composable
-private fun KontrakRow(row: ContractRow, modifier: Modifier = Modifier) {
+private fun KontrakRow(
+    row: ContractRow,
+    onClick: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
     val spacing = MaterialTheme.knSpacing
     val label = stringResource(
         R.string.kontrak_row_description,
@@ -350,8 +468,22 @@ private fun KontrakRow(row: ContractRow, modifier: Modifier = Modifier) {
                     text = row.scheduleText(),
                     tone = KnBadgeTone.Neutral,
                 )
+                // And the compensation count, only when there is one. Neutral tone
+                // for the same reason as the schedule badge above: this is a fact
+                // about the contract, not a status, and the semantic four colours
+                // are reserved for status.
+                if (row.exceptionCount > 0) {
+                    KnBadge(
+                        text = stringResource(
+                            R.string.kontrak_exception_count,
+                            row.exceptionCount,
+                        ),
+                        tone = KnBadgeTone.Neutral,
+                    )
+                }
             }
         },
+        onClick = onClick,
     )
 }
 
@@ -426,7 +558,17 @@ private fun KontrakScreenPreview() {
             onCloseForm = {},
             onFormChange = {},
             onSave = {},
+            // Required for the same reason — a row that opens nothing in a preview
+            // would render exactly like a row that works.
+            onOpenExceptions = {},
+            onCloseExceptions = {},
+            onExceptionChange = {},
+            onAddException = {},
+            onRequestRemove = {},
+            onConfirmRemove = {},
+            onCancelRemove = {},
             onErrorDismiss = {},
+            onExceptionErrorDismiss = {},
         )
     }
 }
@@ -453,6 +595,10 @@ private val PREVIEW_ROWS = listOf(
         vehiclePlate = "B 1235 TF",
         rateText = "Rp 250.000",
         dateText = formatTanggalBulan(LocalDate.of(2026, 10, 23)),
+        // One row carries compensation days and one does not, so the preview shows
+        // the badge's presence *and* its absence — a preview that only had a counted
+        // row would make a badge that draws on every row look right.
+        exceptionCount = 2,
     ),
     ContractRow(
         contract = Contract(

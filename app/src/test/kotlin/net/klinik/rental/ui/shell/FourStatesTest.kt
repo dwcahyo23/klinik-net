@@ -412,9 +412,20 @@ class FourStatesTest {
             onCloseForm = {},
             onFormChange = { it },
             onSave = {},
+            // Story 2.6's exception wiring. Required on the screen, so they are stated
+            // here too — this file is about the four *states*, and a sheet left
+            // unmounted by these state values is what keeps the assertions honest.
+            onOpenExceptions = {},
+            onCloseExceptions = {},
+            onExceptionChange = { it },
+            onAddException = {},
+            onRequestRemove = {},
+            onConfirmRemove = {},
+            onCancelRemove = {},
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            onExceptionErrorDismiss = {},
         )
     }
 

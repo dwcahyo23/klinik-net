@@ -16,8 +16,10 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.ContractDao
+import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
+import net.klinik.rental.data.db.entity.ServiceExceptionEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.RenterRepository
@@ -108,7 +110,10 @@ class KontrakViewModelTest {
             .setTransactionExecutor(dispatcher.asExecutor())
             .build()
         // No database handle — see the class KDoc.
-        contracts = ContractRepository(database.contractDao())
+        contracts = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+        )
         renters = RenterRepository(database.renterDao())
         vehicles = VehicleRepository(database.vehicleDao())
         strings = RStrings(context)
@@ -629,6 +634,375 @@ class KontrakViewModelTest {
         assertEquals("B 1235 TF", viewModel.vehicleOptions.value.first().plate)
     }
 
+    // -------------------------------------------------- the exception sheet
+
+    /**
+     * Opening a row's sheet shows **that contract's** exceptions, and the rows are
+     * derived from the exception flow rather than snapshotted into the sheet state.
+     *
+     * The derivation is the claim: `ExceptionFormState` holds identity and the add
+     * form, never the rows, so a write re-emits through Room and the sheet updates on
+     * its own. A snapshot would need every write to write the rows back, and this test
+     * is what makes that manual invalidation visible if it is ever introduced.
+     */
+    @Test
+    fun `opening a contract's sheet lists its exceptions and nothing else`() =
+        runTest(dispatcher) {
+            seed()
+            val viewModel = observingViewModel()
+            openAndSave(viewModel)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val rows = viewModel.uiState.value.rows
+            assertEquals(1, rows.size)
+
+            viewModel.openExceptions(rows.single())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertNotNull("the sheet must be open", state.exceptionSheet)
+            assertEquals(
+                "it belongs to the contract that was tapped",
+                rows.single().contract.id,
+                state.exceptionSheet!!.contractId,
+            )
+            assertTrue("a fresh sheet has no exceptions yet", state.exceptionRows.isEmpty())
+            assertFalse("and an open contract is not read-only", state.exceptionSheet!!.isReadOnly)
+        }
+
+    /**
+     * An added exception lands in the sheet's list **with no manual refresh**, and the
+     * contract list behind it is unchanged.
+     *
+     * The second half is the AC's own clause and the one an implementation gets wrong
+     * for free: mutating the shared `rows` list so the contract row's exception count
+     * or ordering shifts would satisfy "the row appears" while breaking "the contract
+     * list itself is unchanged".
+     */
+    @Test
+    fun `an added exception appears in the sheet with no refresh and leaves the list alone`() =
+        runTest(dispatcher) {
+            seed()
+            val viewModel = observingViewModel()
+            openAndSave(viewModel)
+            dispatcher.scheduler.advanceUntilIdle()
+            val contractRow = viewModel.uiState.value.rows.single()
+
+            viewModel.openExceptions(contractRow)
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.onExceptionChange {
+                it.selectExceptionDate(LocalDate.of(2026, 10, 14))
+                    .setExceptionReason("Ganti ban, mobil di bengkel")
+            }
+            viewModel.addException()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertEquals("the new row is in the sheet", 1, state.exceptionRows.size)
+            assertEquals(
+                "and its date arrives pre-formatted, never as a raw LocalDate",
+                "14 Okt",
+                state.exceptionRows.single().dateText,
+            )
+            assertEquals(
+                "the contract list keeps exactly the rows it had — no row added, none removed",
+                listOf(contractRow.contract.id),
+                state.rows.map { it.contract.id },
+                )
+            assertEquals(
+                "and its badge counts the day just marked, which is the AC's first clause",
+                1,
+                state.rows.single().exceptionCount,
+            )
+            assertNull("the add form is cleared for the next day", state.exceptionSheet!!.addDate)
+        }
+
+    /**
+     * A duplicate refusal lands on the **date field** and names the marked day.
+     *
+     * Field-level rather than a banner, because the date is what the owner has to
+     * change. Asserted through `RStrings`, not as a literal, so the wording is the
+     * shipped Indonesian string — a test asserting its own copy of the sentence would
+     * pass with the resource deleted.
+     */
+    @Test
+    fun `a duplicate refusal lands on the date field naming the marked day`() =
+        runTest(dispatcher) {
+            seed()
+            val viewModel = observingViewModel()
+            openAndSave(viewModel)
+            dispatcher.scheduler.advanceUntilIdle()
+            val contractRow = viewModel.uiState.value.rows.single()
+
+            viewModel.openExceptions(contractRow)
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.onExceptionChange {
+                it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Ganti ban")
+            }
+            viewModel.addException()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            // The same day again.
+            viewModel.onExceptionChange {
+                it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Lagi")
+            }
+            viewModel.addException()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val sheet = viewModel.uiState.value.exceptionSheet!!
+            assertNotNull("the date field carries the refusal", sheet.dateError)
+            assertTrue(
+                "and it names the marked day: ${sheet.dateError}",
+                sheet.dateError!!.contains("14 Okt"),
+            )
+            assertNull("the reason is not blamed for a duplicate", sheet.reasonError)
+            assertEquals("no second row is stored", 1, viewModel.uiState.value.exceptionRows.size)
+        }
+
+    /**
+     * A blank reason is refused **before** any write, so `addException` on an
+     * incomplete form stores nothing.
+     *
+     * The AC words this as "add is disabled rather than storing an exception whose
+     * keterangan is empty". Disabling the button is the UI half and is asserted in
+     * `KontrakScreenTest`; this is the half that holds when the button is not what
+     * stopped it.
+     */
+    @Test
+    fun `a blank reason stores nothing`() = runTest(dispatcher) {
+        seed()
+        val viewModel = observingViewModel()
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+        val contractRow = viewModel.uiState.value.rows.single()
+
+        viewModel.openExceptions(contractRow)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onExceptionChange { it.selectExceptionDate(LocalDate.of(2026, 10, 14)) }
+        viewModel.addException()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val sheet = viewModel.uiState.value.exceptionSheet!!
+        assertNotNull("the reason field carries the refusal", sheet.reasonError)
+        assertFalse(
+            "and add is not offered while a field is missing",
+            sheet.canAddException,
+        )
+        assertTrue("nothing was stored", viewModel.uiState.value.exceptionRows.isEmpty())
+    }
+
+    /**
+     * An ended contract's sheet is **read-only** and the ViewModel refuses the write
+     * anyway.
+     *
+     * Both halves, because each covers the other: `isReadOnly` alone is a UI flag that
+     * a caller reaching the repository directly would bypass, and the repository's
+     * refusal alone would leave a sheet offering an add button that cannot work. The
+     * contract is ended through the DAO, which is the only way to reach the state —
+     * Story 2.7 is what ends a contract from the UI.
+     */
+    @Test
+    fun `an ended contract's sheet is read-only and refuses the write`() = runTest(dispatcher) {
+        seed()
+        val viewModel = observingViewModel()
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+        val contractRow = viewModel.uiState.value.rows.single()
+
+        // End it behind the ViewModel's back.
+        database.contractDao().update(endedContractEntity(contractRow))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // `openExceptions` derives `isReadOnly` from the row it is handed, so the
+        // *current* row is what has to be passed — the one captured before the update
+        // still carries an open `Contract`.
+        viewModel.openExceptions(viewModel.uiState.value.rows.single())
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val sheet = viewModel.uiState.value.exceptionSheet!!
+        assertTrue("an ended contract is read-only", sheet.isReadOnly)
+        assertFalse("so add is never offered", sheet.canAddException)
+
+        viewModel.onExceptionChange {
+            it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Ganti ban")
+        }
+        viewModel.addException()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue("the write is refused, not silently dropped", state.exceptionRows.isEmpty())
+        // On the **date field**, not the banner: the sheet's add block is unmounted in
+        // this state, so there is no control left for a banner to sit beside, and the
+        // repository's own `ContractNotOpenException` catch would land on the banner
+        // only if the write got that far. This is the ViewModel's earlier refusal.
+        assertNotNull(
+            "with a message on the sheet's own field",
+            state.exceptionSheet!!.dateError,
+        )
+        assertTrue(
+            "naming the read-only rule: ${state.exceptionSheet!!.dateError}",
+            state.exceptionSheet!!.dateError!!.isNotBlank(),
+        )
+    }
+
+    /**
+     * A second add while one is in flight is ignored — the guard, not the index.
+     *
+     * Without the guard two writes race for the same `(contractId, date)`, one of them
+     * loses, and the owner sees a duplicate refusal for a day they just marked. The
+     * gate holds the first insert open so the second lands inside the window.
+     */
+    @Test
+    fun `a second add while one is in flight is ignored`() = runTest(dispatcher) {
+        seed()
+        val gate = CompletableDeferred<Unit>()
+        val viewModel = observingViewModel(
+            exceptionDao = GatedExceptionInsertDao(database.serviceExceptionDao(), gate),
+        )
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.openExceptions(viewModel.uiState.value.rows.single())
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onExceptionChange {
+            it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Ganti ban")
+        }
+
+        viewModel.addException()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        // The first write is parked inside the gate.
+        viewModel.addException()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        gate.complete(Unit)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertEquals("exactly one row is stored", 1, state.exceptionRows.size)
+        assertNull(
+            "and the second add produced no duplicate refusal",
+            state.exceptionSheet!!.dateError,
+        )
+        assertNull("no unexpected-failure message either", viewModel.exceptionErrorMessage.value)
+    }
+
+    /**
+     * A removal is confirmed, dispatched, and the row disappears from the sheet on its
+     * own.
+     *
+     * The dismissal alone changes nothing, which is the other half of the AC: the
+     * dialog is not a dry run, and neither is cancelling it.
+     */
+    @Test
+    fun `a confirmed removal takes the row away and cancelling changes nothing`() =
+        runTest(dispatcher) {
+            seed()
+            val viewModel = observingViewModel()
+            openAndSave(viewModel)
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.openExceptions(viewModel.uiState.value.rows.single())
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.onExceptionChange {
+                it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Ganti ban")
+            }
+            viewModel.addException()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val id = viewModel.uiState.value.exceptionRows.single().exception.id
+
+            // Requested, then cancelled: the dialog's visibility is state, not a
+            // `remember`, so this round-trip is observable.
+            viewModel.requestRemoveException(id)
+            dispatcher.scheduler.advanceUntilIdle()
+            assertEquals(
+                "the dialog names the row",
+                id,
+                viewModel.uiState.value.exceptionSheet!!.pendingRemovalId,
+            )
+            viewModel.cancelRemoveException()
+            dispatcher.scheduler.advanceUntilIdle()
+            assertNull("cancelling dismisses it", viewModel.uiState.value.exceptionSheet!!.pendingRemovalId)
+            assertEquals("and removes nothing", 1, viewModel.uiState.value.exceptionRows.size)
+
+            viewModel.requestRemoveException(id)
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.confirmRemoveException()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue("the row is gone", state.exceptionRows.isEmpty())
+            assertNull("the dialog is dismissed by the confirmation", state.exceptionSheet!!.pendingRemovalId)
+        }
+
+    /**
+     * Closing the sheet clears it, and the rows with it.
+     *
+     * The rows must not survive the close — a stale copy left in the sheet state is
+     * exactly what the "hold the form, never the rows" decision prevents, and this is
+     * where a reintroduced snapshot would show.
+     */
+    @Test
+    fun `closing the sheet clears it and its rows`() = runTest(dispatcher) {
+        seed()
+        val viewModel = observingViewModel()
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.openExceptions(viewModel.uiState.value.rows.single())
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onExceptionChange {
+            it.selectExceptionDate(LocalDate.of(2026, 10, 14)).setExceptionReason("Ganti ban")
+        }
+        viewModel.addException()
+        dispatcher.scheduler.advanceUntilIdle()
+        assertEquals(1, viewModel.uiState.value.exceptionRows.size)
+
+        viewModel.closeExceptions()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNull("the sheet is closed", state.exceptionSheet)
+        assertTrue("and no row survives the close", state.exceptionRows.isEmpty())
+        assertNull("nor its error", viewModel.exceptionErrorMessage.value)
+    }
+
+    /**
+     * Holds the **first** exception insert open until [gate] completes.
+     *
+     * The same shape as [GatedInsertDao] and for the same reason: an in-flight guard
+     * can only be observed by suspending a real write inside it, and a fake would
+     * suspend a fake. Everything else delegates, so the write that eventually lands is
+     * the real one against the real schema.
+     */
+    private class GatedExceptionInsertDao(
+        private val delegate: ServiceExceptionDao,
+        private val gate: CompletableDeferred<Unit>,
+    ) : ServiceExceptionDao by delegate {
+        private val firstWrite = java.util.concurrent.atomic.AtomicBoolean(true)
+
+        override suspend fun insertServiceException(exception: ServiceExceptionEntity) {
+            if (firstWrite.compareAndSet(true, false)) gate.await()
+            delegate.insertServiceException(exception)
+        }
+    }
+
+    /**
+     * The ended form of a row the ViewModel projected, so its ids line up.
+     *
+     * Both active columns go `NULL` — that is what frees the vehicle and renter slots,
+     * and `ContractEntity` refuses an ended row that still holds one.
+     */
+    private fun endedContractEntity(row: ContractRow) = ContractEntity(
+        id = row.contract.id,
+        renterId = row.contract.renterId,
+        vehicleId = row.contract.vehicleId,
+        startDate = row.contract.startDate,
+        dailyRate = row.contract.dailyRate,
+        restDay = row.contract.restDay,
+        activeVehicleId = null,
+        activeRenterId = null,
+        endDate = row.contract.startDate.plusDays(30),
+    )
+
     // ------------------------------------------------------------------ helper
 
     /**
@@ -653,12 +1027,16 @@ class KontrakViewModelTest {
      * @param dao the contract DAO to build the repository over. Defaults to the real
      *   one; a test that needs to hold a write open passes a delegating wrapper — see
      *   `GatedInsertDao`.
+     * @param exceptionDao the service-exception DAO. Defaults to the real one; a test
+     *   that needs to hold an exception write open passes a delegating wrapper, for
+     *   the same reason and by the same shape.
      */
     private fun TestScope.observingViewModel(
         dao: ContractDao = database.contractDao(),
+        exceptionDao: ServiceExceptionDao = database.serviceExceptionDao(),
     ): KontrakViewModel {
         val viewModel = KontrakViewModel(
-            ContractRepository(dao),
+            ContractRepository(dao, exceptionDao),
             renters,
             vehicles,
             strings,
@@ -690,7 +1068,7 @@ class KontrakViewModelTest {
     @Test
     fun `isLoading is true before the first emission and false after`() = runTest(dispatcher) {
         val viewModel = KontrakViewModel(
-            ContractRepository(database.contractDao()),
+            ContractRepository(database.contractDao(), database.serviceExceptionDao()),
             renters,
             vehicles,
             strings,

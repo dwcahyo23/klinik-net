@@ -5,21 +5,32 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.ContractDao
+import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.entity.ContractEntity
+import net.klinik.rental.data.db.entity.ServiceExceptionEntity
 import net.klinik.rental.domain.model.Contract
+import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.parse.requirePositiveRate
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
+import net.klinik.rental.domain.validation.ContractNotOpenException
+import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
+import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
 import java.util.UUID
 
 /**
- * The only way the UI reaches contract data.
+ * The only way the UI reaches contract data — and, since Story 2.6, the only way it
+ * reaches the days a contract was **not** charged.
  *
  * ## What this layer owes the layers above
  *
- * One typed domain exception, never a `Result<_, String>`:
+ * Typed domain exceptions, never a `Result<_, String>`:
  *
  *  - [ContractAlreadyActiveException] — the vehicle or the renter already has an
  *    open contract
+ *  - [ContractNotOpenException] — the contract has ended, so its exceptions are
+ *    read-only (add *and* remove; they are the same fact)
+ *  - [DuplicateServiceExceptionDateException] — this contract already carries an
+ *    exception for that date
  *
  * The epic context forbids carrying a domain message in a `Result`, because a
  * `String` that has already been rendered into Indonesian cannot be re-checked,
@@ -33,8 +44,25 @@ import java.util.UUID
  *
  * ## What it never does
  *
- * It never exposes a DAO. `ui/` cannot reach [ContractDao], so it cannot bypass
- * the one-active check by calling `insert` directly.
+ * It never exposes a DAO. `ui/` cannot reach [ContractDao] or [ServiceExceptionDao],
+ * so it cannot bypass the one-active check or the duplicate-date check by calling
+ * `insert` directly.
+ *
+ * ## Why this class writes two tables rather than there being a second repository
+ *
+ * A `ServiceExceptionRepository` would need the [ServiceExceptionDao], a
+ * [ContractDao] to answer "is this contract still open?", its own `inTransaction`,
+ * its own `newExceptionId`, a fifth constructor parameter on `KontrakViewModel`,
+ * and a new line in `createKontrakViewModel`. This class already holds the contract
+ * DAO, already owns the transaction helper, already owns the id generator, and the
+ * ViewModel already holds it — so extending it leaves `MainActivity`'s wiring
+ * **byte-for-byte unchanged**, which is the real measure of how little this touches.
+ *
+ * The cost is that one class writes two tables, and that is paid honestly here
+ * rather than hidden. The "one DAO owns one table" rule is untouched:
+ * [ServiceExceptionDao] remains the only thing that moves exception rows and this
+ * repository still never exposes it. The concept being kept whole is "a contract,
+ * and the days not billed on it"; splitting it back out later is a mechanical move.
  *
  * ## Why the one-active rule needs both a pre-check and an index
  *
@@ -45,10 +73,13 @@ import java.util.UUID
  * purpose in its `INDEX_REFUSES_SECOND` row.
  *
  * The vehicle side is checked first when both are busy, so the refusal is
- * deterministic rather than dependent on which query happened to return first.
+ * deterministic rather than dependent on which query happened to return first. The
+ * same argument gives [addServiceException] its order: read-only first, then the
+ * impossible date, then the duplicate.
  */
 class ContractRepository(
     private val dao: ContractDao,
+    private val serviceExceptions: ServiceExceptionDao,
     private val database: KlinikDatabase? = null,
 ) {
 
@@ -183,16 +214,181 @@ class ContractRepository(
         }
     }
 
+    // ------------------------------------------------------- service exceptions
+
+    /**
+     * Every service exception, observed.
+     *
+     * Read straight from Room's invalidation tracker, for the same reason
+     * [observeContracts] is: a write re-emits here, so the sheet's list updates with
+     * no refresh and no manual signal. The `Flow` is **not** filtered to one
+     * contract — the sheet's rows are derived in the ViewModel's `combine` from
+     * whichever contract is open, which is the same "join in Kotlin, not in SQL"
+     * shape the contract list already uses, and it means one subscription rather
+     * than one query per opened sheet.
+     */
+    fun observeServiceExceptions(): Flow<List<ServiceException>> =
+        serviceExceptions.observeAll().map { rows -> rows.map { it.toDomain() } }
+
+    /**
+     * Marks [exception]'s day as not billed on its contract.
+     *
+     * The order of the four steps matters and is not arbitrary:
+     *
+     *  1. **read the contract** and refuse if it has ended — a finished contract is
+     *     read-only, and that is a fact about the *contract*, not about the date, so
+     *     it is asked before anything else
+     *  2. **refuse a date before `startDate`** — such a row is inert: `chargeDaysIn`
+     *     filters `it >= contractStart` *before* it ever reaches the exception
+     *     filter, so a day before the contract began can never stop a charge and the
+     *     row would sit in the list claiming a compensation the bill never got
+     *  3. **pre-check the duplicate** — so the owner finds out while the sheet is
+     *     open, and so the refusal can name the stored date
+     *  4. **insert** — and let the `UNIQUE(contractId, date)` index refuse a raced
+     *     duplicate, translating it by re-reading the row that holds the pair
+     *
+     * Steps 1 to 4 run as one transaction, so the checks and the insert see a single
+     * snapshot. Without it, an exception written by another caller between the check
+     * and the insert would surface as a raw `SQLiteConstraintException` — the index
+     * would still hold, but the message would be about a constraint instead of a
+     * day.
+     *
+     * ## Why a bad date is refused rather than normalised
+     *
+     * Swapping a before-start date with the contract's start, or clamping it
+     * forward, would silently mark a **different** day than the owner chose — and the
+     * marked day is a day the renter is not charged. `Contract.init` refused an end
+     * before the start on exactly this reasoning ("a date typed into the wrong
+     * field"), and the same sentence applies here.
+     *
+     * @throws ContractNotOpenException when the contract has ended, or when nobody
+     *   holds that id. Nothing is written.
+     * @throws ServiceExceptionBeforeContractStartException when [exception]'s date
+     *   precedes the contract's own start. Nothing is written.
+     * @throws DuplicateServiceExceptionDateException when the contract already
+     *   carries an exception for that date. The exception carries the **stored**
+     *   date, read back from the row.
+     */
+    suspend fun addServiceException(exception: ServiceException) {
+        inTransaction {
+            val contract = requireOpenContract(exception.contractId)
+            if (exception.date.isBefore(contract.startDate)) {
+                throw ServiceExceptionBeforeContractStartException(
+                    contractId = exception.contractId,
+                    startDate = contract.startDate,
+                )
+            }
+
+            // The courtesy half. The index is the guarantee.
+            serviceExceptions.findByContractAndDate(exception.contractId, exception.date)
+                ?.let { stored ->
+                    throw DuplicateServiceExceptionDateException(
+                        // The stored date, not the submitted one — the same rule
+                        // `insertEntity` below follows.
+                        date = stored.date,
+                        contractId = stored.contractId,
+                    )
+                }
+
+            insertServiceExceptionEntity(exception)
+        }
+    }
+
+    /**
+     * Removes the exception with [id] from [contractId].
+     *
+     * The same read-only rule as the add, and the same
+     * [ContractNotOpenException] — an ended contract's record of what was not
+     * billed is not something to edit, in either direction, and two exception types
+     * would let one of the two paths forget to check.
+     *
+     * The contract id is in the delete predicate rather than passed to a
+     * primary-key-only `@Delete`, and that is the rule rather than tidiness: a row
+     * id is not something `ui/` can reach without a lookup, so a delete keyed on the
+     * id alone is a delete any caller can aim at any contract it happens to hold a
+     * row id for.
+     *
+     * Removing a row that is already gone is **silent** rather than raising: an id
+     * that no longer exists is the state the owner asked for, and the list re-emits
+     * from Room either way. Inventing a refusal for it would show a message about a
+     * row that is not there.
+     *
+     * @throws ContractNotOpenException when the contract has ended. The row stays.
+     */
+    suspend fun removeServiceException(id: String, contractId: String) {
+        inTransaction {
+            requireOpenContract(contractId)
+            serviceExceptions.deleteServiceExceptionById(id, contractId)
+        }
+    }
+
+    /**
+     * The read-only rule, asked once for both writes.
+     *
+     * `Contract.isOpen` is a derivation over `endDate`, so "is this contract still
+     * running?" is asked of the **stored row** rather than of a copy the caller
+     * happens to be holding — a caller holding a stale `Contract` would otherwise be
+     * writing to a contract that ended in the meantime.
+     *
+     * A contract id nobody holds raises the same [ContractNotOpenException]: there is
+     * no open contract, and no other exception type would be true. It is reachable
+     * only through a bug — the foreign key would refuse the write either way — and it
+     * fails loudly rather than letting an orphan row land.
+     *
+     * Returns the row because the add path needs its `startDate`, and reading it
+     * twice would be a second query for the same answer.
+     */
+    private suspend fun requireOpenContract(contractId: String): ContractEntity {
+        val contract = dao.findById(contractId) ?: throw ContractNotOpenException(contractId)
+        if (contract.endDate != null) throw ContractNotOpenException(contractId)
+        return contract
+    }
+
+    /**
+     * Inserts, translating the `UNIQUE` index's refusal into the named exception.
+     *
+     * This is the half of the duplicate rule that cannot be pre-checked away: two
+     * callers can both pass the check above before either writes, and only the index
+     * settles it. Android's SQLite reports a unique violation as
+     * `SQLiteConstraintException`, whose message names the constraint but is not a
+     * stable API — so the pair is re-read and reported from the row that actually
+     * holds it, which is what the owner needs to see.
+     *
+     * The translation is verified, not assumed. If the re-read finds nothing, this is
+     * not a duplicate `(contractId, date)` violation at all — a primary-key clash or a
+     * foreign-key refusal, most likely — and it is rethrown untouched rather than
+     * relabelled as a refusal that would send the owner to change a date that was
+     * never the problem. Same shape as [insertEntity] beside it.
+     */
+    private suspend fun insertServiceExceptionEntity(exception: ServiceException) {
+        try {
+            serviceExceptions.insertServiceException(exception.toEntity())
+        } catch (e: android.database.sqlite.SQLiteConstraintException) {
+            val stored = serviceExceptions.findByContractAndDate(
+                exception.contractId,
+                exception.date,
+            )
+            if (stored != null) {
+                throw DuplicateServiceExceptionDateException(
+                    date = stored.date,
+                    contractId = stored.contractId,
+                )
+            }
+            throw e
+        }
+    }
+
     /**
      * Runs [block] as one transaction.
      *
      * Mirrors `VehicleRepository.inTransaction`, and is the helper that story added
      * in 2.2 precisely so the first multi-statement write would not have to
      * rediscover `withTransaction`. Opening a contract is that write: a pre-check
-     * plus an insert that must see one snapshot.
+     * plus an insert that must see one snapshot. So is adding an exception: a
+     * read-only check, an impossible-date check, a duplicate pre-check and an insert.
      *
      * A `null` database falls back to running [block] directly. That is not a
-     * weakening of the rule — the two `UNIQUE` indexes are the rule and they hold
+     * weakening of the rule — the `UNIQUE` indexes are the rule and they hold
      * whatever the caller does — it only means the *pre-check* is not isolated, so
      * a race surfaces as the translated constraint refusal instead of the
      * pre-check's own. The parameter is nullable to match the vehicle precedent,
@@ -212,6 +408,20 @@ class ContractRepository(
      * the layer that owns persistence.
      */
     fun newContractId(): String = UUID.randomUUID().toString()
+
+    /**
+     * A fresh exception id.
+     *
+     * The same generator as [newContractId] and for the same reasons: `UUID.randomUUID()`
+     * rather than a `Date.now()`-derived or hardcoded value, because the story forbids
+     * seeded data and Room generates nothing on its own. It lives in `data/` because the
+     * domain's import surface excludes `java.util.UUID`.
+     *
+     * Two exceptions on the same contract and the same date cannot both exist — the
+     * index says so — so this id is only ever compared against the primary key, and a
+     * collision would be a UUID collision rather than a semantic one.
+     */
+    fun newServiceExceptionId(): String = UUID.randomUUID().toString()
 
     /** Entity -> domain. The mapping the UI never sees. */
     private fun ContractEntity.toDomain() = Contract(
@@ -243,5 +453,30 @@ class ContractRepository(
         activeVehicleId = if (isOpen) vehicleId else null,
         activeRenterId = if (isOpen) renterId else null,
         endDate = endDate,
+    )
+
+    /** Entity -> domain, for an exception. The mapping the UI never sees. */
+    private fun ServiceExceptionEntity.toDomain() = ServiceException(
+        id = id,
+        contractId = contractId,
+        date = date,
+        reason = reason,
+    )
+
+    /**
+     * Domain -> entity, for an exception.
+     *
+     * A plain copy in both directions — unlike `ContractEntity`'s active columns there
+     * is nothing to derive, because the exception carries no copy of any fact it does
+     * not own: the date is absolute, the reason is text, and "is this contract open?"
+     * is asked of the `contract` row rather than stored here. That is what keeps the
+     * read-only rule a single question asked in one place rather than two that can
+     * disagree.
+     */
+    private fun ServiceException.toEntity() = ServiceExceptionEntity(
+        id = id,
+        contractId = contractId,
+        date = date,
+        reason = reason,
     )
 }
