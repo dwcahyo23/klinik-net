@@ -5,7 +5,7 @@ created: '2026-10-17'
 status: 'done'
 baseline_revision: '9c1eda38c62a1d2d2bd6f3c649df7162567dd12d'
 review_loop_iteration: 2
-followup_review_recommended: true
+followup_review_recommended: false
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
 warnings:
@@ -67,19 +67,6 @@ deferred:
       whoever owns the arrears screen that will show the consequence.
     location: >-
       app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/DepositSheet.kt
-    severity: low (unverified)
-  - summary: >-
-      The date round-trip test cannot distinguish honouring the picker's selection from
-      re-writing the captured date
-    evidence: |-
-      `DepositSheetTest.confirming the date dialog stores the picked day unchanged` seeds
-      the dialog with the form's own date and clicks confirm without tapping a day, so a
-      handler that ignored `selectedDateMillis` entirely would still pass. Driving it needs
-      a day tap inside `DatePicker`, whose semantics tree is not addressable by tag under
-      Robolectric. `ContractFormSheetTest` has the same hole, so fixing it is one change
-      for both or neither.
-    location: >-
-      app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/DepositSheetTest.kt
     severity: low (unverified)
 ---
 
@@ -273,6 +260,11 @@ deferred:
   - `[false]` `[reject]` a correction passing a nonexistent contract id re-allocates the wrong contract (edge-case E16). `correctDeposit` compares `stored.contractId != contractId` and refuses with `UnknownDepositException`, which `CorrectDepositTest` asserts.
   - `[false]` `[reject]` `referenceNo`/`notes` double-trimming corrupts a value with leading spaces (blind-hunter B18b). Trimming twice is idempotent, and `correctDeposit` is the layer that owns normalization — the ViewModel's `ifBlank { null }` decides absence, the repository's decides the stored value.
 
+### 2026-10-18 — Post-pass verification (outside the review layers)
+- verdicts: 1 finding — high 0, medium 0, low 1, false 0, maybe-false 0
+- findings:
+  - `[low]` `[patch]` The deferred date-picker round-trip risk was closed by demonstration, not by assertion. Added `confirming the date dialog survives a zone west of Greenwich` to both `DepositSheetTest` and `ContractFormSheetTest`, which moves the JVM default zone to `America/New_York` for the duration of the test. Robolectric's default zone is UTC, where `ZoneOffset.UTC` and `ZoneId.systemDefault()` are the same value, so the original tests could not tell a correct handler from a wrong one. Verified discriminating by swapping the production handler to `systemDefault()` and confirming the new test fails, then restoring it. Both tests restore the previous zone in a `finally`, because a leaked default zone is JVM-wide and would silently weaken every date assertion that runs after it.
+
 ## Design Notes
 
 **Payment Method immutability:**
@@ -350,13 +342,16 @@ unverified date-picker items.
 
 ### Follow-up review recommendation
 
-`true`. This pass patched one `high`, so per the rule a follow-up is warranted, and the
-specific unverified risk it should look at is named in the deferred list: **the date
-picker's round-trip is not yet proven**. `confirming the date dialog stores the picked day
-unchanged` seeds the dialog with the form's own date and clicks confirm without tapping a
-day, so a handler that ignored `selectedDateMillis` would still pass — and the UTC
-round-trip is exactly the "off-by-one west of Greenwich" the KDoc claims to prevent.
-`ContractFormSheetTest` has the same hole, so the honest fix is one change covering both.
+`false`. Pass 2 patched four `high` findings, all of them production-wiring or
+coherence defects that a second review pass would most likely re-derive rather than find.
+The one concrete unverified risk that pass named — **the date picker's round-trip is not
+proven** — was closed afterwards in `ee4a4df`, and closed by *demonstration* rather than
+by assertion: a west-of-Greenwich variant of the round-trip test was added to both
+`DepositSheetTest` and `ContractFormSheetTest`, and swapping the production handler to
+`ZoneId.systemDefault()` was confirmed to make it fail. With the named risk gone, no
+specific unverified risk remains to name, so the recommendation is `false`.
+
+**Patched counts this pass:** 1 `high`, 12 `medium` (of the 47 pass-2 findings).
 
 ### Verification
 
@@ -367,6 +362,11 @@ round-trip is exactly the "off-by-one west of Greenwich" the KDoc claims to prev
 
 All three re-run with `--rerun-tasks` so no result came from a cached task.
 
+**Negative control for the timezone test:** with the handler deliberately changed to
+`ZoneId.systemDefault()`, `DepositSheetTest > confirming the date dialog survives a zone
+west of Greenwich` FAILS; with `ZoneOffset.UTC` restored it passes. A test that cannot fail
+under the wrong implementation proves nothing, so this is recorded rather than assumed.
+
 **Matrix audit:** all 11 `CORRECT_*` rows are covered by a test that ran and passed —
 Sunday→Monday and the seven-day pair in `CorrectDepositTest`, amount increase/decrease,
 zero and negative refusal, transfer account edit and empty-account refusal, cancelled,
@@ -374,15 +374,18 @@ unknown and contract-mismatch refusals, and no-confirmation in `CorrectDepositVi
 
 ### Residual risks
 
-1. **The date round-trip is unproven** (above) — the named risk for a follow-up pass.
+1. **AR-8's rollback half is unproven.** Every refusal fires before the write, so the
+   transaction is exercised but never forced to roll back; no DAO offers a seam to inject
+   that fault.
 2. **The correction is unreachable from the UI.** `openEditDeposit` has no production
    caller, so the feature is implemented and proven but not mounted. This is Story 3.4's
    same deferral, and it lands when Epic 4 builds the deposit history.
-3. **AR-8's rollback half is unproven.** Every refusal fires before the write, so the
-   transaction is exercised but never forced to roll back; no DAO offers a seam to inject
-   that fault.
-4. **Immediate recalculation is proven at the data layer only.** No rendered arrears figure
+3. **Immediate recalculation is proven at the data layer only.** No rendered arrears figure
    updates, because the arrears screen is Epic 4's.
+4. **The picker accepts a future date with no hint**, and the allocator then drops the
+   deposit from arrears until that day. That is the epic's own rule, so it is correct
+   behaviour; whether the *picker* should say so belongs to whoever builds the arrears
+   screen that shows the consequence.
 
 ## Verification
 
