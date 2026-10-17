@@ -7,10 +7,12 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import net.klinik.rental.data.db.dao.BusinessAccountDao
 import net.klinik.rental.data.db.dao.ContractDao
 import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.VehicleDao
+import net.klinik.rental.data.db.entity.BusinessAccountEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.db.entity.ServiceExceptionEntity
@@ -19,10 +21,11 @@ import net.klinik.rental.data.db.entity.VehicleEntity
 /**
  * The app's Room database.
  *
- * Four entities as of Story 2.6: `VEHICLE`, `RENTER`, `CONTRACT` — the real
+ * Five entities as of Story 3.1: `VEHICLE`, `RENTER`, `CONTRACT` — the real
  * record, renter and frozen daily rate and all, rather than the three placeholder
- * columns Story 2.2 shipped to make the vehicle-delete refusal reachable — and
- * `SERVICE_EXCEPTION`, the days a contract was *not* charged.
+ * columns Story 2.2 shipped to make the vehicle-delete refusal reachable —
+ * `SERVICE_EXCEPTION`, the days a contract was *not* charged, and
+ * `BUSINESS_ACCOUNT`, the banks transfers arrive at.
  *
  * ## Why the version moves inside Epic 2
  *
@@ -51,8 +54,9 @@ import net.klinik.rental.data.db.entity.VehicleEntity
         ContractEntity::class,
         RenterEntity::class,
         ServiceExceptionEntity::class,
+        BusinessAccountEntity::class,
     ],
-    version = 4,
+    version = 5,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -65,6 +69,8 @@ abstract class KlinikDatabase : RoomDatabase() {
     abstract fun contractDao(): ContractDao
 
     abstract fun serviceExceptionDao(): ServiceExceptionDao
+
+    abstract fun businessAccountDao(): BusinessAccountDao
 
     companion object {
         private const val NAME = "klinik.db"
@@ -338,6 +344,63 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v4 -> v5: adds `BUSINESS_ACCOUNT`.
+         *
+         * ## Why this has no index statement, unlike `MIGRATION_3_4`
+         *
+         * Because the table has no index. `MIGRATION_3_4` creates a `UNIQUE` index because
+         * the exception table's duplicate rule *is* that index; an account has no such
+         * rule, and the entity declares no `indices`, so there is nothing to create here.
+         * That absence is deliberate — two accounts at one bank are legitimate — and
+         * `DatabaseMigrationTest`'s `indexesOf` assertion is what keeps it absent.
+         *
+         * ## Why this has none of `MIGRATION_2_3`'s "refuse to drop rows" machinery
+         *
+         * `MIGRATION_2_3` counts `contract` rows and throws if any exist, because it drops
+         * and recreates a table. This migration runs one `CREATE TABLE` on a name that does
+         * not exist and touches **no existing table**, so there is nothing it can lose and a
+         * row-count guard would be theatre. What replaces the guard is the test: the v4
+         * fixture asserts the vehicle, renter, contract *and* exception rows survive the
+         * step.
+         *
+         * ## What the statement below is, exactly
+         *
+         * It is what Room expects for [BusinessAccountEntity], written out rather than
+         * derived:
+         *
+         *  - column names are the Kotlin property names verbatim — no `@ColumnInfo(name = …)`
+         *    rename anywhere
+         *  - **no column is nullable**, so there is no `DEFAULT NULL` anywhere and nothing
+         *    for `@ColumnInfo(defaultValue)` to declare. That is the trap this table avoids
+         *    rather than handles: Room compares recorded defaults against the compiled
+         *    schema and refuses the whole migration when they disagree, so a nullable column
+         *    here would force a matching clause below
+         *  - **no foreign key**, because nothing references this table yet. `PAYMENT.accountId`
+         *    arrives in Story 3.2, and the `ON DELETE RESTRICT` that makes an in-use account
+         *    undeletable is added with it — see `BusinessAccountDao`'s KDoc on why the
+         *    delete refusal is not shipped before there is a row to refuse against
+         *
+         * No `--` comments appear inside the statement. A SQL line comment inside a Kotlin
+         * raw string reaches SQLite verbatim and swallows the rest of the statement, which
+         * surfaces as a bare `near "/": syntax error` with no line of this file named in it
+         * — the exact defect the two migrations above record.
+         */
+        val MIGRATION_4_5 = object : Migration(4, 5) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `business_account` (
+                        `id` TEXT NOT NULL,
+                        `bankName` TEXT NOT NULL,
+                        `number` TEXT NOT NULL,
+                        PRIMARY KEY (`id`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -356,7 +419,7 @@ abstract class KlinikDatabase : RoomDatabase() {
             Room.databaseBuilder(context, KlinikDatabase::class.java, NAME)
                 // Every schema change ships its migration here. No
                 // `fallbackToDestructiveMigration` — see the class KDoc.
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4)
+                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
                 .build()
     }
 }

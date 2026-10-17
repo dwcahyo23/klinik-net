@@ -6,6 +6,7 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.composables.icons.lucide.CarFront
 import com.composables.icons.lucide.ClipboardList
+import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Users
 import net.klinik.rental.R
@@ -59,6 +60,17 @@ enum class Destination(
 
     /** The rental contracts. `KontrakScreen`. */
     Kontrak(route = "kontrak", labelRes = R.string.nav_kontrak),
+
+    /**
+     * The business accounts transfers arrive at. `PengaturanScreen`.
+     *
+     * The fourth destination, and the first tenant of a place Epic 5's configuration story
+     * will also use — which is why it is a destination rather than a top-bar action on the
+     * fleet screen. Being in this enum is what puts it in **both** the landscape rail and the
+     * portrait bottom nav: `AppShell` derives both from `entries`, so there is no second list
+     * to update and none to forget.
+     */
+    Pengaturan(route = "pengaturan", labelRes = R.string.nav_pengaturan),
     ;
 
     companion object {
@@ -116,10 +128,16 @@ internal fun destinationNavItems(): List<KnNavItem> = Destination.entries.map { 
  * A property rather than a `when` at the call site: the set of destinations and
  * the set of icons is the same fact, and a `when` over the enum would be the
  * second place that has to be updated when a fourth screen arrives.
+ *
+ * That prediction came true in Story 3.1, and the compiler is what enforced it: adding
+ * `Pengaturan` to the enum made this `when` non-exhaustive, so the fourth icon could not be
+ * forgotten. `Landmark` for accounts — a bank building, which is the same glyph the screen's
+ * own add action and empty state use.
  */
 private val Destination.icon: ImageVector
     get() = when (this) {
         Destination.Kendaraan -> Lucide.CarFront
         Destination.Penyewa -> Lucide.Users
         Destination.Kontrak -> Lucide.ClipboardList
+        Destination.Pengaturan -> Lucide.Landmark
     }

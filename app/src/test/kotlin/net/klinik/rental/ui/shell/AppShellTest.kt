@@ -21,6 +21,7 @@ import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
+import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
@@ -278,11 +279,19 @@ class AppShellTest {
         assertEquals(Destination.Kontrak.route, seen)
     }
 
-    /** The rail's label for a destination, as `destinationNavItems()` resolves it. */
+    /**
+     * The rail's label for a destination, as `destinationNavItems()` resolves it.
+     *
+     * An exhaustive `when` rather than a lookup keyed on `labelRes`: adding the fourth
+     * destination in Story 3.1 made this non-exhaustive, so the compiler named the branch
+     * that had to be added. That is the same mechanism `Destination.icon` uses, and the
+     * reason this test cannot silently stop covering a destination.
+     */
     private fun labelOf(destination: Destination): String = when (destination) {
         Destination.Kendaraan -> "Kendaraan"
         Destination.Penyewa -> "Penyewa"
         Destination.Kontrak -> "Kontrak"
+        Destination.Pengaturan -> "Pengaturan"
     }
 
     @Composable
@@ -359,6 +368,17 @@ class AppShellTest {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+        ),
+        pengaturan = Screens.Pengaturan(
+            state = PengaturanUiState(),
+            snackbarMessage = null,
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
         ),
     )
 }

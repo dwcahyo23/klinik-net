@@ -61,6 +61,7 @@ import net.klinik.rental.ui.components.KnTableRow
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
+import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
@@ -718,6 +719,20 @@ class AccessibilityTest {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+        ),
+        // Story 3.1's destination. This file walks *every* interactive node on the shell
+        // against the 48dp floor, so the settings screen's top-bar action, its empty-state
+        // action and its rows are all measured only because the wiring is stated here.
+        pengaturan = Screens.Pengaturan(
+            state = PengaturanUiState(),
+            snackbarMessage = null,
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
         ),
     )
 

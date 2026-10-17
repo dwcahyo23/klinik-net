@@ -55,8 +55,8 @@ development_status:
   2-7-mengakhiri-kontrak-sewa: done
   epic-2-retrospective: optional # all 8 stories done, but 6 deferred device-check items (2.6 x3, 2.7 x3) still point here — one is high/unverified: a future end date frees the car immediately
 
-  epic-3: backlog
-  3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: backlog
+  epic-3: in-progress
+  3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: done
   3-2-mencatat-setoran-dengan-numpad: backlog
   3-3-melihat-pratinjau-sebelum-menyimpan: backlog
   3-4-membatalkan-setoran-dengan-alasan: backlog
@@ -81,5 +81,7 @@ development_status:
   5-5-mengingat-kalau-backup-belum-dibuat: backlog
   5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
   epic-5-retrospective: optional
+
+
 
 

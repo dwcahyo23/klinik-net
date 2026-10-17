@@ -389,4 +389,64 @@ class RStrings(private val context: Context) {
      */
     fun dataReadFailed(): String =
         context.getString(R.string.error_read_title)
+
+    // -------------------------------------------------------------- Story 3.1
+
+    /**
+     * A saved account's confirmation. Names the bank so it is recognisable.
+     *
+     * The bank rather than the number: the owner knows which bank they just added, and
+     * reading a ten-digit number back to them is not a confirmation of anything they can
+     * check at a glance.
+     */
+    fun pengaturanAccountSaved(bankName: String): String =
+        context.getString(R.string.pengaturan_account_saved, bankName)
+
+    /** The top bar's subtitle: "2 rekening". */
+    fun pengaturanAccountCount(count: Int): String =
+        context.getString(R.string.pengaturan_account_count, count)
+
+    /**
+     * A blank bank name.
+     *
+     * Names an example rather than only the field, because the owner is being asked to
+     * invent a value and a bare "wajib diisi" leaves them to guess whether the app wants a
+     * legal name, a short code, or something else.
+     */
+    fun pengaturanErrorBlankBank(): String =
+        context.getString(R.string.pengaturan_error_blank_bank)
+
+    /**
+     * A blank account number.
+     *
+     * Shorter than the bank's message, deliberately: there is nothing to exemplify — the
+     * owner either has the number in front of them or does not — so the message says only
+     * what is missing. The format case below is the one that has to explain.
+     */
+    fun pengaturanErrorBlankNumber(): String =
+        context.getString(R.string.pengaturan_error_blank_number)
+
+    /**
+     * A number that is not in a storable format.
+     *
+     * Says which format **is** accepted, because the field visibly contains text and a
+     * message that only said "wajib diisi" would read as the app being broken.
+     *
+     * And it deliberately makes **no claim about the bank**: validation is format only, so
+     * a sentence implying the number was verified would be a promise this app cannot keep —
+     * and the acceptance criterion is that nothing changes when the bank's records disagree
+     * with the owner's. A message that said "nomor tidak dikenali" would be that broken
+     * promise in the one place the owner would believe it.
+     */
+    fun pengaturanErrorNumberFormat(): String =
+        context.getString(R.string.pengaturan_error_number_format)
+
+    /**
+     * A write that failed for a reason this screen does not model.
+     *
+     * Says nothing about what went wrong because nothing is known: naming a cause here would
+     * be a guess shown to the owner as fact.
+     */
+    fun pengaturanErrorUnexpected(): String =
+        context.getString(R.string.pengaturan_error_unexpected)
 }

@@ -594,4 +594,64 @@
     <string name="error_read_title">Data tidak bisa dibaca</string>
     <string name="error_read_body">Aplikasi dihentikan agar riwayat tidak hilang. Coba buka lagi setelah data tersimpan.</string>
     <string name="error_read_action">Coba lagi</string>
+
+    <!--
+      Story 3.1 — Rekening usaha (business accounts).
+
+      The nav label is flat like the other three, because the rail and the bottom nav
+      are shell surfaces and the same word has to read the same in both orientations.
+
+      The empty body says what to do rather than only that there is nothing: this is
+      the screen that makes Story 3.2's deposit form usable, so an owner who lands here
+      with no accounts needs to know that adding one is what unblocks recording a
+      transfer — not merely that the list is empty.
+    -->
+    <string name="nav_pengaturan">Pengaturan</string>
+    <string name="pengaturan_title">Pengaturan</string>
+    <!-- The top bar's subtitle: how many accounts are stored. -->
+    <string name="pengaturan_account_count">%1$d rekening</string>
+    <string name="pengaturan_add_action">Tambah rekening</string>
+
+    <string name="pengaturan_empty_title">Belum ada rekening usaha</string>
+    <string name="pengaturan_empty_body">Tambahkan rekening yang menerima transfer, supaya saat mencatat setoran tinggal dipilih dari daftar.</string>
+
+    <!--
+      The form. Labels rather than placeholders, so a field keeps saying what it is
+      after the owner has typed into it — the same rule the other sheets follow.
+
+      The number's hint names what the field accepts, because the refusal for a
+      malformed number repeats it and the two must agree.
+    -->
+    <string name="pengaturan_field_bank">Nama bank</string>
+    <string name="pengaturan_field_number">Nomor rekening</string>
+    <string name="pengaturan_bank_hint">Contoh: BCA</string>
+    <string name="pengaturan_number_hint">Contoh: 1234567890</string>
+    <string name="pengaturan_save">Simpan rekening</string>
+    <string name="pengaturan_cancel">Batal</string>
+    <!--
+      Two titles, because an edit that kept the "Tambah" heading would read as a create —
+      and the owner would reasonably expect a second account rather than a changed one.
+      `AccountFormState.isEditing` picks the word; there is no second code path.
+    -->
+    <string name="pengaturan_add_title">Tambah rekening</string>
+    <string name="pengaturan_edit_title">Ubah rekening</string>
+    <!-- The spoken label for the row's edit affordance, naming which account. -->
+    <string name="pengaturan_edit_description">Ubah rekening %1$s</string>
+
+    <!--
+      Refusals. Each names the fault *and* the fix, per the epic context.
+
+      The number-format message says which format is accepted rather than only that the
+      input is wrong: the field visibly contains text, so "wajib diisi" on it would read
+      as the app being broken. It also deliberately does **not** claim the number was
+      checked against a bank — validation is format only, and a message implying
+      verification would be a promise this app cannot keep.
+    -->
+    <string name="pengaturan_error_blank_bank">Isi nama banknya, misalnya BCA.</string>
+    <string name="pengaturan_error_blank_number">Isi nomor rekeningnya.</string>
+    <string name="pengaturan_error_number_format">Nomor rekening hanya berisi angka, boleh dipisah spasi atau tanda hubung. Periksa lagi nomornya.</string>
+    <string name="pengaturan_error_unexpected">Gagal menyimpan rekening. Coba lagi.</string>
+
+    <!-- Confirmations. A snackbar, not a screen state change. -->
+    <string name="pengaturan_account_saved">Rekening %1$s tersimpan</string>
 </resources>

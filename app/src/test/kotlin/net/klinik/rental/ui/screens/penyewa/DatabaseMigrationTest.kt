@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
      * direct `migrate` call and fail here.
      */
     @Test
-    fun `a v1 database migrates to v4 with every table and index`() {
+    fun `a v1 database migrates to v5 with every table and index`() {
         createV1Database(withVehicle = true)
 
         val migrated = openMigrated()
@@ -200,19 +200,20 @@ class DatabaseMigrationTest {
      * was ever needed, is the failure.
      */
     @Test
-    fun `a fresh install opens at v4 without a migration`() {
+    fun `a fresh install opens at v5 without a migration`() {
         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
             .addMigrations(
                 KlinikDatabase.MIGRATION_1_2,
                 KlinikDatabase.MIGRATION_2_3,
                 KlinikDatabase.MIGRATION_3_4,
+                KlinikDatabase.MIGRATION_4_5,
             )
             .build()
         database = fresh
 
         // Touch the database so it is actually created rather than only built.
         val sql = fresh.openHelper.readableDatabase
-        assertEquals(4, sql.version)
+        assertEquals(5, sql.version)
         assertEquals(
             listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
             columnsOf(sql, "renter"),
@@ -287,7 +288,7 @@ class DatabaseMigrationTest {
      * read as coverage of the data-loss question while providing none.
      */
     @Test
-    fun `a v2 database migrates to v4 with the widened contract table`() {
+    fun `a v2 database migrates to v5 with the widened contract table`() {
         createV2Database(withVehicleAndRenter = true)
 
         val migrated = openMigrated()
@@ -379,7 +380,8 @@ class DatabaseMigrationTest {
                     KlinikDatabase.MIGRATION_1_2,
                     KlinikDatabase.MIGRATION_2_3,
                     KlinikDatabase.MIGRATION_3_4,
-                )
+                KlinikDatabase.MIGRATION_4_5,
+            )
                 .build()
                 .openHelper
                 .readableDatabase
@@ -511,7 +513,7 @@ class DatabaseMigrationTest {
      * through its own DAO afterwards.
      */
     @Test
-    fun `a v3 database migrates to v4 with the service_exception table`() {
+    fun `a v3 database migrates to v5 with the service_exception table`() {
         createV3Database()
 
         val migrated = openMigrated()
@@ -716,6 +718,202 @@ class DatabaseMigrationTest {
     }
 
     // ------------------------------------------------------------------ helpers
+
+    // --------------------------------------------------------------- v4 -> v5
+
+    /**
+     * `MIGRATE_4_5` — the row this story names: a v4 database opens at v5 with the
+     * `business_account` table, its exact shape, and every pre-existing row intact.
+     *
+     * ## Why the shape assertions are the point, not the version number
+     *
+     * `assertEquals(5, version)` passes for a migration that creates the wrong table. The
+     * three assertions below are what actually hold: the exact column list in declaration
+     * order, **no nullable column**, and **no indices**. Room compares the migrated file
+     * against the compiled schema on open, so a mismatch fails there — but only if the
+     * migration is reached at all, which is why the version is asserted first.
+     */
+    @Test
+    fun `a v4 database migrates to v5 with the business_account table`() {
+        createV4Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "the new table has exactly these columns, in this order",
+            listOf("id", "bankName", "number"),
+            columnsOf(sql, "business_account"),
+        )
+        assertEquals(
+            "no column is nullable, so no DEFAULT NULL clause belongs in the migration",
+            emptyList<String>(),
+            nullableColumnsOf(sql, "business_account"),
+        )
+        assertEquals(
+            "every column is NOT NULL",
+            listOf("id", "bankName", "number"),
+            notNullColumnsOf(sql, "business_account"),
+        )
+    }
+
+    /**
+     * And the table has **no declared indices** — the assertion that keeps a unique
+     * constraint from being invented.
+     *
+     * Two accounts at one bank are legitimate, and the same number at two banks is the
+     * owner's business. A `UNIQUE(number)` index would refuse a real setup while looking
+     * like consistency with `vehicle.plate`, and this is the assertion that would fail.
+     *
+     * ## Why `sqlite_autoindex_*` is filtered out
+     *
+     * SQLite creates one automatically for a `TEXT` primary key — the migrated table reports
+     * `sqlite_autoindex_business_account_1`, unique, and no migration can prevent it. It is
+     * not a declared index: Room's own schema comparison ignores names with that prefix, so
+     * counting it here would assert something the schema cannot satisfy. What this test is
+     * about is the indices **we** would declare, and those must be none.
+     */
+    @Test
+    fun `the business_account table has no declared indices`() {
+        createV4Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "no unique index on either column — the list has no lookup key and no dedupe rule",
+            emptyList<Pair<String, Boolean>>(),
+            indexesOf(sql, "business_account")
+                .filterNot { (name, _) -> name.startsWith("sqlite_autoindex_") },
+        )
+    }
+
+    /**
+     * And every pre-existing row survives: the vehicle, the renter, the contract **and** the
+     * exception.
+     *
+     * The exception is the one this fixture added, and it is the row most likely to be lost:
+     * a migration that rebuilt or cascaded would take it. Asserting the *exception* row here
+     * rather than only the three older tables is what makes "4→5 touched nothing" a measured
+     * claim rather than an assumption.
+     */
+    @Test
+    fun `the migration leaves every pre-existing row intact`() {
+        createV4Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "the vehicle row survives",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM vehicle"),
+        )
+        assertEquals(
+            "the renter row survives",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM renter"),
+        )
+        assertEquals(
+            "the contract row survives",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM contract"),
+        )
+        assertEquals(
+            "and the exception row — the one a rebuild or a cascade would take",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM service_exception"),
+        )
+        // And the contract's own values are unchanged, not merely present.
+        assertEquals(
+            "c-v3",
+            sql.query("SELECT id FROM contract").use { c ->
+                c.moveToFirst()
+                c.getString(0)
+            },
+        )
+    }
+
+    /**
+     * A write through the DAO after the migration round trips.
+     *
+     * The counterpart to the exception round-trip test above: this asserts the new table
+     * accepts a write through the path the app actually uses, so the migration did not create
+     * a table that merely *looks* right to PRAGMA and refuses a real insert.
+     */
+    @Test
+    fun `an account written after the migration round trips`() {
+        createV4Database()
+
+        val migrated = openMigrated()
+
+        runBlocking {
+            migrated.businessAccountDao().insertBusinessAccount(
+                net.klinik.rental.data.db.entity.BusinessAccountEntity(
+                    id = "a1",
+                    bankName = "BCA",
+                    number = "1234567890",
+                ),
+            )
+        }
+
+        val stored = runBlocking { migrated.businessAccountDao().observeAll().first() }.single()
+        assertEquals("a1", stored.id)
+        assertEquals("BCA", stored.bankName)
+        assertEquals("1234567890", stored.number)
+    }
+
+    // ------------------------------------------------------------------ helpers
+
+    /**
+     * Builds a **v4** database by hand: the v3 shape plus Story 2.6's
+     * `service_exception`.
+     *
+     * A separate fixture from [createV3Database] rather than a parameter on it, because the
+     * v3 fixture's whole purpose is to be a file that has *no* `service_exception` — 2.6's
+     * migration test asserts the table appears. Reusing it with a flag would make that
+     * assertion depend on how the flag was passed.
+     *
+     * The exception row matters for the same reason the v3 fixture's contract row does: the
+     * 4→5 claim is that adding `business_account` leaves everything already on disk alone,
+     * and a fixture with no exception row would satisfy that whether or not the migration
+     * disturbed the table.
+     */
+    private fun createV4Database() {
+        createV3Database()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            // Story 2.6's table, verbatim — including the foreign key and the unique index
+            // under Room's derived name, because the migrated file is compared against the
+            // compiled schema on open.
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `service_exception` (
+                    `id` TEXT NOT NULL,
+                    `contractId` TEXT NOT NULL,
+                    `date` TEXT NOT NULL,
+                    `reason` TEXT NOT NULL,
+                    PRIMARY KEY (`id`),
+                    FOREIGN KEY (`contractId`) REFERENCES `contract` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS " +
+                    "`index_service_exception_contractId_date` " +
+                    "ON `service_exception` (`contractId`, `date`)",
+            )
+            db.execSQL(
+                """
+                INSERT INTO service_exception (id, contractId, date, reason)
+                VALUES ('e-v4', 'c-v3', '2026-10-14', 'Ganti ban, mobil di bengkel')
+                """.trimIndent(),
+            )
+
+            db.version = 4
+        }
+    }
 
     /**
      * Builds a v1 database by hand, from Story 2.2/2.3's schema.
@@ -987,14 +1185,15 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_1_2,
                 KlinikDatabase.MIGRATION_2_3,
                 KlinikDatabase.MIGRATION_3_4,
+                KlinikDatabase.MIGRATION_4_5,
             )
             .build()
         database = opened
 
         // Touch it so the migrations actually run before the assertions below.
         assertEquals(
-            "the file must have been migrated to v4",
-            4,
+            "the file must have been migrated to v5",
+            5,
             opened.openHelper.readableDatabase.version,
         )
         return opened
@@ -1006,6 +1205,19 @@ class DatabaseMigrationTest {
             buildList {
                 while (c.moveToNext()) add(c.getString(c.getColumnIndexOrThrow("name")))
             }
+        }
+
+    /**
+     * The single integer a `SELECT COUNT(*)` returns.
+     *
+     * A helper rather than an inline `query(...).use { … }` per call site: the three row-count
+     * assertions in the 4→5 test would otherwise repeat the cursor dance, and a mistake in it
+     * reads as a passing assertion on the wrong table.
+     */
+    private fun countOf(sql: SupportSQLiteDatabase, query: String): Int =
+        sql.query(query).use { c ->
+            c.moveToFirst()
+            c.getInt(0)
         }
 
     /** Columns declared `NOT NULL`, in declaration order. */
@@ -1109,3 +1321,4 @@ class DatabaseMigrationTest {
         endDate = LocalDate.of(2026, 6, 30),
     )
 }
+

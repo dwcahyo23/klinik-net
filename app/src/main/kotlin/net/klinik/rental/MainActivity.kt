@@ -17,11 +17,13 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.db.KlinikDatabase
+import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
 import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
+import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
 import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
@@ -84,6 +86,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val pengaturanViewModel: PengaturanViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createPengaturanViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -101,6 +111,7 @@ class MainActivity : ComponentActivity() {
                     kendaraan = kendaraanViewModel,
                     penyewa = penyewaViewModel,
                     kontrak = kontrakViewModel,
+                    pengaturan = pengaturanViewModel,
                 )
             }
         }
@@ -159,6 +170,22 @@ internal fun createKontrakViewModel(context: Context): KontrakViewModel {
 }
 
 /**
+ * The settings ViewModel over the same singleton.
+ *
+ * A repository of its own rather than an extension of an existing one, because a business
+ * account has no relationship to a contract, a vehicle or a renter — see
+ * `BusinessAccountRepository`'s KDoc. It passes the database handle because `save` reads
+ * before it writes (insert-vs-update) and that decision needs one snapshot.
+ */
+internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
+    val database = KlinikDatabase.get(context)
+    return PengaturanViewModel(
+        repository = BusinessAccountRepository(database.businessAccountDao(), database),
+        strings = RStrings(context),
+    )
+}
+
+/**
  * The app shell: one graph, a rail in landscape and a bottom nav in portrait.
  *
  * Stateless by design — every screen is driven from its own `UiState` and every
@@ -177,16 +204,17 @@ internal fun createKontrakViewModel(context: Context): KontrakViewModel {
  * still called, and it stays in `onCreate` above: if that config is ever lost, it
  * should crash visibly at startup rather than quietly here.
  *
- * This function collects the three screens' flows and hands the results to
+ * This function collects the four screens' flows and hands the results to
  * [AppShell] as one [Screens]. Collection lives here, at the Activity boundary,
  * rather than inside the shell — the shell must not hold a ViewModel, or a test
- * would have to construct three of them to render one nav bar.
+ * would have to construct four of them to render one nav bar.
  */
 @Composable
 private fun KlinikNetApp(
     kendaraan: KendaraanViewModel,
     penyewa: PenyewaViewModel,
     kontrak: KontrakViewModel,
+    pengaturan: PengaturanViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -201,6 +229,10 @@ private fun KlinikNetApp(
     val kontrakEndError by kontrak.endErrorMessage.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
+    // Story 3.1's screen. It has no second window of its own beyond its form sheet, so one
+    // banner pair is enough — unlike the contracts screen's three sheets.
+    val pengaturanState by pengaturan.uiState.collectAsStateWithLifecycle()
+    val pengaturanSnackbar by pengaturan.snackbarMessage.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -277,6 +309,17 @@ private fun KlinikNetApp(
                     onConfirmEnd = kontrak::endContract,
                     endErrorMessage = kontrakEndError,
                     onEndErrorDismiss = kontrak::consumeEndError,
+                ),
+                pengaturan = Screens.Pengaturan(
+                    state = pengaturanState,
+                    snackbarMessage = pengaturanSnackbar,
+                    onAdd = pengaturan::openAddForm,
+                    onEdit = pengaturan::openEditForm,
+                    onCloseForm = pengaturan::closeForm,
+                    onFormChange = pengaturan::onFormChange,
+                    onSave = pengaturan::saveForm,
+                    onSnackbarDismiss = pengaturan::consumeMessage,
+                    onErrorDismiss = pengaturan::consumeError,
                 ),
             ),
         )

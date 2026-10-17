@@ -15,6 +15,7 @@ import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.components.SkeletonRowTag
 import net.klinik.rental.ui.format.formatTanggalBulan
+import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.ui.screens.kendaraan.KendaraanScreen
 import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kendaraan.VehicleRow
@@ -31,6 +32,11 @@ import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.penyewa.RenterRow
 import net.klinik.rental.ui.screens.penyewa.TAG_BANNER as TAG_BANNER_PENYEWA
 import net.klinik.rental.ui.screens.penyewa.TAG_EMPTY_LIST
+import net.klinik.rental.ui.screens.pengaturan.AccountRow
+import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
+import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
+import net.klinik.rental.ui.screens.pengaturan.TAG_BANNER as TAG_BANNER_PENGATURAN
+import net.klinik.rental.ui.screens.pengaturan.TAG_EMPTY as TAG_EMPTY_PENGATURAN
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertTrue
 import org.junit.Rule
@@ -197,6 +203,40 @@ class FourStatesTest {
             confirmed = {
                 KontrakView(
                     state = KontrakUiState(rows = listOf(contractRow())),
+                    snackbar = CONFIRM_COPY,
+                )
+            },
+        ),
+        // Story 3.1's destination. Its own `PengaturanScreenTest` covers the four states in
+        // detail; this entry is what makes the *cross-cutting* claims apply to it too — no
+        // spinner, every empty state says what to do, and a refusal never renders as an empty
+        // state. The file's own KDoc says a screen without an entry here is the failure.
+        Screen(
+            name = "pengaturan",
+            skeletonTag = SkeletonRowTag,
+            emptyTag = TAG_EMPTY_PENGATURAN,
+            bannerTag = TAG_BANNER_PENGATURAN,
+            emptyTitle = "Belum ada rekening usaha",
+            emptyBody = "Tambahkan rekening yang menerima transfer, supaya saat mencatat setoran tinggal dipilih dari daftar.",
+            rowText = "BCA",
+            loading = {
+                PengaturanView(PengaturanUiState(isLoading = true))
+            },
+            empty = {
+                PengaturanView(PengaturanUiState())
+            },
+            refused = {
+                PengaturanView(
+                    state = PengaturanUiState(
+                        rows = listOf(accountRow()),
+                        errorMessage = ERROR_COPY,
+                    ),
+                    snackbar = CONFIRM_COPY,
+                )
+            },
+            confirmed = {
+                PengaturanView(
+                    state = PengaturanUiState(rows = listOf(accountRow())),
                     snackbar = CONFIRM_COPY,
                 )
             },
@@ -437,6 +477,24 @@ class FourStatesTest {
         )
     }
 
+    @Composable
+    private fun PengaturanView(
+        state: PengaturanUiState,
+        snackbar: String? = null,
+    ) {
+        PengaturanScreen(
+            state = state,
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            snackbarMessage = snackbar,
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        )
+    }
+
     // --------------------------------------------------------------- fixtures
 
     private fun kendaraanRow() = VehicleRow(
@@ -461,6 +519,17 @@ class FourStatesTest {
             bankAccount = null,
             emergencyContact = "08129876543",
         ),
+    )
+
+    /**
+     * One stored account.
+     *
+     * `rowText = "BCA"` above: the **bank** is the row's title and the number its subtitle, so
+     * the "the list is still there" assertion checks the thing the owner scans for.
+     */
+    private fun accountRow() = AccountRow(
+        account = BusinessAccount(id = "a1", bankName = "BCA", number = "1234567890"),
+        numberText = "1234567890",
     )
 
     private fun contractRow() = ContractRow(

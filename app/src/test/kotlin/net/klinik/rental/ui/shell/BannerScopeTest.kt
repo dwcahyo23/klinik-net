@@ -161,6 +161,21 @@ class BannerScopeTest {
             onConfirmEnd = {},
             onEndErrorDismiss = {},
         ),
+        // Story 3.1's destination. This file proves which *window* each message is drawn
+        // in, and the settings screen has a form sheet whose banner must land inside it
+        // rather than behind it — so the wiring is stated here for the same reason the
+        // contracts screen's three pairs are.
+        pengaturan = Screens.Pengaturan(
+            state = net.klinik.rental.ui.screens.pengaturan.PengaturanUiState(),
+            snackbarMessage = null,
+            onAdd = {},
+            onEdit = {},
+            onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
     )
 
 }

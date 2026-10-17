@@ -19,6 +19,9 @@ import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaScreen
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.penyewa.RenterFormSheet
+import net.klinik.rental.ui.screens.pengaturan.AccountRow
+import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
+import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 
 /**
  * The app's single navigation graph (AR-18).
@@ -65,6 +68,11 @@ internal fun AppNavGraph(
         composable(Destination.Kendaraan.route) { KendaraanRoute(screens.kendaraan) }
         composable(Destination.Penyewa.route) { PenyewaRoute(screens.penyewa) }
         composable(Destination.Kontrak.route) { KontrakRoute(screens.kontrak) }
+        // The fourth, added by Story 3.1. A `Destination` entry with no `composable` here is
+        // a nav item that navigates to nothing — the two are asserted together in
+        // `AppShellTest`, because a route composed but absent from the enum is invisible in
+        // the nav and one present in the enum but not composed lands on a blank screen.
+        composable(Destination.Pengaturan.route) { PengaturanRoute(screens.pengaturan) }
     }
 }
 
@@ -93,6 +101,7 @@ internal class Screens(
     val kendaraan: Kendaraan,
     val penyewa: Penyewa,
     val kontrak: Kontrak,
+    val pengaturan: Pengaturan,
 ) {
     /** The fleet destination's wiring. */
     class Kendaraan(
@@ -179,6 +188,27 @@ internal class Screens(
          */
         val endErrorMessage: String? = null,
         val onEndErrorDismiss: () -> Unit,
+    )
+
+    /**
+     * The settings destination's wiring.
+     *
+     * Seven callbacks, all required, for the reason the three destinations above give: a
+     * defaulted lambda produces a control that renders and silently does nothing, and this
+     * screen's only verb is adding or editing an account. The screen also mounts its own form
+     * sheet, so nothing is composed here — the same asymmetry `KontrakRoute` documents.
+     */
+    class Pengaturan(
+        val state: PengaturanUiState,
+        val snackbarMessage: String?,
+        val onAdd: () -> Unit,
+        val onEdit: (AccountRow) -> Unit,
+        val onCloseForm: () -> Unit,
+        val onFormChange:
+            ((net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> Unit,
+        val onSave: () -> Unit,
+        val onSnackbarDismiss: () -> Unit,
+        val onErrorDismiss: () -> Unit,
     )
 }
 
@@ -294,5 +324,28 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
         onEndErrorDismiss = wiring.onEndErrorDismiss,
         renterOptions = wiring.renterOptions,
         vehicleOptions = wiring.vehicleOptions,
+    )
+}
+
+/**
+ * The settings destination.
+ *
+ * Like `KontrakRoute`, this mounts **no sheet**: `PengaturanScreen` draws its own form sheet,
+ * which is the shape this screen's form has. Unlike `KendaraanRoute` and `PenyewaRoute`, which
+ * keep their mounts here because their screens have no private sheet host — the asymmetry is a
+ * property of the screens, not an oversight.
+ */
+@Composable
+private fun PengaturanRoute(wiring: Screens.Pengaturan) {
+    PengaturanScreen(
+        state = wiring.state,
+        onAdd = wiring.onAdd,
+        onEdit = wiring.onEdit,
+        onCloseForm = wiring.onCloseForm,
+        onFormChange = wiring.onFormChange,
+        onSave = wiring.onSave,
+        snackbarMessage = wiring.snackbarMessage,
+        onSnackbarDismiss = wiring.onSnackbarDismiss,
+        onErrorDismiss = wiring.onErrorDismiss,
     )
 }
