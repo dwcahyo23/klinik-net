@@ -44,7 +44,7 @@ development_status:
   1-6-mengukur-performa-bukan-menebaknya: done
   epic-1-retrospective: optional
 
-  epic-2: in-progress
+  epic-2: done
   2-1-design-system-dan-komponen-inti-yang-dipakai-semua-layar-ber: done
   2-8-empat-state-setiap-layar-dan-prinsip-yang-tidak-bisa-dilangg: done
   2-2-menyimpan-armada-mobil: done
@@ -53,7 +53,7 @@ development_status:
   2-5-membuka-kontrak-sewa: done
   2-6-menandai-hari-tanpa-tagihan: done
   2-7-mengakhiri-kontrak-sewa: done
-  epic-2-retrospective: optional
+  epic-2-retrospective: optional # all 8 stories done, but 6 deferred device-check items (2.6 x3, 2.7 x3) still point here — one is high/unverified: a future end date frees the car immediately
 
   epic-3: backlog
   3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: backlog
@@ -81,4 +81,5 @@ development_status:
   5-5-mengingat-kalau-backup-belum-dibuat: backlog
   5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
   epic-5-retrospective: optional
+
 
