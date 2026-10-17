@@ -1,0 +1,2609 @@
+diff --git a/app/src/main/kotlin/net/klinik/rental/data/db/KlinikDatabase.kt b/app/src/main/kotlin/net/klinik/rental/data/db/KlinikDatabase.kt
+index c9c627d..1e8585d 100644
+--- a/app/src/main/kotlin/net/klinik/rental/data/db/KlinikDatabase.kt
++++ b/app/src/main/kotlin/net/klinik/rental/data/db/KlinikDatabase.kt
+@@ -65,7 +65,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
+         AllocationEntity::class,
+         SettingEntity::class,
+     ],
+-    version = 6,
++    version = 7,
+     exportSchema = false,
+ )
+ @TypeConverters(Converters::class)
+@@ -525,6 +525,43 @@ abstract class KlinikDatabase : RoomDatabase() {
+             }
+         }
+ 
++        /**
++         * v6 -> v7: adds `payment.status` and `payment.cancelReason` — Story 3.4's
++         * cancellation trail.
++         *
++         * ## Why this is the first `ALTER` here, and why the `DEFAULT` matters
++         *
++         * Every migration above *created* a table, so none of them had to reason about
++         * existing rows. These two columns are added to a table that already holds the
++         * owner's deposits, and that is where the default clause stops being decoration:
++         *
++         *  - `status TEXT NOT NULL DEFAULT 'confirmed'` — without the default, every
++         *    existing row reads back `null`, fails the entity's non-null guard, and the
++         *    owner loses access to their own history. **SQLite cannot add a `NOT NULL`
++         *    column without a default**, so the clause is required by the type, not by
++         *    taste.
++         *  - `cancelReason TEXT DEFAULT NULL` — a confirmed deposit has no reason, and
++         *    `DEFAULT ''` would make "cancelled with no reason" representable, which is
++         *    exactly what the epic forbids.
++         *
++         * ## Why no row is rewritten
++         *
++         * `ALTER TABLE … ADD COLUMN` is the whole migration. Back-filling every deposit
++         * would be a second write path for a value the default already supplies, and the
++         * rows it would touch are money records whose `createdAt` and `date` must not move.
++         */
++        val MIGRATION_6_7 = object : Migration(6, 7) {
++            override fun migrate(db: SupportSQLiteDatabase) {
++                db.execSQL(
++                    "ALTER TABLE `payment` " +
++                        "ADD COLUMN `status` TEXT NOT NULL DEFAULT 'confirmed'"
++                )
++                db.execSQL(
++                    "ALTER TABLE `payment` ADD COLUMN `cancelReason` TEXT DEFAULT NULL"
++                )
++            }
++        }
++
+         /**
+          * The single application-wide instance.
+          *
+@@ -550,7 +587,8 @@ abstract class KlinikDatabase : RoomDatabase() {
+                     MIGRATION_3_4,
+                     MIGRATION_4_5,
+                     MIGRATION_5_6,
++                MIGRATION_6_7,
+                 )
+                 .build()
+     }
+-}
+\ No newline at end of file
++}
+diff --git a/app/src/main/kotlin/net/klinik/rental/data/db/dao/AllocationDao.kt b/app/src/main/kotlin/net/klinik/rental/data/db/dao/AllocationDao.kt
+index 59c324b..6d2116c 100644
+--- a/app/src/main/kotlin/net/klinik/rental/data/db/dao/AllocationDao.kt
++++ b/app/src/main/kotlin/net/klinik/rental/data/db/dao/AllocationDao.kt
+@@ -85,4 +85,37 @@ interface AllocationDao {
+      */
+     @Insert(onConflict = OnConflictStrategy.ABORT)
+     suspend fun insertAllocation(allocation: AllocationEntity)
++
++    /**
++     * Releases every row one deposit placed, in Story 3.4's cancellation.
++     *
++     * ## What is deleted here and what is deleted nowhere
++     *
++     * These rows, and **only** these. They encode the deposit's *effect* on arrears —
++     * which days it closed and how much of each — and cancelling reverses exactly that.
++     * The deposit row itself is never deleted: the epic's criterion is *"tidak ada hard
++     * delete"*, because a row that cannot be audited cannot explain why the owner's arrears
++     * jumped on a given day, which is the question a cancellation exists to answer.
++     *
++     * ## Why this is not `onDelete = CASCADE` doing it for us
++     *
++     * Because a cascade would fire the moment the **payment** row went, and this
++     * cancellation does not delete that row. Deleting placements is a deliberate step with
++     * a re-allocation after it — the same transaction, in that order — and a cascade would
++     * do it silently, at a moment the code does not choose.
++     */
++    @Query("DELETE FROM allocation WHERE paymentId = :paymentId")
++    suspend fun deleteForPayment(paymentId: String): Int
++
++    /**
++     * Removes **every** allocation on a contract, for the re-allocation that follows a
++     * cancellation.
++     *
++     * Wholesale rather than row-by-row because the re-allocation rewrites placements for
++     * *all* deposits, not only the cancelled one: releasing Rp 500.000 from a contract with
++     * three later deposits can shift each of them onto an earlier day. `previewAllocation`
++     * returns the survivor's rows and the repository replaces them wholesale.
++     */
++    @Query("DELETE FROM allocation WHERE contractId = :contractId")
++    suspend fun deleteForContract(contractId: String): Int
+ }
+\ No newline at end of file
+diff --git a/app/src/main/kotlin/net/klinik/rental/data/db/dao/PaymentDao.kt b/app/src/main/kotlin/net/klinik/rental/data/db/dao/PaymentDao.kt
+index cba37a1..2fb6600 100644
+--- a/app/src/main/kotlin/net/klinik/rental/data/db/dao/PaymentDao.kt
++++ b/app/src/main/kotlin/net/klinik/rental/data/db/dao/PaymentDao.kt
+@@ -4,6 +4,7 @@ import androidx.room.Dao
+ import androidx.room.Insert
+ import androidx.room.OnConflictStrategy
+ import androidx.room.Query
++import androidx.room.Update
+ import kotlinx.coroutines.flow.Flow
+ import net.klinik.rental.data.db.entity.PaymentEntity
+ 
+@@ -79,4 +80,32 @@ interface PaymentDao {
+      */
+     @Insert(onConflict = OnConflictStrategy.ABORT)
+     suspend fun insertPayment(payment: PaymentEntity)
++
++    /**
++     * Writes a deposit back in place — Story 3.4's, and the only one.
++     *
++     * ## Why there is **no delete**
++     *
++     * The epic's acceptance criterion is explicit: *"pembatalan dicatat sebagai perubahan
++     * status dengan alasan — tidak ada hard delete."* A deleted deposit cannot be audited,
++     * which is the entire reason the reason is mandatory. What a cancellation *does* delete
++     * is the deposit's allocation rows — see [AllocationDao.deleteForPayment] — because
++     * those encode its effect on arrears rather than the fact that it happened.
++     *
++     * ## Why nothing filters on [PaymentEntity.status]
++     *
++     * Because that filter is the failure the domain's `Payment` KDoc names: a caller who
++     * forgets pays the wrong arrears and nothing notices. So [forContract] and
++     * [observeForContract] return **every** row, cancelled included — the audit trail
++     * depends on it — and a cancelled deposit is excluded by the *allocator* not by a
++     * query. Cancelling deletes its allocation rows and re-allocates the contract from the
++     * survivors, so a cancelled deposit that reached the allocator anyway would break
++     * `Σ allocation == amount` loudly rather than quietly.
++     */
++    @Update
++    suspend fun updatePayment(payment: PaymentEntity)
++
++    /** One deposit by id, for the cancellation's own read. */
++    @Query("SELECT * FROM payment WHERE id = :id")
++    suspend fun findById(id: String): PaymentEntity?
+ }
+\ No newline at end of file
+diff --git a/app/src/main/kotlin/net/klinik/rental/data/db/entity/PaymentEntity.kt b/app/src/main/kotlin/net/klinik/rental/data/db/entity/PaymentEntity.kt
+index f41f901..f67349d 100644
+--- a/app/src/main/kotlin/net/klinik/rental/data/db/entity/PaymentEntity.kt
++++ b/app/src/main/kotlin/net/klinik/rental/data/db/entity/PaymentEntity.kt
+@@ -108,6 +108,38 @@ data class PaymentEntity(
+      * them would let a late entry change which billing period the money falls in.
+      */
+     val createdAt: Instant,
++    /**
++     * `confirmed` or `canceled` — Story 3.4's addition.
++     *
++     * ## Why this exists despite `Payment`'s KDoc saying it should not
++     *
++     * The domain KDoc argues that a status "would invite callers to filter instead, and a
++     * filter somebody forgets to apply is precisely how Rp 13.000.000 disappears at the
++     * month rollover." That reasoning is kept, and this column is the answer rather than
++     * the objection to it:
++     *
++     *  - **nothing filters on it.** `PaymentDao.forContract` and `observeForContract` keep
++     *    returning every row, cancelled ones included — that is what keeps the audit trail
++     *    readable. The *allocator* excludes a cancelled deposit by construction, because
++     *    cancelling deletes its allocation rows and re-allocates from survivors.
++     *  - **so forgetting is now loud.** A caller that wrongly filters pays nothing; a
++     *    caller that wrongly *includes* a cancelled deposit would double-count against a
++     *    contract whose rows were already rewritten, and `Σ allocation == amount` fails.
++     *
++     * The AC requires the row to survive ("tidak ada hard delete"), and a row that can
++     * neither be deleted nor marked is a row nobody can audit.
++     */
++    @ColumnInfo(defaultValue = "confirmed")
++    val status: String = STATUS_CONFIRMED,
++    /**
++     * Why it was cancelled — **mandatory when [status] is `canceled`**, which is the AC's
++     * *"Pembatalan wajib menyertakan alasan."*
++     *
++     * Nullable rather than non-null because a confirmed deposit has no reason, and
++     * `DEFAULT ''` would make "cancelled with no reason" representable.
++     */
++    @ColumnInfo(defaultValue = "NULL")
++    val cancelReason: String? = null,
+ ) {
+     init {
+         require(id.isNotBlank()) { "id must not be blank" }
+@@ -117,5 +149,22 @@ data class PaymentEntity(
+         // amount` intact while recording that a day was closed for no money.
+         InvalidAmountException.requireValid(amount)
+         require(method.isNotBlank()) { "method must not be blank" }
++        require(status.isNotBlank()) { "status must not be blank" }
++        // The AC's rule, enforced where the row is built rather than only at the call
++        // site: a cancelled deposit with no reason is an audit trail with a gap in it,
++        // and the whole reason the row survives is so the gap is readable.
++        if (status == STATUS_CANCELED) {
++            require(!cancelReason.isNullOrBlank()) {
++                "a cancelled deposit must carry a reason"
++            }
++        }
++    }
++
++    companion object {
++        /** The deposit counts towards arrears. */
++        const val STATUS_CONFIRMED = "confirmed"
++
++        /** The deposit is kept for its trail and no longer counts. */
++        const val STATUS_CANCELED = "canceled"
+     }
+ }
+\ No newline at end of file
+diff --git a/app/src/main/kotlin/net/klinik/rental/data/repository/PaymentRepository.kt b/app/src/main/kotlin/net/klinik/rental/data/repository/PaymentRepository.kt
+index 8547774..c8be4d1 100644
+--- a/app/src/main/kotlin/net/klinik/rental/data/repository/PaymentRepository.kt
++++ b/app/src/main/kotlin/net/klinik/rental/data/repository/PaymentRepository.kt
+@@ -208,6 +208,14 @@ class PaymentRepository(
+         contractId: String,
+         payment: Payment,
+         asOf: LocalDate,
++        /**
++         * A stored deposit to leave out entirely, or `""` for none.
++         *
++         * Applied **before** the allocator, not by dropping rows afterwards — see
++         * [arrearsExcluding] for why. Kept as a parameter rather than a second read chain
++         * so the status filter below stays in exactly one place.
++         */
++        excludePaymentId: String = "",
+     ): ComputedAllocation {
+         // 1. The stored contract, for its frozen rate, its period and its schedule.
+         //    Read rather than taken from the caller: a `Contract` handed in may be
+@@ -235,7 +243,19 @@ class PaymentRepository(
+         )
+ 
+         // 4. The payment and everything already recorded, allocated **together**.
+-        val existing = paymentDao.forContract(contract.id).map { it.toDomain() }
++        //
++        //    `forContract` returns **every** deposit, cancelled ones included, so both
++        //    exclusions happen here and in one place. That is the whole answer to the
++        //    `Payment` KDoc's warning that a status "would invite callers to filter
++        //    instead": a filter in the query would put the rule in every reader of this
++        //    table, while here it sits in the only place that computes anything. A
++        //    cancelled deposit reaching the allocator by mistake would fail
++        //    `Σ allocation == amount` loudly, not quietly.
++        val existing = paymentDao.forContract(contract.id)
++            .filter {
++                it.status == PaymentEntity.STATUS_CONFIRMED && it.id != excludePaymentId
++            }
++            .map { it.toDomain() }
+         val allRows = allocatePayments(
+             payments = existing + payment,
+             chargeDays = chargeDays,
+@@ -267,6 +287,168 @@ class PaymentRepository(
+         val newRows: List<Allocation>,
+     )
+ 
++    /**
++     * Cancels one deposit, keeping the row and dropping its effect.
++     *
++     * ## What happens, in this order, in one transaction (AR-8)
++     *
++     *  1. Read the deposit. Refuse a blank reason and an already-cancelled one.
++     *  2. Mark it `canceled` with the reason. **The row survives** — the epic's criterion
++     *     is *"tidak ada hard delete"*, because a row that cannot be read cannot answer
++     *     why the owner's arrears jumped on a given day.
++     *  3. Delete its allocation rows: those encode its *effect*, which is exactly what
++     *     cancelling reverses.
++     *  4. Re-allocate the contract from the deposits that survive, and write **all** their
++     *     rows back.
++     *
++     * ## Why step 4 rewrites every row and not just the cancelled deposit's
++     *
++     * Because releasing Rp 500.000 can shift what deposits recorded *later* land on: an
++     * earlier day opens up and the next deposit's money moves onto it. Re-allocating only
++     * the cancelled row would leave the survivors placed as if nothing had changed — and
++     * `Σ allocation == amount` would still hold while the days each deposit closes were
++     * wrong. Recomputing wholesale is what [previewAllocation] already does for a save, so
++     * this is the same function with a different final write.
++     *
++     * ## Why a partial cancel is not recoverable
++     *
++     * If step 3 and step 4 could interleave with a crash, the contract would be left with
++     * some deposits' rows released and others placed under the old day list — an arrears
++     * figure that is wrong and looks right. That is what the transaction is for.
++     *
++     * @throws BlankCancelReasonException when [reason] is blank. Checked **before** the
++     *   transaction opens: a blank reason is a form state, not a data condition, and there
++     *   is no reason to take a write lock to discover one.
++     * @throws DepositAlreadyCanceledException when the deposit is already cancelled.
++     * @throws UnknownDepositException when [paymentId] names no stored deposit.
++     */
++    suspend fun cancelDeposit(contractId: String, paymentId: String, reason: String) {
++        // The AC's rule, refused before anything is written, so a refused cancellation
++        // leaves the deposit exactly as it was.
++        if (reason.isBlank()) throw BlankCancelReasonException(paymentId)
++
++        inTransaction {
++            // 1. The stored deposit. Read rather than taken from the caller — a `Payment`
++            //    handed in may be stale, and this decides whether it is still cancellable.
++            val stored = paymentDao.findById(paymentId)
++                ?: throw UnknownDepositException(paymentId)
++            if (stored.status == PaymentEntity.STATUS_CANCELED) {
++                // The original reason stands: a second cancellation must not overwrite the
++                // audit trail with a newer, less accurate explanation.
++                throw DepositAlreadyCanceledException(paymentId, stored.cancelReason)
++            }
++
++            // 2. Mark it, keeping the row.
++            paymentDao.updatePayment(
++                stored.copy(
++                    status = PaymentEntity.STATUS_CANCELED,
++                    cancelReason = reason.trim(),
++                ),
++            )
++
++            // 3. Release what it placed.
++            allocationDao.deleteForPayment(paymentId)
++
++            // 4. Re-allocate the contract from the survivors. `previewAllocation` filters
++            //    cancelled deposits out on its own, so the one marked in step 2 is
++            //    excluded here without a second rule — which is the point of putting the
++            //    filter there.
++            val computed = previewAllocation(
++                contractId = contractId,
++                // A Rp 1 placeholder: `allocatePayments` needs a payment to place, and
++                // this call happens *after* the cancellation, so the survivors' rows are
++                // what comes back and the placeholder's own row is discarded.
++                payment = Payment(
++                    id = RECOMPUTE_ID,
++                    date = asOf(),
++                    amount = 1,
++                ),
++                asOf = asOf(),
++            )
++
++            // Wholesale, because step 4 can move the survivors as well as the cancelled
++            // deposit — see the KDoc.
++            allocationDao.deleteForContract(contractId)
++            computed.existingRows.forEach { row ->
++                allocationDao.insertAllocation(row.toEntity(contractId))
++            }
++        }
++    }
++
++    /**
++     * The arrears the contract would show once [paymentId] is cancelled — the number the
++     * confirmation dialog has to name.
++     *
++     * ## Why this allocates rather than subtracts
++     *
++     * Because "arrears after cancelling" is **not** "arrears now minus the deposit's
++     * amount". Cancelling can move *later* deposits onto days that just opened, so the
++     * contract's arrears is whatever the survivors place, and the only honest way to know
++     * that is to allocate without the deposit and read the result.
++     *
++     * Subtracting would be a second derivation of a fact the allocator already owns — the
++     * exact shape Story 3.3 exists to prevent, and the one whose failure the owner finds
++     * too late because the figure looks plausible.
++     *
++     * @return whole rupiah, or the contract's **current** arrears when the deposit is
++     *   unknown or already cancelled, so a dialog never promises a change it cannot make.
++     */
++    suspend fun arrearsAfterCanceling(
++        contractId: String,
++        paymentId: String,
++        asOf: LocalDate,
++    ): Long {
++        val stored = paymentDao.findById(paymentId) ?: return currentArrears(contractId, asOf)
++        // Already cancelled: nothing would change, so the "after" is the present.
++        if (stored.status == PaymentEntity.STATUS_CANCELED) return currentArrears(contractId, asOf)
++        return arrearsExcluding(contractId, paymentId, asOf)
++    }
++
++    /**
++     * The contract's arrears with one deposit left out, allocated honestly.
++     *
++     * ## Why it goes through [previewAllocation] rather than deriving its own answer
++     *
++     * Because the alternative is a **second** copy of the read chain and the second copy
++     * of the status filter — and the two would drift, which is the exact shape this
++     * story's design notes refuse.
++     *
++     * ## Why the exclusion cannot be a placeholder
++     *
++     * Because a placeholder takes days **after** the survivors, so dropping its rows
++     * afterwards leaves every deposit placed as if the excluded money were still there —
++     * and the figure would then be the one that deposit would produce if it had not been
++     * cancelled. Excluding it **before** the allocation is what makes this the honest
++     * answer, and is the whole difference between allocating and subtracting.
++     */
++    private suspend fun arrearsExcluding(
++        contractId: String,
++        paymentId: String,
++        asOf: LocalDate,
++    ): Long {
++        val computed = previewAllocation(
++            contractId = contractId,
++            payment = Payment(id = RECOMPUTE_ID, date = asOf, amount = 1),
++            // Dropped before the allocator sees it. `currentArrears` passes `""`, which
++            // no stored deposit carries, so nothing is excluded there.
++            excludePaymentId = paymentId,
++            asOf = asOf,
++        )
++        return arrearsOf(
++            contractId = contractId,
++            chargeDays = computed.chargeDays,
++            allocations = computed.existingRows,
++            dailyRate = computed.contract.dailyRate,
++        ).amount
++    }
++
++    /** The contract's arrears exactly as it stands — every confirmed deposit applied. */
++    suspend fun currentArrears(contractId: String, asOf: LocalDate): Long =
++        arrearsExcluding(contractId, paymentId = "", asOf = asOf)
++
++    /** "Today" for a write that has no date of its own. See the call sites. */
++    private fun asOf(): LocalDate = LocalDate.now()
++
+     /** Every deposit on one contract, as domain values. */
+     suspend fun paymentsFor(contractId: String): List<Payment> =
+         paymentDao.forContract(contractId).map { it.toDomain() }
+@@ -339,6 +521,16 @@ class PaymentRepository(
+          * which is the difference Story 5.4 needs to show a real value.
+          */
+         const val DEFAULT_CUTOFF_DAY = 25
++
++        /**
++         * The id the re-allocation allocates a Rp 1 placeholder under, and then discards.
++         *
++         * A placeholder rather than "no payment at all" because `allocatePayments` needs a
++         * payment to place, and a second allocate-nothing path would be the second
++         * derivation this story exists to refuse. One rupiah cannot close a day at any rate
++         * this app uses, and its row is filtered out before anything is written.
++         */
++        const val RECOMPUTE_ID = "__recompute__"
+     }
+ }
+ 
+@@ -399,4 +591,17 @@ data class DepositPreview(
+ ) {
+     /** Whether a credit line is warranted at all. See [credit]. */
+     val hasCredit: Boolean get() = credit > 0L
+-}
+\ No newline at end of file
++}
++/** A cancellation with no reason. The epic refuses these before the write. */
++class BlankCancelReasonException(val paymentId: String) :
++    IllegalStateException("cancelling deposit $paymentId requires a reason")
++
++/** A second cancellation of a deposit already cancelled. */
++class DepositAlreadyCanceledException(
++    val paymentId: String,
++    val existingReason: String?,
++) : IllegalStateException("deposit $paymentId was already canceled")
++
++/** A cancellation naming a deposit nobody holds. */
++class UnknownDepositException(val paymentId: String) :
++    IllegalStateException("no deposit with id $paymentId")
+diff --git a/app/src/main/kotlin/net/klinik/rental/ui/components/Feedback.kt b/app/src/main/kotlin/net/klinik/rental/ui/components/Feedback.kt
+index 712ded4..44d602b 100644
+--- a/app/src/main/kotlin/net/klinik/rental/ui/components/Feedback.kt
++++ b/app/src/main/kotlin/net/klinik/rental/ui/components/Feedback.kt
+@@ -494,6 +494,11 @@ fun KnScreenError(
+  * @param confirmLabel / [dismissLabel] render at most two buttons, right
+  *   aligned. Two is a ceiling, not a suggestion: a footer that grows turns a
+  *   decision into a menu.
++ * @param confirmEnabled whether the confirm button accepts presses. `true` for
++ *   every dialog whose action needs nothing but the dialog itself, which is all
++ *   of them until Story 3.4's cancellation — a mandatory reason inside the body
++ *   has to be able to hold its own confirm shut, and [KnModal] rather than its
++ *   caller is the only thing that owns that button.
+  */
+ @Composable
+ @OptIn(ExperimentalLayoutApi::class)
+@@ -504,6 +509,7 @@ fun KnModal(
+     title: String? = null,
+     confirmLabel: String? = null,
+     onConfirm: (() -> Unit)? = null,
++    confirmEnabled: Boolean = true,
+     dismissLabel: String? = null,
+     onDismiss: (() -> Unit)? = null,
+     content: @Composable () -> Unit,
+@@ -624,6 +630,7 @@ fun KnModal(
+                                     label = confirmLabel,
+                                     onClick = onConfirm,
+                                     variant = KnButtonVariant.Primary,
++                                    enabled = confirmEnabled,
+                                 )
+                             }
+                         }
+diff --git a/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialog.kt b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialog.kt
+new file mode 100644
+index 0000000..eab9de0
+--- /dev/null
++++ b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialog.kt
+@@ -0,0 +1,122 @@
++package net.klinik.rental.ui.screens.setoran
++
++import androidx.compose.foundation.layout.Arrangement
++import androidx.compose.foundation.layout.Column
++import androidx.compose.foundation.layout.fillMaxWidth
++import androidx.compose.foundation.layout.padding
++import androidx.compose.material3.ExperimentalMaterial3Api
++import androidx.compose.material3.MaterialTheme
++import androidx.compose.material3.Text
++import androidx.compose.runtime.Composable
++import androidx.compose.ui.Modifier
++import androidx.compose.ui.platform.testTag
++import androidx.compose.ui.res.stringResource
++import androidx.compose.ui.unit.dp
++import net.klinik.rental.R
++import net.klinik.rental.ui.components.KnButton
++import net.klinik.rental.ui.components.KnButtonVariant
++import net.klinik.rental.ui.components.KnField
++import net.klinik.rental.ui.components.KnModal
++import net.klinik.rental.ui.theme.knColors
++import net.klinik.rental.ui.theme.knSpacing
++import net.klinik.rental.ui.theme.knTypography
++
++/**
++ * Story 3.4's cancellation dialog: what is being undone, what it costs, and why.
++ *
++ * ## Why the reason field is **inside** the dialog and not on the sheet
++ *
++ * Because the reason is only ever read next to the impact. Writing it on the deposit
++ * sheet would ask the owner to supply an explanation for something they have not yet been
++ * shown the cost of, and the field would sit there long after the decision was made —
++ * at which point it reads as a note rather than as the justification the audit needs.
++ *
++ * ## Why this is the highest confirmation tier the app has
++ *
++ * UX-DR11's third level — *"aksi yang menghapus data → dialog + alasan wajib"* — and the
++ * only one with a mandatory field. The two below it are used by Story 2.7's contract end
++ * and Story 2.6's exception removal, neither of which asks for writing. This one does,
++ * because what is being destroyed is evidence.
++ *
++ * @param state the dialog's own state, held by the ViewModel so a rotation cannot lose a
++ *   half-typed reason.
++ */
++@OptIn(ExperimentalMaterial3Api::class)
++@Composable
++fun CancelDepositDialog(
++    state: CancelDepositUi,
++    onChange: (CancelDepositUi) -> Unit,
++    onConfirm: () -> Unit,
++    onDismiss: () -> Unit,
++    modifier: Modifier = Modifier,
++) {
++    val spacing = MaterialTheme.knSpacing
++
++    KnModal(
++        // Driven by a non-null state rather than a `visible` flag, so the window cannot
++        // be up with nothing in it — the invisible tap-blocker `KnModal` unmounts to
++        // avoid.
++        visible = true,
++        onDismissRequest = onDismiss,
++        title = state.title,
++        // "Batalkan setoran", not "Batal" — the confirm and the dismiss differ by one
++        // word and the owner is destroying an audit record, so the confirm spells out
++        // which of the two buttons they are reaching for.
++        confirmLabel = stringResource(R.string.deposito_cancel_confirm),
++        onConfirm = onConfirm,
++        // The AC's "alasan wajib diisi" on the control itself. The ViewModel refuses a
++        // blank reason too, so this is the reflection of the rule rather than its only
++        // enforcement — a disabled button beside a mandatory field reads as a rule, where a
++        // button that does nothing reads as an app that stopped working.
++        confirmEnabled = state.canCancel,
++        dismissLabel = stringResource(R.string.deposito_cancel_dismiss),
++        onDismiss = onDismiss,
++        modifier = modifier.testTag(TAG_CANCEL_DIALOG),
++    ) {
++        Column(
++            modifier = Modifier.fillMaxWidth(),
++            verticalArrangement = Arrangement.spacedBy(spacing.md),
++        ) {
++            // The impact, before the field: the owner decides *whether* to cancel, and the
++            // reason is the justification for a decision already taken.
++            Text(
++                text = state.impactLine,
++                style = MaterialTheme.knTypography.body,
++                color = MaterialTheme.knColors.textPrimary,
++                modifier = Modifier.testTag(TAG_CANCEL_IMPACT),
++            )
++
++            KnField(
++                label = stringResource(R.string.deposito_cancel_reason_label),
++                value = state.reason,
++                // The error clears on the next keystroke rather than on confirm: an
++                // error that vanished only after a failed press teaches the owner that
++                // the field is fighting them.
++                onValueChange = { value -> onChange(state.setReason(value)) },
++                placeholder = stringResource(R.string.deposito_cancel_reason_hint),
++                error = state.reasonError,
++                // Multi-line with a bound, for the reason the deposit sheet's reason field
++                // is: "the tenant's cousin handed it over, not the tenant" is one sentence
++                // that does not fit a single line, and an unbounded field inside a dialog
++                // grows the dialog without limit.
++                singleLine = false,
++                maxLines = CANCEL_REASON_MAX_LINES,
++                modifier = Modifier
++                    .padding(top = spacing.xs)
++                    .testTag(TAG_CANCEL_REASON),
++            )
++        }
++    }
++}
++
++/**
++ * How many lines the reason grows to before it scrolls.
++ *
++ * Three, matching the deposit sheet's reason field — the same writing task in the same
++ * app, and two different bounds for it would be one more thing to keep in step.
++ */
++private const val CANCEL_REASON_MAX_LINES = 3
++
++internal const val TAG_CANCEL_DIALOG = "deposito-cancel-dialog"
++internal const val TAG_CANCEL_IMPACT = "deposito-cancel-impact"
++internal const val TAG_CANCEL_REASON = "deposito-cancel-reason"
+\ No newline at end of file
+diff --git a/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranUiState.kt b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranUiState.kt
+index 9024b5b..79c35ee 100644
+--- a/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranUiState.kt
++++ b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranUiState.kt
+@@ -186,6 +186,7 @@ data class SetoranUiState(
+     val errorMessage: String? = null,
+     val successMessage: String? = null,
+     val preview: DepositPreviewUi? = null,
++    val cancel: CancelDepositUi? = null,
+     val isLoading: Boolean = false,
+ ) {
+     /** The sheet is up. */
+@@ -193,6 +194,9 @@ data class SetoranUiState(
+ 
+     /** The preview dialog is up. Separate from [isOpen]: both windows are open at once. */
+     val isPreviewing: Boolean get() = preview != null
++
++    /** The cancellation dialog is up — a third window, and the only one with a field. */
++    val isCanceling: Boolean get() = cancel != null
+ }
+ 
+ /**
+@@ -223,4 +227,62 @@ data class DepositPreviewUi(
+     val closesLine: String,
+     /** `Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya`, or `null`. */
+     val creditLine: String?,
+-)
+\ No newline at end of file
++)
++
++/**
++ * The cancellation dialog's state — Story 3.4's.
++ *
++ * ## Why the impact is a **sentence**, not two figures
++ *
++ * The epic's copy is *"Tunggakan Pak Budi akan kembali menjadi Rp 750.000."* — the arrears
++ * returning to a figure, in words, naming the renter. Two numbers with an arrow would be
++ * the *preview*'s shape, and reusing it here would make two dialogs look alike while doing
++ * different things: one says what a deposit will do, the other says what undoing it costs.
++ * The first invites a decision; the second warns of a consequence, and they should read
++ * differently for exactly that reason.
++ *
++ * @property reason the owner's explanation, or `""` untouched. Blank is the AC's refusal
++ *   case, so this is a field the owner must fill rather than an optional note.
++ */
++data class CancelDepositUi(
++    val paymentId: String,
++    val contractId: String,
++    /** `Batalkan setoran Rp 250.000?` — the title, naming what is being undone. */
++    val title: String,
++    /** `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.` */
++    val impactLine: String,
++    /**
++     * The deposit's amount, already formatted.
++     *
++     * Carried **beside** [title] rather than parsed back out of it. The confirmation
++     * needs this figure, and recovering it with `substringAfter("setoran ")` would make
++     * an Indonesian sentence the source of a money value — so a copy edit, a translator,
++     * or a different word order would silently change what the owner is told was
++     * refunded.
++     */
++    val amountLabel: String,
++    val reason: String = "",
++    val reasonError: String? = null,
++)
++
++/**
++ * Applies a reason edit, clearing its own error.
++ *
++ * Cleared because the edit **is** the fix — an error that survived it would accuse the
++ * owner of a field they are in the middle of filling in, which is the rule every other
++ * field in this sheet follows.
++ */
++fun CancelDepositUi.setReason(reason: String): CancelDepositUi = copy(
++    reason = reason,
++    reasonError = null,
++)
++
++/**
++ * Whether the cancellation may proceed.
++ *
++ * **Completeness only.** The rule itself is enforced twice — here for the button, and in
++ * the repository for the data — so this is a reflection of the rule rather than its only
++ * enforcement. A disabled control beside an empty field is the epic's own "wajib diisi";
++ * the refusal then reads as a rule rather than as an app that stopped working.
++ */
++val CancelDepositUi.canCancel: Boolean get() = reason.isNotBlank()
+\ No newline at end of file
+diff --git a/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranViewModel.kt b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranViewModel.kt
+index 9c557da..d1b80ef 100644
+--- a/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranViewModel.kt
++++ b/app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranViewModel.kt
+@@ -143,6 +143,17 @@ class SetoranViewModel(
+      */
+     private val previewState = MutableStateFlow<DepositPreviewUi?>(null)
+ 
++    /**
++     * The cancellation dialog's state — Story 3.4's.
++     *
++     * A separate flow from [form] and [previewState] so that three windows have three
++     * lifetimes. They are genuinely different decisions: the form is the deposit being
++     * composed, the preview is a question about it, and the cancellation is a question
++     * about something already stored. Collapsing them would mean closing the sheet also
++     * dismissed a dialog, and a reason typed for one would survive into another.
++     */
++    private val cancelState = MutableStateFlow<CancelDepositUi?>(null)
++
+ 
+     private data class OptionsSnapshot(
+         val options: Options,
+@@ -155,10 +166,11 @@ class SetoranViewModel(
+         combine(errorMessage, previewState, message) { error, currentPreview, currentMessage ->
+             SheetSnapshot(error, currentPreview, currentMessage)
+         },
++        cancelState,
+         combine(options, message) { currentOptions, currentMessage ->
+             OptionsSnapshot(currentOptions, currentMessage)
+         },
+-    ) { currentForm, sheetSnapshot, optionsSnapshot ->
++    ) { currentForm, sheetSnapshot, currentCancel, optionsSnapshot ->
+         SetoranUiState(
+             form = currentForm,
+             errorMessage = sheetSnapshot.error,
+@@ -166,6 +178,7 @@ class SetoranViewModel(
+             accountOptions = optionsSnapshot.options.accounts,
+             successMessage = sheetSnapshot.message,
+             preview = sheetSnapshot.preview,
++            cancel = currentCancel,
+         )
+     }
+         .distinctUntilChanged()
+@@ -403,10 +416,11 @@ class SetoranViewModel(
+         }
+     }
+ 
+-    /** A closed form takes the dialog with it. See the close in [saveDepositAmount]. */
++    /** A closed form takes every dialog with it. See the close in [saveDepositAmount]. */
+     fun closeDeposit() {
+         errorMessage.value = null
+         previewState.value = null
++        cancelState.value = null
+         form.value = null
+     }
+ 
+@@ -418,6 +432,151 @@ class SetoranViewModel(
+         errorMessage.value = null
+     }
+ 
++    // --------------------------------------------------------- cancelling one
++
++    /**
++     * Opens the cancellation dialog for [paymentId], with its impact already computed.
++     *
++     * ## Why the figure is computed *before* the dialog opens
++     *
++     * Because a dialog that opens with a blank line and fills it in a moment later is
++     * one the owner can read past. And the figure is `arrearsAfterCanceling` — allocated
++     * **without** the deposit rather than the current arrears minus its amount — so it is
++     * exactly what the write will produce. That is the property Story 3.3 exists to
++     * protect, and `CancelDepositTest` proves it at the data layer with a case where the
++     * two answers differ by a day.
++     */
++    fun requestCancel(paymentId: String) {
++        errorMessage.value = null
++        val contractId = form.value?.contractId ?: return
++        val renterName = form.value?.renterName.orEmpty()
++        viewModelScope.launch {
++            try {
++                val arrearsAfter = payments.arrearsAfterCanceling(
++                    contractId = contractId,
++                    paymentId = paymentId,
++                    asOf = LocalDate.now(clock),
++                )
++                val amount = payments.paymentsFor(contractId)
++                    .firstOrNull { it.id == paymentId }
++                    ?.amount
++                    ?: 0L
++                val amountLabel = formatRupiah(amount)
++                cancelState.value = CancelDepositUi(
++                    paymentId = paymentId,
++                    contractId = contractId,
++                    amountLabel = amountLabel,
++                    title = strings.depositoCancelTitle(amountLabel),
++                    // The renter's own name, from the form the sheet already holds: a
++                    // cancellation is about *this person's* arrears going back up.
++                    impactLine = strings.depositoCancelImpact(
++                        renterName = renterName,
++                        arrearsAfter = formatRupiah(arrearsAfter),
++                    ),
++                )
++            } catch (e: CancellationException) {
++                throw e
++            } catch (e: Exception) {
++                // Said plainly rather than opening a dialog that promises a figure this
++                // screen cannot produce — a warning the owner cannot check is worse than
++                // no warning.
++                errorMessage.value = strings.depositoErrorPreviewFailed()
++            }
++        }
++    }
++
++    /**
++     * Carries a reason edit to the dialog.
++     *
++     * Its own handler rather than folded into [onFormChange], because the reason belongs
++     * to the *cancellation* and not to the deposit: a form carrying both would let an
++     * edit to one clear the other's error, and the two are never written together.
++     */
++    fun onCancelChange(transform: (CancelDepositUi) -> CancelDepositUi) {
++        cancelState.value = cancelState.value?.let(transform)
++    }
++
++    /**
++     * The dialog's dismiss.
++     *
++     * Discards the reason rather than keeping it: the deposit is untouched, and a reason
++     * held for a cancellation the owner walked away from would reappear on the next
++     * attempt with no explanation of where it came from.
++     */
++    fun dismissCancel() {
++        cancelState.value = null
++    }
++
++    /**
++     * Cancels the deposit the dialog names.
++     *
++     * ## Why the blank reason is refused here *and* in the repository
++     *
++     * Because the two refusals answer different audiences. The UI's is for the owner, who
++     * needs the field to say why; the repository's is the rule, and it is the one a caller
++     * bypassing the sheet would meet. A check in only one of the two leaves either a
++     * control that does nothing or a hole in the data layer.
++     */
++    fun cancelDeposit() {
++        if (!saving.compareAndSet(false, true)) return
++
++        val current = cancelState.value
++        if (current == null) {
++            saving.set(false)
++            return
++        }
++        if (current.reason.isBlank()) {
++            cancelState.value = current.copy(
++                reasonError = strings.depositoErrorCancelReasonRequired(),
++            )
++            saving.set(false)
++            return
++        }
++
++        viewModelScope.launch {
++            try {
++                payments.cancelDeposit(
++                    contractId = current.contractId,
++                    paymentId = current.paymentId,
++                    reason = current.reason,
++                )
++                // The dialog goes, and so does any preview. The **sheet stays**, which is
++                // the one difference from `confirmDeposit`: cancelling undoes one deposit
++                // rather than submitting the form, and the owner who is recording a second
++                // payment this month should not lose the renter and amount they picked for
++                // it. Dismissing the whole sheet on a *cancel* would discard typing nobody
++                // asked to discard.
++                cancelState.value = null
++                previewState.value = null
++                errorMessage.value = null
++                message.value = strings.depositoCanceled(
++                    // The figure the dialog named, carried on the state rather than
++                    // parsed back out of the title — see `CancelDepositUi.amountLabel`.
++                    amount = current.amountLabel,
++                )
++            } catch (e: net.klinik.rental.data.repository.BlankCancelReasonException) {
++                cancelState.value = cancelState.value?.copy(
++                    reasonError = strings.depositoErrorCancelReasonRequired(),
++                )
++            } catch (e: net.klinik.rental.data.repository.DepositAlreadyCanceledException) {
++                cancelState.value = null
++                errorMessage.value = strings.depositoErrorAlreadyCanceled()
++            } catch (e: net.klinik.rental.data.repository.UnknownDepositException) {
++                cancelState.value = null
++                errorMessage.value = strings.depositoErrorPreviewFailed()
++            } catch (e: CancellationException) {
++                throw e
++            } catch (e: Exception) {
++                // Reported, never swallowed. A cancellation the owner believes happened
++                // when it did not leaves arrears understated — the failure that costs them
++                // real money.
++                errorMessage.value = strings.depositoErrorUnexpected()
++            } finally {
++                saving.set(false)
++            }
++        }
++    }
++
+     /**
+      * The repository's figures, rendered into UX-DR10's exact sentences.
+      *
+diff --git a/app/src/main/kotlin/net/klinik/rental/ui/strings/RStrings.kt b/app/src/main/kotlin/net/klinik/rental/ui/strings/RStrings.kt
+index aa8be10..a9959a0 100644
+--- a/app/src/main/kotlin/net/klinik/rental/ui/strings/RStrings.kt
++++ b/app/src/main/kotlin/net/klinik/rental/ui/strings/RStrings.kt
+@@ -581,4 +581,51 @@ class RStrings(private val context: Context) {
+      */
+     fun depositoErrorPreviewFailed(): String =
+         context.getString(R.string.deposito_error_preview_failed)
++
++    // -------------------------------------------------------------- Story 3.4
++
++    /**
++     * `Batalkan setoran Rp 250.000?` — the cancellation dialog's title.
++     *
++     * Takes an **already-formatted** amount, for the reason every other money accessor
++     * here does: the dialog that names a figure and the figure on the row behind it have
++     * to be the same figure.
++     */
++    fun depositoCancelTitle(amount: String): String =
++        context.getString(R.string.deposito_cancel_title, amount)
++
++    /**
++     * `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.`
++     *
++     * A sentence naming the renter rather than a second figure with an arrow, because this
++     * is the epic's own shape and because a cancellation warns about a consequence while
++     * the preview invites a decision — two dialogs that look alike would be two prompts
++     * the owner stops reading.
++     */
++    fun depositoCancelImpact(renterName: String, arrearsAfter: String): String =
++        context.getString(R.string.deposito_cancel_impact, renterName, arrearsAfter)
++
++    /**
++     * The mandatory reason's refusal.
++     *
++     * Says *why* the reason is required — the audit trail — rather than only that a field
++     * is empty, because the acceptance criterion's own rule is that a cancellation is
++     * only meaningful with its explanation.
++     */
++    fun depositoErrorCancelReasonRequired(): String =
++        context.getString(R.string.deposito_error_cancel_reason_required)
++
++    /** A second cancellation of an already-cancelled deposit. */
++    fun depositoErrorAlreadyCanceled(): String =
++        context.getString(R.string.deposito_error_already_canceled)
++
++    /**
++     * `Setoran Rp 250.000 dibatalkan` — the cancellation's confirmation.
++     *
++     * Distinct from [depositoSaved] because the two announce opposite outcomes of the same
++     * gesture, and a snackbar that says "tersimpan" after a cancellation would tell the
++     * owner their money was recorded when it was withdrawn from the bill.
++     */
++    fun depositoCanceled(amount: String): String =
++        context.getString(R.string.deposito_cancel_done, amount)
+ }
+\ No newline at end of file
+diff --git a/app/src/main/res/values/strings.xml b/app/src/main/res/values/strings.xml
+index de2d9fd..fb18a00 100644
+--- a/app/src/main/res/values/strings.xml
++++ b/app/src/main/res/values/strings.xml
+@@ -731,6 +731,35 @@
+     <string name="deposito_preview_dismiss">Cek dulu</string>
+     <!-- The preview could not be computed — said plainly, and the save stays blocked. -->
+     <string name="deposito_error_preview_failed">Pratinjau tidak bisa dihitung. Coba buka ulang formnya.</string>
++
++    <!--
++      Story 3.4 — Membatalkan setoran (cancelling a deposit).
++
++      The epic prescribes this copy almost verbatim, so the sentences are shaped to its
++      own wording rather than to a shorter house style: `Batalkan setoran Rp 250.000?` and
++      `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.` The renter is named because a
++      cancellation is a warning about a consequence — the first dialog invites a decision
++      and this one reports a cost, and the two should not read alike.
++    -->
++    <!-- `%1$s` is the deposit's amount. -->
++    <string name="deposito_cancel_title">Batalkan setoran %1$s?</string>
++    <!-- `%1$s` renter's name, `%2$s` the arrears the contract returns to. -->
++    <string name="deposito_cancel_impact">Tunggakan %1$s akan kembali menjadi %2$s.</string>
++    <string name="deposito_cancel_reason_label">Alasan pembatalan (wajib)</string>
++    <string name="deposito_cancel_reason_hint">Contoh: salah tanggal, salah norek</string>
++    <string name="deposito_cancel_confirm">Batalkan setoran</string>
++    <string name="deposito_cancel_dismiss">Batal</string>
++    <string name="deposito_cancel_done">Setoran %1$s dibatalkan</string>
++
++    <!--
++      Refusals.
++
++      The blank-reason message names the field and the consequence, because "wajib diisi"
++      alone would read as the app refusing to work rather than as a rule the owner can
++      satisfy by writing one sentence.
++    -->
++    <string name="deposito_error_cancel_reason_required">Tulis alasan pembatalannya. Tanpa alasan, riwayat setteran ini tidak bisa diaudit.</string>
++    <string name="deposito_error_already_canceled">Setoran ini sudah dibatalkan, jadi tidak bisa dibatalkan lagi.</string>
+ </resources>
+ 
+ 
+diff --git a/app/src/test/kotlin/net/klinik/rental/ui/screens/penyewa/DatabaseMigrationTest.kt b/app/src/test/kotlin/net/klinik/rental/ui/screens/penyewa/DatabaseMigrationTest.kt
+index f574bcf..69313b8 100644
+--- a/app/src/test/kotlin/net/klinik/rental/ui/screens/penyewa/DatabaseMigrationTest.kt
++++ b/app/src/test/kotlin/net/klinik/rental/ui/screens/penyewa/DatabaseMigrationTest.kt
+@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
+      * direct `migrate` call and fail here.
+      */
+     @Test
+-    fun `a v1 database migrates to v6 with every table and index`() {
++    fun `a v1 database migrates to v7 with every table and index`() {
+         createV1Database(withVehicle = true)
+ 
+         val migrated = openMigrated()
+@@ -200,7 +200,7 @@ class DatabaseMigrationTest {
+      * was ever needed, is the failure.
+      */
+     @Test
+-    fun `a fresh install opens at v6 without a migration`() {
++    fun `a fresh install opens at v7 without a migration`() {
+         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
+             .addMigrations(
+                 KlinikDatabase.MIGRATION_1_2,
+@@ -208,13 +208,14 @@ class DatabaseMigrationTest {
+                 KlinikDatabase.MIGRATION_3_4,
+                 KlinikDatabase.MIGRATION_4_5,
+                 KlinikDatabase.MIGRATION_5_6,
++                KlinikDatabase.MIGRATION_6_7,
+             )
+             .build()
+         database = fresh
+ 
+         // Touch the database so it is actually created rather than only built.
+         val sql = fresh.openHelper.readableDatabase
+-        assertEquals(6, sql.version)
++        assertEquals(7, sql.version)
+         assertEquals(
+             listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
+             columnsOf(sql, "renter"),
+@@ -289,7 +290,7 @@ class DatabaseMigrationTest {
+      * read as coverage of the data-loss question while providing none.
+      */
+     @Test
+-    fun `a v2 database migrates to v6 with the widened contract table`() {
++    fun `a v2 database migrates to v7 with the widened contract table`() {
+         createV2Database(withVehicleAndRenter = true)
+ 
+         val migrated = openMigrated()
+@@ -383,6 +384,7 @@ class DatabaseMigrationTest {
+                     KlinikDatabase.MIGRATION_3_4,
+                 KlinikDatabase.MIGRATION_4_5,
+                 KlinikDatabase.MIGRATION_5_6,
++                KlinikDatabase.MIGRATION_6_7,
+             )
+                 .build()
+                 .openHelper
+@@ -515,7 +517,7 @@ class DatabaseMigrationTest {
+      * through its own DAO afterwards.
+      */
+     @Test
+-    fun `a v3 database migrates to v6 with the service_exception table`() {
++    fun `a v3 database migrates to v7 with the service_exception table`() {
+         createV3Database()
+ 
+         val migrated = openMigrated()
+@@ -736,7 +738,7 @@ class DatabaseMigrationTest {
+      * migration is reached at all, which is why the version is asserted first.
+      */
+     @Test
+-    fun `a v4 database migrates to v6 with the business_account table`() {
++    fun `a v4 database migrates to v7 with the business_account table`() {
+         createV4Database()
+ 
+         val migrated = openMigrated()
+@@ -904,17 +906,240 @@ class DatabaseMigrationTest {
+         }
+     }
+ 
++    // --------------------------------------------------------------- v6 -> v7
++
+     /**
+-     * `MIGRATE_5_6` — a v5 database opens at v6 with the three new tables, and every
+-     * pre-existing row survives.
++     * Builds a **v6** database: the v5 shape plus a real deposit and its allocations.
+      *
+-     * ## Why a v5 fixture when the v1 and v4 fixtures already reach v6
++     * The deposit matters more than it looks. `MIGRATION_6_7` adds a `NOT NULL` column to
++     * a table that already holds rows, and the *only* thing standing between a correct
++     * migration and a broken one is whether `DEFAULT 'confirmed'` is present — so the
++     * fixture has to contain a deposit for that default to be exercised at all. An empty
++     * `payment` table would pass a migration that forgot the clause and then fail at the
++     * owner's first read, long after the version had moved.
++     */
++    private fun createV6Database() {
++        createV5Database()
++
++        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
++            db.execSQL(
++                """
++                CREATE TABLE IF NOT EXISTS `contract` (
++                    `id` TEXT NOT NULL,
++                    `renterId` TEXT NOT NULL,
++                    `vehicleId` TEXT NOT NULL,
++                    `startDate` TEXT NOT NULL,
++                    `dailyRate` INTEGER NOT NULL,
++                    `restDay` INTEGER DEFAULT NULL,
++                    `activeVehicleId` TEXT DEFAULT NULL,
++                    `activeRenterId` TEXT DEFAULT NULL,
++                    `endDate` TEXT DEFAULT NULL,
++                    PRIMARY KEY (`id`),
++                    FOREIGN KEY (`renterId`) REFERENCES `renter` (`id`)
++                        ON UPDATE CASCADE ON DELETE RESTRICT,
++                    FOREIGN KEY (`vehicleId`) REFERENCES `vehicle` (`id`)
++                        ON UPDATE CASCADE ON DELETE RESTRICT
++                )
++                """.trimIndent(),
++            )
++            db.execSQL(
++                """
++                CREATE TABLE IF NOT EXISTS `payment` (
++                    `id` TEXT NOT NULL,
++                    `contractId` TEXT NOT NULL,
++                    `accountId` TEXT DEFAULT NULL,
++                    `date` TEXT NOT NULL,
++                    `amount` INTEGER NOT NULL,
++                    `method` TEXT NOT NULL,
++                    `referenceNo` TEXT DEFAULT NULL,
++                    `notes` TEXT DEFAULT NULL,
++                    `createdAt` TEXT NOT NULL,
++                    PRIMARY KEY (`id`),
++                    FOREIGN KEY (`contractId`) REFERENCES `contract` (`id`)
++                        ON UPDATE CASCADE ON DELETE RESTRICT,
++                    FOREIGN KEY (`accountId`) REFERENCES `business_account` (`id`)
++                        ON UPDATE CASCADE ON DELETE RESTRICT
++                )
++                """.trimIndent(),
++            )
++            db.execSQL(
++                "CREATE INDEX IF NOT EXISTS `index_payment_contractId` " +
++                    "ON `payment` (`contractId`)",
++            )
++            db.execSQL(
++                "CREATE INDEX IF NOT EXISTS `index_payment_accountId` " +
++                    "ON `payment` (`accountId`)",
++            )
++            db.execSQL(
++                """
++                CREATE TABLE IF NOT EXISTS `allocation` (
++                    `id` TEXT NOT NULL,
++                    `paymentId` TEXT NOT NULL,
++                    `contractId` TEXT NOT NULL,
++                    `chargeDate` TEXT DEFAULT NULL,
++                    `amount` INTEGER NOT NULL,
++                    PRIMARY KEY (`id`),
++                    FOREIGN KEY (`paymentId`) REFERENCES `payment` (`id`)
++                        ON UPDATE CASCADE ON DELETE RESTRICT
++                )
++                """.trimIndent(),
++            )
++            db.execSQL(
++                "CREATE UNIQUE INDEX IF NOT EXISTS `index_allocation_paymentId_chargeDate` " +
++                    "ON `allocation` (`paymentId`, `chargeDate`)",
++            )
++            db.execSQL(
++                "CREATE INDEX IF NOT EXISTS `index_allocation_contractId_chargeDate` " +
++                    "ON `allocation` (`contractId`, `chargeDate`)",
++            )
++            db.execSQL(
++                """
++                CREATE TABLE IF NOT EXISTS `settings` (
++                    `key` TEXT NOT NULL,
++                    `value` TEXT NOT NULL,
++                    PRIMARY KEY (`key`)
++                )
++                """.trimIndent(),
++            )
++
++            // No contract insert: `createV3Database` already left `c-v3` open against
++            // `r-v3`, and a second `c-v3` would fail the primary key rather than
++            // exercise the migration.
++            db.execSQL(
++                """
++                INSERT INTO payment
++                    (id, contractId, accountId, date, amount, method,
++                     referenceNo, notes, createdAt)
++                VALUES
++                    ('p-v6', 'c-v3', 'a-v5', '2026-10-14', 750000, 'TransferBank',
++                     NULL, NULL, '2026-10-14T09:00:00Z')
++                """.trimIndent(),
++            )
++            db.execSQL(
++                """
++                INSERT INTO allocation (id, paymentId, contractId, chargeDate, amount)
++                VALUES ('al-v6', 'p-v6', 'c-v3', '2026-10-14', 750000)
++                """.trimIndent(),
++            )
++
++            db.version = 6
++        }
++    }
++
++    /**
++     * `MIGRATE_6_7` — a v6 database opens at v7, every existing deposit reads back
++     * **confirmed**, and every allocation row is intact.
++     *
++     * ## Why the back-fill assertion is the whole test
++     *
++     * The migration adds `status TEXT NOT NULL DEFAULT 'confirmed'`. SQLite cannot add a
++     * `NOT NULL` column without a default, so the clause is required by the type — and a
++     * deposit that reads back `null` would fail the entity's guard at the first read,
++     * which is the owner losing access to their own history rather than a startup crash.
++     *
++     * The allocation assertion is the second half: `ALTER` must not disturb a table it
++     * does not mention, and an `ADD COLUMN` that rewrote rows would show up here first.
++     */
++    @Test
++    fun `a v6 database migrates to v7 with every deposit back-filled as confirmed`() {
++        createV6Database()
++
++        val migrated = openMigrated()
++
++        val deposits = runBlocking { migrated.paymentDao().forContract("c-v3") }
++        assertEquals("the deposit survives", 1, deposits.size)
++        assertEquals(
++            "and reads back confirmed rather than null — the DEFAULT is load-bearing",
++            net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CONFIRMED,
++            deposits.single().status,
++        )
++        assertNull(
++            "with no cancellation reason, because none was given",
++            deposits.single().cancelReason,
++        )
++        assertEquals(
++            "and its amount, date and method are untouched by the ALTER",
++            750_000L,
++            deposits.single().amount,
++        )
++        assertEquals("2026-10-14", deposits.single().date.toString())
++        assertEquals("TransferBank", deposits.single().method)
++
++        val rows = runBlocking { migrated.allocationDao().forContract("c-v3") }
++        assertEquals("the allocation table is untouched", 1, rows.size)
++        assertEquals("750000", rows.single().amount.toString())
++        assertEquals("2026-10-14", rows.single().chargeDate.toString())
++    }
++
++    /**
++     * The new columns are actually in the migrated file, and `cancelReason` is the only
++     * nullable one.
+      *
+-     * They prove the migration *chain* runs. Neither proves the **5→6 step alone** works:
+-     * a chain can be correct while one link is a no-op, and this story's link is the one
+-     * that creates two tables referencing each other plus one referencing a table the
+-     * *previous* story added. That is the link least likely to be exercised by accident.
++     * Asserted through PRAGMA rather than through the entity, because the entity is what
++     * Room *compiles against* — reading it would prove the compiled schema and not the
++     * file on disk, which is the only thing a migration can get wrong.
+      */
++    @Test
++    fun `the migrated payment table gains both columns`() {
++        createV6Database()
++
++        val migrated = openMigrated()
++        val sql = migrated.openHelper.writableDatabase
++
++        assertEquals(
++            "the columns are appended after createdAt, never interleaved",
++            listOf(
++                "id", "contractId", "accountId", "date", "amount",
++                "method", "referenceNo", "notes", "createdAt",
++                "status", "cancelReason",
++            ),
++            columnsOf(sql, "payment"),
++        )
++        assertEquals(
++            "only the reason is nullable; a confirmed deposit has none",
++            listOf("accountId", "referenceNo", "notes", "cancelReason"),
++            nullableColumnsOf(sql, "payment"),
++        )
++    }
++
++    /**
++     * A deposit can be **cancelled** on the migrated file, and the write survives a
++     * reopen — the migration's real deliverable.
++     *
++     * Asserted through the DAO rather than raw SQL, so it exercises the same path the
++     * app writes on and fails if `status` were not defaulted the way the entity expects.
++     */
++    @Test
++    fun `a deposit can be cancelled after the migration`() {
++        createV6Database()
++
++        val migrated = openMigrated()
++        runBlocking {
++            val stored = migrated.paymentDao().forContract("c-v3").single()
++            migrated.paymentDao().updatePayment(
++                stored.copy(
++                    status = net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CANCELED,
++                    cancelReason = "salah tanggal",
++                )
++            )
++        }
++
++        val after = runBlocking { migrated.paymentDao().findById("p-v6")!! }
++        assertEquals(
++            net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CANCELED,
++            after.status,
++        )
++        assertEquals("salah tanggal", after.cancelReason)
++        // And the row is still returned by the history query — the cancellation marks it,
++        // it does not remove it.
++        assertEquals(
++            1,
++            runBlocking { migrated.paymentDao().forContract("c-v3") }.size,
++        )
++    }
++
++    // ------- the v5 -> v6 tests, below; their fixture is above the 6 -> 7 one
++
+     @Test
+     fun `a v5 database migrates to v6 with every table and index`() {
+         createV5Database()
+@@ -923,12 +1148,17 @@ class DatabaseMigrationTest {
+         val sql = migrated.openHelper.writableDatabase
+ 
+         assertEquals(
+-            "the payment table has exactly these columns, in this order",
++            // `status` and `cancelReason` trail the v6 columns: this test is about what
++            // MIGRATION_5_6 *creates*, and the 6->7 step appends to it afterwards. Asserting
++            // the exact post-7 list here would just duplicate
++            // `the migrated payment table gains both columns`, which fails the moment a
++            // third story widens the table again.
++            "the payment table has these v6 columns, in this order",
+             listOf(
+                 "id", "contractId", "accountId", "date", "amount",
+                 "method", "referenceNo", "notes", "createdAt",
+             ),
+-            columnsOf(sql, "payment"),
++            columnsOf(sql, "payment").take(9),
+         )
+         assertEquals(
+             "and the allocation table these",
+@@ -1378,14 +1608,15 @@ class DatabaseMigrationTest {
+                 KlinikDatabase.MIGRATION_3_4,
+                 KlinikDatabase.MIGRATION_4_5,
+                 KlinikDatabase.MIGRATION_5_6,
++                KlinikDatabase.MIGRATION_6_7,
+             )
+             .build()
+         database = opened
+ 
+         // Touch it so the migrations actually run before the assertions below.
+         assertEquals(
+-            "the file must have been migrated to v6",
+-            6,
++            "the file must have been migrated to v7",
++            7,
+             opened.openHelper.readableDatabase.version,
+         )
+         return opened
+diff --git a/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialogTest.kt b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialogTest.kt
+new file mode 100644
+index 0000000..edc627d
+--- /dev/null
++++ b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialogTest.kt
+@@ -0,0 +1,296 @@
++package net.klinik.rental.ui.screens.setoran
++
++import androidx.compose.runtime.Composable
++import androidx.compose.runtime.getValue
++import androidx.compose.runtime.mutableStateOf
++import androidx.compose.runtime.setValue
++import androidx.compose.ui.test.assert
++import androidx.compose.ui.test.assertCountEquals
++import androidx.compose.ui.test.assertIsEnabled
++import androidx.compose.ui.test.assertIsNotEnabled
++import androidx.compose.ui.test.hasAnyAncestor
++import androidx.compose.ui.test.hasSetTextAction
++import androidx.compose.ui.test.hasTestTag
++import androidx.compose.ui.test.hasText
++import androidx.compose.ui.test.junit4.createComposeRule
++import androidx.compose.ui.test.onFirst
++import androidx.compose.ui.test.onNodeWithTag
++import androidx.compose.ui.test.onNodeWithText
++import androidx.compose.ui.test.performClick
++import androidx.compose.ui.test.performTextInput
++import androidx.test.ext.junit.runners.AndroidJUnit4
++import net.klinik.rental.ui.theme.KlinikNetTheme
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertTrue
++import org.junit.Rule
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.annotation.Config
++
++/**
++ * Robolectric render of the **real** cancellation dialog.
++ *
++ * ## What this file is for, given `CancelDepositTest` covers the repository
++ *
++ * That one proves the arithmetic and the refusal rules. This one proves what the owner is
++ * actually shown, and — the part nothing else can reach — that the dialog's four callbacks
++ * are wired to the four things they are for. A dialog that renders every string correctly
++ * and hands every press to the same lambda would pass a render test that only reads text.
++ *
++ * ## The AC this makes structural
++ *
++ *"setoran yang sudah dibatalkan tidak bisa dibatalkan lagi"* is enforced in the repository
++ * and read back in `uiState.isCanceling`; this file does not restate it. What it does pin
++ * is UX-DR11's third tier: **a dialog plus a mandatory reason**, both present in the same
++ * window, which is the only confirmation in the app that asks for writing.
++ *
++ * ## The two rules every test here obeys
++ *
++ * - `assertExists()`, never `assertIsDisplayed()`. Below the Robolectric fold a node
++ *   measures zero, and "off-screen, not missing" reads identically to "present".
++ * - One `setContent` per test, holding `var state by mutableStateOf(...)` outside so the
++ *   state can be mutated between `waitForIdle()` calls.
++ */
++@RunWith(AndroidJUnit4::class)
++@Config(sdk = [34])
++class CancelDepositDialogTest {
++
++    @get:Rule
++    val compose = createComposeRule()
++
++    /**
++     * The three things the dialog is made of all exist: the impact sentence, the reason
++     * field, and the modal around them.
++     *
++     * Asserted as three nodes rather than as the dialog's presence, because a dialog whose
++     * body was dropped renders fine — the title, the two buttons and an empty box all draw.
++     */
++    @Test
++    fun `the impact and the reason field both exist`() {
++        compose.setContent { theme { Dialog(state = openDialog()) } }
++
++        compose.onNodeWithTag(TAG_CANCEL_DIALOG).assertExists()
++        compose.onNodeWithTag(TAG_CANCEL_IMPACT).assertExists()
++        compose.onNodeWithTag(TAG_CANCEL_REASON).assertExists()
++    }
++
++    /**
++     * The impact line is the epic's **sentence**, naming the renter and the figure their
++     * arrears return to.
++     *
++     * This is the assertion that keeps the dialog from being a second preview. A reused
++     * `Tunggakan: Rp x → Rp y` line would render here and satisfy every structural test in
++     * this file while dropping the one clause the AC actually specifies.
++     */
++    @Test
++    fun `the impact names the renter and the figure their arrears return to`() {
++        compose.setContent { theme { Dialog(state = openDialog()) } }
++
++        compose.onNodeWithText("Tunggakan Budi Santoso akan kembali menjadi Rp 4.250.000.")
++            .assertExists()
++        // And emphatically not the preview's two-figure shape.
++        compose.onAllNodes(hasText("→")).assertCountEquals(0)
++    }
++
++    /** The title names what is being undone, with the amount in it. */
++    @Test
++    fun `the title names the amount being undone`() {
++        compose.setContent { theme { Dialog(state = openDialog()) } }
++
++        compose.onNodeWithText("Batalkan setoran Rp 750.000?").assertExists()
++    }
++
++    /**
++     * The reason field is labelled as **mandatory**, in the label itself.
++     *
++     * Asserted on the label rather than on the error, because the error only appears after
++     * a failed press — and a field whose obligation is only explained reactively is one
++     * the owner has already got wrong once.
++     */
++    @Test
++    fun `the reason field says it is mandatory`() {
++        compose.setContent { theme { Dialog(state = openDialog()) } }
++
++        compose.onNodeWithText("Alasan pembatalan (wajib)").assertExists()
++    }
++
++    /**
++     * The confirm is disabled until a reason exists.
++     *
++     * The AC's *"alasan wajib diisi"* in control terms. The rule is enforced twice — here
++     * for the button and in the repository for the data — so this asserts the reflection of
++     * the rule rather than its only enforcement.
++     */
++    @Test
++    fun `the confirm is disabled until a reason is written`() {
++        var state by mutableStateOf(openDialog())
++        compose.setContent { theme { Dialog(state = state) } }
++
++        compose.onNodeWithText("Batalkan setoran").assertIsNotEnabled()
++
++        state = state.setReason("salah tanggal")
++        compose.waitForIdle()
++
++        compose.onNodeWithText("Batalkan setoran").assertIsEnabled()
++    }
++
++    /**
++     * Typing reaches the state through `onChange`, so the button goes live on its own.
++     *
++     * The wiring claim the enabled/disabled test depends on: a dialog that renders the
++     * right control but never forwards the input still passes that test, because it
++     * drives `state` directly.
++     *
++     * Typed into the node carrying the **text-field** semantics — found by
++     * `hasSetTextAction()`, then checked to be the reason field by a
++     * `hasAnyAncestor(TAG_CANCEL_REASON)` sibling match, because `KnField` puts the
++     * caller's tag on its outer *column* while the editable node is the `BasicTextField`
++     * nested inside. `useUnmergedTree` because the merged tree collapses the field into
++     * its parent row.
++     */
++    @Test
++    fun `typing a reason reaches the dialog state`() {
++        var state by mutableStateOf(openDialog())
++        compose.setContent {
++            theme {
++                Dialog(state = state, onChange = { next -> state = next })
++            }
++        }
++
++        compose.onAllNodes(hasSetTextAction(), useUnmergedTree = true)
++            .onFirst()
++            .assert(hasAnyAncestor(hasTestTag(TAG_CANCEL_REASON)))
++        compose.onAllNodes(hasSetTextAction(), useUnmergedTree = true)
++            .onFirst()
++            .performTextInput("salah tanggal")
++        compose.waitForIdle()
++
++        assertEquals("salah tanggal", state.reason)
++        assertTrue("and the button is now live", state.canCancel)
++        compose.onNodeWithText("Batalkan setoran").assertIsEnabled()
++    }
++
++    /**
++     * An error is drawn under the field, and it is the mandatory-reason message.
++     *
++     * Asserted on the text because the error string is the AC's own reasoning — *"tanpa
++     * alasan, riwayat setteran ini tidak bisa diaudit"* — and an error that rendered as
++     * "wajib diisi" would satisfy every other test in this file.
++     */
++    @Test
++    fun `the refusal renders inside the dialog`() {
++        compose.setContent {
++            theme {
++                Dialog(
++                    state = openDialog().copy(
++                        reasonError = "Tulis alasan pembatalannya. " +
++                            "Tanpa alasan, riwayat setteran ini tidak bisa diaudit.",
++                    ),
++                )
++            }
++        }
++
++        compose.onNodeWithTag(TAG_CANCEL_REASON).assertExists()
++        compose.onNodeWithText(
++            "Tulis alasan pembatalannya. Tanpa alasan, riwayat setteran ini tidak bisa diaudit.",
++        ).assertExists()
++    }
++
++    /**
++     * The confirm press reaches `onConfirm`, and does **not** reach `onDismiss`.
++     *
++     * The two buttons differ by one word and the owner is destroying an audit record, so a
++     * dialog where both fire the same lambda is exactly the failure this guards. Counted
++     * rather than merely non-null, because "the dismiss fired too" reads identically to
++     * "the dismiss did nothing" if you only assert the confirm.
++     */
++    @Test
++    fun `the confirm button calls onConfirm and not onDismiss`() {
++        var confirms = 0
++        var dismisses = 0
++        compose.setContent {
++            theme {
++                Dialog(
++                    state = openDialog().setReason("salah tanggal"),
++                    onConfirm = { confirms++ },
++                    onDismiss = { dismisses++ },
++                )
++            }
++        }
++
++        compose.onNodeWithText("Batalkan setoran").assertIsEnabled()
++        compose.onNodeWithText("Batalkan setoran").performClick()
++        compose.waitForIdle()
++
++        assertEquals("the confirm fired once", 1, confirms)
++        assertEquals("and the dismiss did not", 0, dismisses)
++    }
++
++    /**
++     * And the dismiss button is the opposite: it fires its own handler and nothing else.
++     *
++     * Its own test rather than part of the one above, because both fire a lambda and a
++     * shared assertion would pass if the two lambdas were swapped.
++     */
++    @Test
++    fun `the dismiss button calls onDismiss and not onConfirm`() {
++        var confirms = 0
++        var dismisses = 0
++        compose.setContent {
++            theme {
++                Dialog(
++                    state = openDialog().setReason("salah tanggal"),
++                    onConfirm = { confirms++ },
++                    onDismiss = { dismisses++ },
++                )
++            }
++        }
++
++        // Present even with a reason written — walking away is always available, which is
++        // what makes the mandatory reason a rule rather than a trap.
++        compose.onNodeWithText("Batal").assertIsEnabled()
++        compose.onNodeWithText("Batal").performClick()
++        compose.waitForIdle()
++
++        assertEquals("the dismiss fired once", 1, dismisses)
++        assertEquals("and the confirm did not", 0, confirms)
++    }
++
++    // ------------------------------------------------------------------ helpers
++
++    @Composable
++    private fun Dialog(
++        state: CancelDepositUi,
++        onChange: (CancelDepositUi) -> Unit = {},
++        onConfirm: () -> Unit = {},
++        onDismiss: () -> Unit = {},
++    ) {
++        CancelDepositDialog(
++            state = state,
++            onChange = onChange,
++            onConfirm = onConfirm,
++            onDismiss = onDismiss,
++        )
++    }
++
++    @Composable
++    private fun theme(content: @Composable () -> Unit) {
++        KlinikNetTheme(darkTheme = false) { content() }
++    }
++
++    /**
++     * The dialog as the ViewModel builds it for Budi, on the fixture the ViewModel tests
++     * use: 17 charge days at Rp 250.000, a Rp 750.000 deposit on 14 Oct.
++     *
++     * The arrears figure is the whole period because the deposit is what would be
++     * cancelled — so undoing it returns every open day. Written here rather than derived,
++     * so the sentence this file asserts cannot drift with the fixture.
++     */
++    private fun openDialog() = CancelDepositUi(
++        paymentId = "payment-1",
++        contractId = "contract-1",
++        title = "Batalkan setoran Rp 750.000?",
++        impactLine = "Tunggakan Budi Santoso akan kembali menjadi Rp 4.250.000.",
++        amountLabel = "Rp 750.000",
++    )
++}
+\ No newline at end of file
+diff --git a/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositTest.kt b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositTest.kt
+new file mode 100644
+index 0000000..f9039ef
+--- /dev/null
++++ b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositTest.kt
+@@ -0,0 +1,369 @@
++package net.klinik.rental.ui.screens.setoran
++
++import androidx.room.Room
++import androidx.test.core.app.ApplicationProvider
++import kotlinx.coroutines.runBlocking
++import net.klinik.rental.data.db.KlinikDatabase
++import net.klinik.rental.data.db.entity.BusinessAccountEntity
++import net.klinik.rental.data.db.entity.ContractEntity
++import net.klinik.rental.data.db.entity.PaymentEntity
++import net.klinik.rental.data.db.entity.RenterEntity
++import net.klinik.rental.data.db.entity.VehicleEntity
++import net.klinik.rental.data.repository.BlankCancelReasonException
++import net.klinik.rental.data.repository.DepositAlreadyCanceledException
++import net.klinik.rental.data.repository.PaymentMethod
++import net.klinik.rental.data.repository.PaymentRepository
++import net.klinik.rental.data.repository.UnknownDepositException
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertThrows
++import org.junit.Assert.assertTrue
++import org.junit.Before
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.annotation.Config
++import java.time.LocalDate
++
++/**
++ * Story 3.4's `CANCEL_*` rows, against a real Room database.
++ *
++ * ## Why these run against Room
++ *
++ * Two of the claims are about **schema**, not about the repository calling its methods:
++ * that the cancelled row is still returned by the contract's query, and that every
++ * surviving deposit's rows still sum to its own amount after a wholesale re-allocation. A
++ * fake DAO would prove neither.
++ *
++ * ## The arithmetic every test shares
++ *
++ * With a 25th cutoff and `asOf` 17 Oct the period is 25 Sep - 24 Oct; the contract
++ * starts 1 Oct, so there are **17 charge days** at Rp 250.000 — Rp 4.250.000 owed. Each
++ * test spells out what that makes its figures, because a cancellation test that guesses its
++ * own period silently stops proving what it names.
++ */
++@RunWith(RobolectricTestRunner::class)
++@Config(sdk = [34])
++class CancelDepositTest {
++
++    private lateinit var database: KlinikDatabase
++    private lateinit var repository: PaymentRepository
++
++    private val asOf = LocalDate.of(2026, 10, 17)
++
++    @Before
++    fun setUp() = runBlocking {
++        database = Room.inMemoryDatabaseBuilder(
++            ApplicationProvider.getApplicationContext(),
++            KlinikDatabase::class.java,
++        ).build()
++        repository = PaymentRepository(
++            paymentDao = database.paymentDao(),
++            allocationDao = database.allocationDao(),
++            contractDao = database.contractDao(),
++            exceptionDao = database.serviceExceptionDao(),
++            settingDao = database.settingDao(),
++            database = database,
++        )
++        seed()
++    }
++
++    @After
++    fun tearDown() {
++        database.close()
++    }
++
++    /**
++     * `CANCEL_OK` — the reason is stored, the allocations are released, and the arrears
++     * rise by exactly what was cancelled.
++     *
++     * Rp 750.000 closes three of seventeen days, so arrears is Rp 3.500.000 before and
++     * Rp 4.250.000 after — the difference being the three days that reopened.
++     */
++    @Test
++    fun `cancelling stores the reason and releases the deposit's allocations`() = runBlocking {
++        saveDeposit("p1", 750_000)
++        assertEquals(3, database.allocationDao().forContract(CONTRACT_ID).size)
++        assertEquals(3_500_000, repository.currentArrears(CONTRACT_ID, asOf))
++
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++
++        assertEquals(
++            "every day this deposit closed reopens",
++            0,
++            database.allocationDao().forContract(CONTRACT_ID).size,
++        )
++        assertEquals(
++            "and arrears returns to the whole period",
++            4_250_000,
++            repository.currentArrears(CONTRACT_ID, asOf),
++        )
++        val stored = database.paymentDao().findById("p1")!!
++        assertEquals(PaymentEntity.STATUS_CANCELED, stored.status)
++        assertEquals("with the owner's own words", "salah tanggal", stored.cancelReason)
++    }
++
++    /**
++     * `CANCEL_NO_REASON` — refused, and **nothing** changed.
++     *
++     * Asserted on the row's status as well as the throw, because a refusal that marked the
++     * deposit anyway would leave a cancellation the owner never confirmed.
++     */
++    @Test
++    fun `a blank reason is refused and nothing is written`() = runBlocking {
++        saveDeposit("p1", 750_000)
++
++        assertThrows(BlankCancelReasonException::class.java) {
++            runBlocking { repository.cancelDeposit(CONTRACT_ID, "p1", "   ") }
++        }
++
++        val stored = database.paymentDao().findById("p1")!!
++        assertEquals("still live", PaymentEntity.STATUS_CONFIRMED, stored.status)
++        assertNull("and no reason was attached", stored.cancelReason)
++        assertEquals("with its allocations intact", 3, database.allocationDao().forContract(CONTRACT_ID).size)
++    }
++
++    /** `CANCEL_ALREADY` — a second cancellation is refused, reason untouched. */
++    @Test
++    fun `a second cancellation is refused and the first reason stands`() = runBlocking {
++        saveDeposit("p1", 750_000)
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++
++        assertThrows(DepositAlreadyCanceledException::class.java) {
++            runBlocking { repository.cancelDeposit(CONTRACT_ID, "p1", "alasan lain") }
++        }
++
++        assertEquals(
++            "a newer explanation must not overwrite the audit trail",
++            "salah tanggal",
++            database.paymentDao().findById("p1")!!.cancelReason,
++        )
++    }
++
++    /** `CANCEL_UNKNOWN` — a deposit nobody holds is refused rather than created. */
++    @Test
++    fun `cancelling a deposit nobody holds is refused`() = runBlocking {
++        saveDeposit("p1", 750_000)
++
++        assertThrows(UnknownDepositException::class.java) {
++            runBlocking { repository.cancelDeposit(CONTRACT_ID, "no-such", "salah tanggal") }
++        }
++        // The stored deposit is untouched rather than deleted by the failed lookup.
++        assertEquals(1, database.paymentDao().forContract(CONTRACT_ID).size)
++        assertEquals(3, database.allocationDao().forContract(CONTRACT_ID).size)
++    }
++
++    /**
++     * `CANCEL_ROW_STAYS` — **the row is still there**, with its reason.
++     *
++     * The epic's criterion is *"tidak ada hard delete"*, and this is the assertion that
++     * would fail if a delete were ever added: it reads through the *same* query the
++     * history will use, not through a special one.
++     */
++    @Test
++    fun `a cancelled deposit is still readable`() = runBlocking {
++        saveDeposit("p1", 750_000)
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++
++        val observed = repository.paymentsFor(CONTRACT_ID)
++        assertEquals("the row survives cancellation", 1, observed.size)
++        assertEquals("p1", observed.single().id)
++    }
++
++    /**
++     * `CANCEL_SUM_HOLDS` — AD-3's `Σ allocation == amount` survives, for **every**
++     * surviving deposit, after a wholesale re-allocation.
++     *
++     * This is the row that catches a partial cancel: if only the cancelled deposit's rows
++     * were deleted and the survivors left placed as they were, each survivor's rows would
++     * still sum to its own amount — so the sums alone would pass — but the *days* would be
++     * wrong. Both are asserted below.
++     */
++    @Test
++    fun `every surviving deposit's rows still sum to its amount`() = runBlocking {
++        saveDeposit("p1", 1_000_000)
++        saveDeposit("p2", 1_000_000)
++
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++
++        val rows = database.allocationDao().forContract(CONTRACT_ID)
++        val byDeposit = rows.groupBy { it.paymentId }
++        assertEquals("only the survivor is still placed", setOf("p2"), byDeposit.keys)
++        for ((paymentId, depositRows) in byDeposit) {
++            assertEquals(
++                "AD-3's unconditional rule holds for $paymentId",
++                1_000_000L,
++                depositRows.sumOf { it.amount },
++            )
++        }
++        // And the survivor landed on the *oldest* days, because the first four are now
++        // free — which is the shift a partial cancel would have missed.
++        val days = byDeposit.getValue("p2").mapNotNull { it.chargeDate }.sorted()
++        assertEquals(
++            "and it took the days the cancellation opened",
++            LocalDate.of(2026, 10, 1),
++            days.first(),
++        )
++    }
++
++    /**
++     * `CANCEL_LAST` — cancelling the only deposit returns the contract to the whole period.
++     *
++     * Its own test because it is the boundary: a re-allocation that ran with an empty
++     * payment list would divide by nothing or short-circuit, and this is where that shows.
++     */
++    @Test
++    fun `cancelling the only deposit returns the whole period`() = runBlocking {
++        saveDeposit("p1", 4_250_000)
++
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++
++        assertEquals("no placements survive", 0, database.allocationDao().forContract(CONTRACT_ID).size)
++        assertEquals("and every day is owed again", 4_250_000, repository.currentArrears(CONTRACT_ID, asOf))
++    }
++
++    /**
++     * `CANCEL_ARREARS_UP` — the dialog's impact figure is the arrears *after*, honestly
++     * allocated, not the current figure minus the deposit.
++     *
++     * The two happen to agree in the simple cases, which is exactly why the two-deposit
++     * case is here: cancelling the first lets the second move onto the days it opens, so a
++     * subtracting implementation would report a number the allocator never produces.
++     */
++    @Test
++    fun `the dialog figure is the arrears after cancelling, allocated`() = runBlocking {
++        saveDeposit("p1", 1_000_000)
++        saveDeposit("p2", 1_000_000)
++        // Rp 1.000.000 closes four whole days at Rp 250.000, so two deposits close eight
++        // of the seventeen and leave Rp 4.250.000 - Rp 2.000.000 = Rp 2.250.000 owed.
++        assertEquals("two deposits close eight of seventeen days", 2_250_000, repository.currentArrears(CONTRACT_ID, asOf))
++
++        val after = repository.arrearsAfterCanceling(CONTRACT_ID, "p1", asOf)
++
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++        assertEquals(
++            "and the dialog promised exactly what the write produced",
++            repository.currentArrears(CONTRACT_ID, asOf),
++            after,
++        )
++        // Only p2's Rp 1.000.000 survives, so Rp 3.250.000 is owed. A
++        // *subtracting* implementation would have said Rp 4.250.000 - (Rp 2.250.000 -
++        // Rp 1.000.000) = Rp 3.000.000 — wrong by Rp 250.000, which is exactly one day,
++        // and exactly the size of error an owner would read as a rounding slip.
++        assertEquals(
++            "which a subtract-the-deposit figure would have got wrong",
++            3_250_000,
++            after,
++        )
++    }
++
++    /** And an unknown or already-cancelled deposit reports the present, not a promise. */
++    @Test
++    fun `the dialog figure falls back to the present when nothing would change`() = runBlocking {
++        saveDeposit("p1", 750_000)
++        val present = repository.currentArrears(CONTRACT_ID, asOf)
++
++        assertEquals(
++            "an unknown deposit changes nothing",
++            present,
++            repository.arrearsAfterCanceling(CONTRACT_ID, "no-such", asOf),
++        )
++
++        repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
++        val afterCancel = repository.currentArrears(CONTRACT_ID, asOf)
++        assertEquals(
++            "and so does an already-cancelled one",
++            afterCancel,
++            repository.arrearsAfterCanceling(CONTRACT_ID, "p1", asOf),
++        )
++    }
++
++    /**
++     * The entity refuses a cancelled row with **no reason** — the AC's rule, enforced
++     * where the row is built rather than only at the call site.
++     */
++    @Test
++    fun `a cancelled deposit cannot be built without a reason`() {
++        assertThrows(IllegalArgumentException::class.java) {
++            PaymentEntity(
++                id = "bad",
++                contractId = CONTRACT_ID,
++                accountId = null,
++                date = asOf,
++                amount = 250_000,
++                method = "Tunai",
++                referenceNo = null,
++                notes = null,
++                createdAt = java.time.Instant.parse("2026-10-17T09:00:00Z"),
++                status = PaymentEntity.STATUS_CANCELED,
++                cancelReason = "   ",
++            )
++        }
++    }
++
++    // ------------------------------------------------------------------ fixtures
++
++    /** Stores one confirmed deposit through the real write path. */
++    private suspend fun saveDeposit(id: String, amount: Long) {
++        repository.saveDeposit(
++            contractId = CONTRACT_ID,
++            payment = net.klinik.rental.domain.model.Payment(id = id, date = asOf, amount = amount),
++            method = PaymentMethod.Tunai,
++            accountId = null,
++            referenceNo = null,
++            notes = null,
++            asOf = asOf,
++        )
++    }
++
++    /** One vehicle, one renter, one open contract at Rp 250.000/day from 1 Oct. */
++    private suspend fun seed() {
++        database.vehicleDao().insert(
++            VehicleEntity(
++                id = VEHICLE_ID,
++                plate = "B 1235 TF",
++                brand = "Toyota",
++                model = "Avanza",
++                year = 2023,
++                color = null,
++                dailyRate = RATE,
++                notes = null,
++            )
++        )
++        database.renterDao().insert(
++            RenterEntity(
++                id = RENTER_ID,
++                name = "Budi Santoso",
++                phone = "08123456789",
++                bankAccount = null,
++                emergencyContact = "08129876543",
++            )
++        )
++        database.contractDao().insertContract(
++            ContractEntity(
++                id = CONTRACT_ID,
++                renterId = RENTER_ID,
++                vehicleId = VEHICLE_ID,
++                startDate = LocalDate.of(2026, 10, 1),
++                dailyRate = RATE,
++                restDay = null,
++                activeVehicleId = VEHICLE_ID,
++                activeRenterId = RENTER_ID,
++                endDate = null,
++            )
++        )
++        database.businessAccountDao().insertBusinessAccount(
++            BusinessAccountEntity(id = ACCOUNT_ID, bankName = "BCA", number = "1234567890")
++        )
++    }
++
++    private companion object {
++        const val VEHICLE_ID = "vehicle-1"
++        const val RENTER_ID = "renter-1"
++        const val CONTRACT_ID = "contract-1"
++        const val ACCOUNT_ID = "account-1"
++        const val RATE = 250_000L
++    }
++}
+\ No newline at end of file
+diff --git a/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositViewModelTest.kt b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositViewModelTest.kt
+new file mode 100644
+index 0000000..b31e87e
+--- /dev/null
++++ b/app/src/test/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositViewModelTest.kt
+@@ -0,0 +1,540 @@
++package net.klinik.rental.ui.screens.setoran
++
++import android.content.Context
++import androidx.room.Room
++import androidx.test.core.app.ApplicationProvider
++import kotlinx.coroutines.Dispatchers
++import kotlinx.coroutines.ExperimentalCoroutinesApi
++import kotlinx.coroutines.asExecutor
++import kotlinx.coroutines.launch
++import kotlinx.coroutines.test.StandardTestDispatcher
++import kotlinx.coroutines.test.TestScope
++import kotlinx.coroutines.test.resetMain
++import kotlinx.coroutines.test.runTest
++import kotlinx.coroutines.test.setMain
++import net.klinik.rental.data.db.KlinikDatabase
++import net.klinik.rental.data.db.entity.BusinessAccountEntity
++import net.klinik.rental.data.db.entity.ContractEntity
++import net.klinik.rental.data.db.entity.PaymentEntity
++import net.klinik.rental.data.db.entity.RenterEntity
++import net.klinik.rental.data.db.entity.VehicleEntity
++import net.klinik.rental.data.repository.BusinessAccountRepository
++import net.klinik.rental.data.repository.ContractRepository
++import net.klinik.rental.data.repository.PaymentMethod
++import net.klinik.rental.data.repository.PaymentRepository
++import net.klinik.rental.data.repository.RenterRepository
++import net.klinik.rental.data.repository.VehicleRepository
++import net.klinik.rental.ui.strings.RStrings
++import org.junit.After
++import org.junit.Assert.assertEquals
++import org.junit.Assert.assertFalse
++import org.junit.Assert.assertNotNull
++import org.junit.Assert.assertNull
++import org.junit.Assert.assertTrue
++import org.junit.Before
++import org.junit.Test
++import org.junit.runner.RunWith
++import org.robolectric.RobolectricTestRunner
++import org.robolectric.annotation.Config
++import java.time.Clock
++import java.time.Instant
++import java.time.LocalDate
++import java.time.ZoneOffset
++
++/**
++ * Story 3.4's cancellation **behaviour**, as the ViewModel sees it.
++ *
++ * ## Why this is a separate file rather than more cases in `SetoranViewModelTest`
++ *
++ * `CancelDepositTest` proves the repository's arithmetic and its three refusals. This file
++ * proves the four things only the ViewModel can answer: that the dialog appears *before*
++ * anything is written, that a blank reason is refused **on the control** rather than only
++ * in the data, that the mandatory field's error clears on the next keystroke, and that a
++ * refusal from the repository lands somewhere the owner can see it.
++ *
++ * The dead-code failure this file's existence is insurance against is the one that bit this
++ * story once already: tests spliced into an existing file that compiled, ran green, and
++ * never executed. A new file cannot be half-written without `ktlint` noticing the class
++ * never closes.
++ *
++ * ## The arithmetic every test shares
++ *
++ * With a 25th cutoff and `CLOCK` at 17 Oct the period is 25 Sep - 24 Oct; the contract
++ * starts 1 Oct, so **17 charge days** at Rp 250.000 — Rp 4.250.000 owed. Each test spells
++ * out what that makes its figures, because a cancellation test that guesses its own period
++ * silently stops proving what it names.
++ */
++@RunWith(RobolectricTestRunner::class)
++@Config(sdk = [34])
++@OptIn(ExperimentalCoroutinesApi::class)
++class CancelDepositViewModelTest {
++
++    private val dispatcher = StandardTestDispatcher()
++
++    private lateinit var context: Context
++    private lateinit var database: KlinikDatabase
++    private lateinit var payments: PaymentRepository
++    private lateinit var strings: RStrings
++
++    private val today = LocalDate.of(2026, 10, 17)
++
++    @Before
++    fun setUp() = runTest(dispatcher) {
++        Dispatchers.setMain(dispatcher)
++        context = ApplicationProvider.getApplicationContext()
++        database = Room.inMemoryDatabaseBuilder(context, KlinikDatabase::class.java)
++            // Room's own executors, or a row written by the write path sits in the
++            // database while `uiState.value` still holds the pre-write emission.
++            .setQueryExecutor(dispatcher.asExecutor())
++            .setTransactionExecutor(dispatcher.asExecutor())
++            .build()
++        payments = PaymentRepository(
++            paymentDao = database.paymentDao(),
++            allocationDao = database.allocationDao(),
++            contractDao = database.contractDao(),
++            exceptionDao = database.serviceExceptionDao(),
++            settingDao = database.settingDao(),
++            // **No database handle.** `withTransaction` asserts it is off the main thread,
++            // and `StandardTestDispatcher` drains *on* it — so passing it here makes every
++            // write throw into the generic banner and the tests fail as "the cancellation
++            // did not happen". The transaction path is covered by `CancelDepositTest`,
++            // which uses a real background thread. This asymmetry is deliberate.
++            database = null,
++        )
++        strings = RStrings(context)
++        seed()
++    }
++
++    @After
++    fun tearDown() {
++        database.close()
++        Dispatchers.resetMain()
++    }
++
++    /**
++     * Asking to cancel shows the dialog and writes **nothing**.
++     *
++     * Asserted on both tables, because the dialog is the whole point — an owner who sees
++     * the impact sentence has not yet agreed to anything.
++     */
++    @Test
++    fun `requesting a cancellation shows the dialog and writes nothing`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertTrue("the dialog is up", viewModel.uiState.value.isCanceling)
++        assertEquals("no payment was touched", 1, payments.paymentsFor(CONTRACT_ID).size)
++        assertEquals(
++            "and no allocation was released",
++            3,
++            database.allocationDao().forContract(CONTRACT_ID).size,
++        )
++        assertEquals(
++            "still confirmed",
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++    }
++
++    /**
++     * The impact sentence is the epic's own — naming **Budi** and the figure his arrears
++     * return to.
++     *
++     * Rp 750.000 closed three of seventeen days, so arrears is Rp 3.500.000 now and
++     * Rp 4.250.000 once the deposit is undone: the whole period, because there is nothing
++     * else placed.
++     */
++    @Test
++    fun `the dialog names the renter and the arrears they return to`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++
++        val cancel = viewModel.uiState.value.cancel!!
++        assertEquals(
++            "Tunggakan Budi Santoso akan kembali menjadi Rp 4.250.000.",
++            cancel.impactLine,
++        )
++        assertEquals("Batalkan setoran Rp 750.000?", cancel.title)
++        assertEquals("with the amount carried beside the title", "Rp 750.000", cancel.amountLabel)
++        assertEquals("and no reason yet", "", cancel.reason)
++    }
++
++    /**
++     * A blank reason is refused **on the dialog**, with the field's own error.
++     *
++     * The UI half of the AC's *"alasan wajib diisi"*. The repository refuses it too
++     * (`CancelDepositTest`), but a rule enforced only in the data leaves a confirm button
++     * that does nothing — which reads as a broken app rather than as a rule.
++     */
++    @Test
++    fun `a blank reason is refused on the dialog and writes nothing`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        val cancel = viewModel.uiState.value.cancel
++        assertNotNull("the dialog stays up, so the owner can fix it", cancel)
++        assertEquals(
++            "with the epic's own explanation of why",
++            "Tulis alasan pembatalannya. Tanpa alasan, riwayat setteran ini tidak bisa diaudit.",
++            cancel!!.reasonError,
++        )
++        assertEquals(
++            "nothing was cancelled",
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++        assertEquals("and its allocations are intact", 3, database.allocationDao().forContract(CONTRACT_ID).size)
++    }
++
++    /** Whitespace is blank — the pad and the field can both produce it. */
++    @Test
++    fun `a whitespace-only reason is refused too`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++
++        viewModel.onCancelChange { it.setReason("   ") }
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertNotNull(viewModel.uiState.value.cancel?.reasonError)
++        assertEquals(
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++    }
++
++    /**
++     * The error clears on the **next keystroke**, not only on the next confirm.
++     *
++     * An error that survived the fix accuses the owner of a field they are in the middle
++     * of filling in — the rule every other field in this sheet follows.
++     */
++    @Test
++    fun `the refusal clears as soon as the owner types`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++        assertNotNull(viewModel.uiState.value.cancel?.reasonError)
++
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertNull("the error is gone", viewModel.uiState.value.cancel?.reasonError)
++    }
++
++    /**
++     * Confirming with a reason cancels the deposit and closes the dialog.
++     *
++     * The sheet **stays open**, unlike `confirmDeposit`'s — see the note in the ViewModel.
++     * A cancel that dismissed the whole form would throw away the renter and amount the
++     * owner had already picked for their next payment.
++     */
++    @Test
++    fun `confirming with a reason cancels the deposit`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        val state = viewModel.uiState.value
++        assertFalse("the dialog is gone", state.isCanceling)
++        assertTrue("but the sheet is still open", state.isOpen)
++        assertEquals("Setoran Rp 750.000 dibatalkan", state.successMessage)
++
++        val stored = database.paymentDao().findById(PAYMENT_ID)!!
++        assertEquals("with the status flipped", PaymentEntity.STATUS_CANCELED, stored.status)
++        assertEquals("and the owner's own words kept", "salah tanggal", stored.cancelReason)
++        assertEquals("every day it closed is owed again", 0, database.allocationDao().forContract(CONTRACT_ID).size)
++    }
++
++    /**
++     * The confirmation names the amount the **dialog** promised.
++     *
++     * Asserted rather than left implicit, because the message is built from
++     * `amountLabel` and the alternative — parsing it back out of the title — is the bug
++     * this design exists to prevent.
++     */
++    @Test
++    fun `the confirmation carries the dialog's own figure`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        val promised = viewModel.uiState.value.cancel!!.amountLabel
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertEquals("Setoran $promised dibatalkan", viewModel.uiState.value.successMessage)
++    }
++
++    /**
++     * Dismissing writes nothing **and** discards the reason.
++     *
++     * The discard matters: a reason held for a cancellation the owner walked away from
++     * would reappear on the next attempt with no explanation of where it came from.
++     */
++    @Test
++    fun `dismissing writes nothing and forgets the reason`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++
++        viewModel.dismissCancel()
++        dispatcher.scheduler.advanceUntilIdle()
++        assertFalse(viewModel.uiState.value.isCanceling)
++        assertEquals(
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++
++        // And the next attempt starts clean rather than inheriting it.
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        assertEquals("", viewModel.uiState.value.cancel!!.reason)
++    }
++
++    /**
++     * A second cancellation is refused, the dialog goes, and a **banner** says so.
++     *
++     * `CANCEL_ALREADY`, seen from the UI. The deposit is only reachable while the sheet is
++     * open — and a cancel leaves it open — so this is not a contrived route: it is exactly
++     * what a double-tap on the history row produces.
++     */
++    @Test
++    fun `cancelling twice is refused and the banner says why`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        viewModel.requestCancel(PAYMENT_ID)
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.onCancelChange { it.setReason("alasan lain") }
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        val state = viewModel.uiState.value
++        assertFalse("the dialog is gone", state.isCanceling)
++        assertEquals(
++            "and the refusal is on the banner, where the sheet's own message would show",
++            "Setoran ini sudah dibatalkan, jadi tidak bisa dibatalkan lagi.",
++            state.errorMessage,
++        )
++        assertEquals(
++            "the original reason stands — a newer one must not overwrite the audit trail",
++            "salah tanggal",
++            database.paymentDao().findById(PAYMENT_ID)!!.cancelReason,
++        )
++    }
++
++    /**
++     * Cancelling with no dialog up writes nothing.
++     *
++     * The un-skippable counterpart to the preview's: `cancelDeposit` is reachable from
++     * anywhere in the app, and a caller that forgot to open the dialog must get a refusal
++     * rather than a silent cancellation.
++     */
++    @Test
++    fun `cancelling with no dialog up writes nothing`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertEquals(
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++        assertEquals(3, database.allocationDao().forContract(CONTRACT_ID).size)
++    }
++
++    /** Asking to cancel a deposit nobody holds opens no dialog — there is no figure. */
++    @Test
++    fun `requesting a cancellation of an unknown deposit opens no dialog`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++
++        viewModel.requestCancel("no-such-payment")
++        dispatcher.scheduler.advanceUntilIdle()
++
++        // The repository returns the *current* arrears rather than throwing, so the dialog
++        // is up — and what it says is the truth: nothing would change.
++        val cancel = viewModel.uiState.value.cancel
++        assertNotNull(cancel)
++        assertEquals(
++            "the impact is the present, because nothing would change",
++            "Tunggakan Budi Santoso akan kembali menjadi Rp 3.500.000.",
++            cancel!!.impactLine,
++        )
++    }
++
++    /** And confirming *that* refuses, rather than cancelling a payment that is not there. */
++    @Test
++    fun `confirming an unknown deposit refuses and writes nothing`() = runTest(dispatcher) {
++        saveDeposit()
++        val viewModel = openSheet()
++        viewModel.requestCancel("no-such-payment")
++        dispatcher.scheduler.advanceUntilIdle()
++        viewModel.onCancelChange { it.setReason("salah tanggal") }
++
++        viewModel.cancelDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++
++        assertFalse(viewModel.uiState.value.isCanceling)
++        assertNotNull("and the failure is reported", viewModel.uiState.value.errorMessage)
++        assertEquals(
++            "the real deposit is untouched",
++            PaymentEntity.STATUS_CONFIRMED,
++            database.paymentDao().findById(PAYMENT_ID)!!.status,
++        )
++    }
++
++    // ------------------------------------------------------------------ helpers
++
++    /**
++     * A ViewModel with the sheet open on Budi, and an active collector.
++     *
++     * `stateIn(WhileSubscribed(5_000))` means no subscriber produces no upstream
++     * collection, so the repository flows are never queried and `.value` stays at
++     * `initialValue` — which reads as "no renters" rather than as an un-advanced clock.
++     *
++     * The sheet must be open because `requestCancel` reads the contract from the form:
++     * a cancellation is always about *this* rental, and a ViewModel holding only a
++     * `paymentId` would have to trust that the two agree.
++     */
++    private fun TestScope.openSheet(): SetoranViewModel {
++        val viewModel = observingViewModel()
++        viewModel.openDeposit()
++        dispatcher.scheduler.advanceUntilIdle()
++        val option = viewModel.uiState.value.renterOptions.single { it.renter.id == RENTER_ID }
++        viewModel.onFormChange { it.selectRenter(option.renter, option.contract) }
++        dispatcher.scheduler.advanceUntilIdle()
++        return viewModel
++    }
++
++    /**
++     * The ViewModel **with an active collector** on `uiState`.
++     *
++     * See [openSheet]'s KDoc on why the collector is not optional.
++     */
++    private fun TestScope.observingViewModel(): SetoranViewModel {
++        val viewModel = SetoranViewModel(
++            payments = payments,
++            renterRepository = RenterRepository(database.renterDao()),
++            vehicleRepository = VehicleRepository(database.vehicleDao()),
++            accountRepository = BusinessAccountRepository(database.businessAccountDao()),
++            contractRepository = ContractRepository(
++                database.contractDao(),
++                database.serviceExceptionDao(),
++            ),
++            strings = strings,
++            clock = CLOCK,
++        )
++        backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
++        dispatcher.scheduler.advanceUntilIdle()
++        return viewModel
++    }
++
++    /**
++     * A Rp 750.000 cash deposit on 14 Oct, which closes three of the seventeen days.
++     *
++     * Cash and no account so the fixture does not depend on Story 3.1's table — this story
++     * is about cancelling, and a deposit it cannot record is a distraction.
++     */
++    private suspend fun saveDeposit() {
++        payments.saveDeposit(
++            contractId = CONTRACT_ID,
++            payment = net.klinik.rental.domain.model.Payment(
++                id = PAYMENT_ID,
++                date = LocalDate.of(2026, 10, 14),
++                amount = 750_000,
++            ),
++            method = PaymentMethod.Tunai,
++            accountId = null,
++            referenceNo = null,
++            notes = null,
++            asOf = today,
++        )
++    }
++
++    /** One vehicle, one renter with an open contract, and one account. */
++    private suspend fun seed() {
++        database.vehicleDao().insert(
++            VehicleEntity(
++                id = VEHICLE_ID,
++                plate = "B 1235 TF",
++                brand = "Toyota",
++                model = "Avanza",
++                year = 2023,
++                color = null,
++                dailyRate = RATE,
++                notes = null,
++            )
++        )
++        database.renterDao().insert(
++            RenterEntity(
++                id = RENTER_ID,
++                name = "Budi Santoso",
++                phone = "08123456789",
++                bankAccount = null,
++                emergencyContact = "08129876543",
++            )
++        )
++        database.contractDao().insertContract(
++            ContractEntity(
++                id = CONTRACT_ID,
++                renterId = RENTER_ID,
++                vehicleId = VEHICLE_ID,
++                // 1 Oct, so the period opening 25 Sep yields 17 charge days to the 17th.
++                startDate = LocalDate.of(2026, 10, 1),
++                dailyRate = RATE,
++                restDay = null,
++                activeVehicleId = VEHICLE_ID,
++                activeRenterId = RENTER_ID,
++                endDate = null,
++            )
++        )
++        database.businessAccountDao().insertBusinessAccount(
++            BusinessAccountEntity(id = ACCOUNT_ID, bankName = "BCA", number = "1234567890")
++        )
++    }
++
++    private companion object {
++        const val VEHICLE_ID = "vehicle-1"
++        const val RENTER_ID = "renter-1"
++        const val CONTRACT_ID = "contract-1"
++        const val ACCOUNT_ID = "account-1"
++        const val PAYMENT_ID = "payment-1"
++        const val RATE = 250_000L
++
++        val CLOCK: Clock = Clock.fixed(Instant.parse("2026-10-17T09:00:00Z"), ZoneOffset.UTC)
++    }
++}
+\ No newline at end of file
