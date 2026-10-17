@@ -720,6 +720,14 @@ class AccessibilityTest {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+            // Story 3.6's six, for the same reason: this file measures every interactive
+            // node, and the row's settlement verb is a new one — omitting it here would
+            // stop measuring the control a reviewer is most likely to add and forget.
+            onOpenSettle = {},
+            onCloseSettle = {},
+            onSettleChange = { it },
+            onConfirmSettle = {},
+            onSettleErrorDismiss = {},
         ),
         // Story 3.1's destination. This file walks *every* interactive node on the shell
         // against the 48dp floor, so the settings screen's top-bar action, its empty-state

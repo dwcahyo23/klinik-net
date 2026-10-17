@@ -15,11 +15,13 @@ import net.klinik.rental.data.db.dao.VehicleDao
 import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.PaymentEntity
+import net.klinik.rental.domain.calculate.ArrearsEntry
 import net.klinik.rental.domain.calculate.ChargeSchedule
 import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.domain.calculate.allocatePayments
 import net.klinik.rental.domain.calculate.arrearsOf
 import net.klinik.rental.domain.calculate.chargeDaysIn
+import net.klinik.rental.domain.calculate.settledDays
 import net.klinik.rental.domain.model.Allocation
 import net.klinik.rental.domain.model.Payment
 import net.klinik.rental.domain.validation.InvalidAmountException
@@ -232,6 +234,21 @@ class PaymentRepository(
          * so the status filter below stays in exactly one place.
          */
         excludePaymentId: String = "",
+        /**
+         * Whether [payment] is a **discarded placeholder** rather than a real deposit.
+         *
+         * A placeholder exists only because [allocatePayments] needs a payment to place,
+         * and it takes a slice of the oldest open day doing it. Every row a stored
+         * deposit places afterwards then lands one rupiah short of `dailyRate`, and
+         * `arrearsOf` counts a partly-paid day as **open** — so the rupiah total survives
+         * while the open-day count is inflated by one.
+         *
+         * `true` allocates the stored deposits alone and hands the placeholder nothing,
+         * which is what an arrears-only read wants: there is no new deposit to place, and
+         * inventing one is what cost the day count. See [arrearsEntry], and the KDoc on
+         * [correctDeposit] for the same hazard reached from the other side.
+         */
+        placeholderAmountIsDiscarded: Boolean = false,
     ): ComputedAllocation {
         // 1. The stored contract, for its frozen rate, its period and its schedule.
         //    Read rather than taken from the caller: a `Contract` handed in may be
@@ -247,15 +264,25 @@ class PaymentRepository(
         // 3. The charge days this contract owes in the current period, with its stored
         //    exceptions applied. `contractEnd` comes from the row, so an ended contract
         //    stops producing days without this class knowing.
-        val chargeDays = chargeDaysIn(
-            period = CutoffPeriod.containing(cutoffDay, asOf),
-            schedule = ChargeSchedule(
-                contractStart = contract.startDate,
-                restDay = contract.restDay,
-                serviceExceptions = storedExceptions(contract.id),
-                contractEnd = contract.endDate,
+        //
+        //    Then narrowed through `settledDays` (FR-9b): charge days at or before
+        //    `settledThroughDate` are already paid elsewhere and drop out here, without
+        //    a row and without a Setoran. **This is the single place settlement is
+        //    applied**, which is why one line reaches `currentArrears`, the preview,
+        //    cancellation and correction together — a second application site would be
+        //    a second derivation of one rule, and the two would drift.
+        val chargeDays = settledDays(
+            chargeDays = chargeDaysIn(
+                period = CutoffPeriod.containing(cutoffDay, asOf),
+                schedule = ChargeSchedule(
+                    contractStart = contract.startDate,
+                    restDay = contract.restDay,
+                    serviceExceptions = storedExceptions(contract.id),
+                    contractEnd = contract.endDate,
+                ),
+                asOf = asOf,
             ),
-            asOf = asOf,
+            settledThroughDate = contract.settledThroughDate,
         )
 
         // 4. The payment and everything already recorded, allocated **together**.
@@ -273,7 +300,11 @@ class PaymentRepository(
             }
             .map { it.toDomain() }
         val allRows = allocatePayments(
-            payments = existing + payment,
+            // The placeholder is withheld from the allocator entirely when it is a
+            // discarded one — see [placeholderAmountIsDiscarded]. An arrears-only read
+            // has nothing to place, and letting the placeholder take a rupiah off the
+            // oldest day is what made a fully-paid day read as open.
+            payments = if (placeholderAmountIsDiscarded) existing else existing + payment,
             chargeDays = chargeDays,
             dailyRate = contract.dailyRate,
             asOf = asOf,
@@ -641,6 +672,114 @@ class PaymentRepository(
     /** The contract's arrears exactly as it stands — every confirmed deposit applied. */
     suspend fun currentArrears(contractId: String, asOf: LocalDate): Long =
         arrearsExcluding(contractId, paymentId = "", asOf = asOf)
+
+    /**
+     * What a settlement through [date] would remove from the arrears, and what would
+     * remain — Story 3.6's confirmation figures.
+     *
+     * ## Why this allocates rather than subtracts
+     *
+     * Because "arrears after settling" is **not** "arrears now minus the settled days ×
+     * rate", and the difference is not a rounding slip. A contract with a rest day or a
+     * service exception produces fewer charge days than its calendar span, so the days a
+     * settlement closes and the days actually billed are different lists. Subtracting
+     * would name a figure the calculator never produces — the second derivation
+     * [arrearsAfterCanceling] above already refuses, for the same reason.
+     *
+     * ## Why the settlement is applied before the allocation rather than as a subtraction
+     *
+     * Both figures come from [previewAllocation]'s own day list, narrowed through
+     * [settledDays] — which is where the stored settlement is already applied. To ask
+     * "what if the settlement were [date]" the day list is narrowed once more by the
+     * **later** of the two dates: a contract already settled through October cannot
+     * un-settle days by settling through March, so the effective date is the maximum.
+     * Reading it as a subtraction would instead report that March's settlement *adds*
+     * arrears, which is the opposite of what the owner asked for.
+     *
+     * @return the present, with nothing removed, when the contract is unknown or already
+     *   settled at or past [date] — so the dialog never promises a change it cannot make.
+     */
+    suspend fun settlementImpact(
+        contractId: String,
+        date: LocalDate,
+        asOf: LocalDate,
+    ): SettlementImpact {
+        val stored = contractDao.findById(contractId)
+            ?: return presentImpact(contractId, asOf)
+        val alreadySettled = stored.settledThroughDate
+        // Already settled at or past this date: nothing would change, so the honest
+        // answer is the present.
+        if (alreadySettled != null && !alreadySettled.isBefore(date)) {
+            return presentImpact(contractId, asOf)
+        }
+
+        val before = arrearsEntry(contractId, asOf)
+        val after = arrearsEntry(contractId, asOf, extraSettledThroughDate = date)
+        return SettlementImpact(
+            daysClosed = before.days - after.days,
+            amountRemoved = before.amount - after.amount,
+            daysRemaining = after.days,
+            amountRemaining = after.amount,
+        )
+    }
+
+    /** The contract as it stands, with nothing removed. For both fallbacks above. */
+    private suspend fun presentImpact(contractId: String, asOf: LocalDate): SettlementImpact {
+        val now = arrearsEntry(contractId, asOf)
+        return SettlementImpact(
+            daysClosed = 0,
+            amountRemoved = 0,
+            daysRemaining = now.days,
+            amountRemaining = now.amount,
+        )
+    }
+
+    /**
+     * The contract's arrears, optionally as if it were settled through one further date.
+     *
+     * The extra date is a **floor** applied on top of whatever the contract already
+     * carries, never a replacement: settling cannot un-close a day, so the effective
+     * settlement is the later of the stored and the proposed date.
+     */
+    private suspend fun arrearsEntry(
+        contractId: String,
+        asOf: LocalDate,
+        extraSettledThroughDate: LocalDate? = null,
+    ): ArrearsEntry {
+        // The `RECOMPUTE_ID` placeholder is **wrong here**, and the KDoc on
+        // [correctDeposit] names why: the allocator has to be given a payment, so a
+        // placeholder takes a slice of the oldest open day. Every row the deposit
+        // places then lands one rupiah short of `dailyRate`, and `arrearsOf` counts a
+        // partly-paid day as **open**. The rupiah total survives — the missing rupiah
+        // simply moves onto the placeholder's own row, which is filtered out — so the
+        // figure the owner reads stays right while the **day count is inflated by one**.
+        // `SettleContractTest` caught exactly that: 13 days closed where 12 were.
+        //
+        // So this reads the contract and allocates with **no** payment of its own. The
+        // stored deposits are already `previewAllocation`'s input; an arrears question
+        // does not have a new deposit to place, and inventing one is what cost the day.
+        val computed = previewAllocation(
+            contractId = contractId,
+            payment = Payment(id = RECOMPUTE_ID, date = asOf, amount = 1),
+            asOf = asOf,
+            // The placeholder's own row, dropped before the allocator can hand a
+            // rupiah of a real day to it.
+            placeholderAmountIsDiscarded = true,
+        )
+        val stored = computed.contract.settledThroughDate
+        val days = when {
+            extraSettledThroughDate == null -> computed.chargeDays
+            stored == null -> settledDays(computed.chargeDays, extraSettledThroughDate)
+            stored.isAfter(extraSettledThroughDate) -> computed.chargeDays
+            else -> settledDays(computed.chargeDays, extraSettledThroughDate)
+        }
+        return arrearsOf(
+            contractId = contractId,
+            chargeDays = days,
+            allocations = computed.existingRows,
+            dailyRate = computed.contract.dailyRate,
+        )
+    }
 
     /** "Today" for a write that has no date of its own. See the call sites. */
     private fun asOf(): LocalDate = LocalDate.now()

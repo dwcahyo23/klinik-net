@@ -85,6 +85,8 @@ import java.time.LocalDate
  *   column, not the epic context's `workSchedule` string plus `offDay` integer:
  *   two encodings of one fact can disagree, and `ChargeSchedule.restDay` is the
  *   vocabulary the calculation layer already reads.
+ * @property settledThroughDate FR-9b's marker, added by Story 3.6. `null` on every
+ *   row written before it and on every contract nobody has settled.
  */
 @Entity(
     tableName = "contract",
@@ -146,7 +148,33 @@ data class ContractEntity(
     val activeRenterId: String?,
     /** `null` means the contract is still running. */
     @ColumnInfo(defaultValue = "NULL")
-    val endDate: LocalDate?,
+    val endDate: LocalDate? = null,
+    /**
+     * FR-9b, Story 3.6: charge days at or before this are treated as **already paid**,
+     * `null` meaning no settlement.
+     *
+     * ## Why this is a field on the contract and not a stored payment
+     *
+     * The PRD is explicit — *"Tidak ada Setoran yang dibuat, tidak ada alokasi yang
+     * disimpan, dan tidak ada jejak audit selain waktu aksi itu dilakukan."* A contract
+     * that ran before this app was first opened owes nothing the owner recognises as
+     * arrears; they were settled elsewhere and will never be entered here. So the
+     * honest representation is a marker the calculator narrows the day list by, not a
+     * fake Setoran that would make an unrecoverable fiction look like money that moved.
+     *
+     * It is deliberately **outside** the [endDate]/active-column guard below. That
+     * guard exists so a copy cannot drift from the date it mirrors; this field mirrors
+     * nothing, so joining it to the pair would only give the one-active rule a second
+     * thing to police.
+     *
+     * ## Why there is no "un-settle" column or a settled-at timestamp
+     *
+     * Also the PRD: *"tidak bisa di-undo."* Correction is editing this one column, which
+     * is an ordinary contract write rather than a second mechanism — a separate undo
+     * path would be exactly the second thing that can disagree with the first.
+     */
+    @ColumnInfo(defaultValue = "NULL")
+    val settledThroughDate: LocalDate? = null,
 ) {
     init {
         // The unique indexes are only as good as the values they compare, and an

@@ -46,8 +46,7 @@ import java.time.LocalDate
  *
  * ## What this model deliberately does not carry
  *
- * No settlement-through date (Epic 3 owns it, and nothing in this story writes
- * one), no service exceptions (Story 2.6 owns the table and its editing), and no
+ * No service exceptions (Story 2.6 owns the table and its editing), and no
  * arrears, overdue-day count, risk tier or credit — those are allocation-derived
  * and are computed behind the calculation engine, not stored per contract.
  *
@@ -66,6 +65,8 @@ import java.time.LocalDate
  *   See the class KDoc for why this is one field and not two.
  * @param endDate `null` while the contract is running. Story 2.7 is what sets it;
  *   nothing in this story ends a contract.
+ * @param settledThroughDate `null` when nothing has been settled. See the property's
+ *   own KDoc for why it is separate from [endDate].
  */
 data class Contract(
     /** Stable identity. */
@@ -81,6 +82,23 @@ data class Contract(
     val restDay: DayOfWeek? = null,
     /** `null` while the contract is still running. */
     val endDate: LocalDate? = null,
+    /**
+     * FR-9b: charge days at or before this are already paid, `null` for none —
+     * Story 3.6.
+     *
+     * ## Why Epic 3's deferral ends here
+     *
+     * This model deliberately carried no settlement date while nothing wrote one. Now
+     * something does, and the arithmetic needs it: `ChargeSchedule` reads a contract's
+     * settled-through day to narrow the day list, and a calculation that cannot see the
+     * marker cannot honour it. So it moves from "Epic 3 owns it" to a field here.
+     *
+     * It is **not** folded into [endDate]. They answer different questions — "when
+     * did the car come back" and "when were the days paid elsewhere" — and a contract
+     * can carry both: one ends mid-period, and the days before that were settled
+     * offline. Merging them would make the second action overwrite the first.
+     */
+    val settledThroughDate: LocalDate? = null,
 ) {
     init {
         // All three ids are primary keys or foreign keys. A blank one is not a

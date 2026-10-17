@@ -574,6 +574,58 @@
     <string name="kontrak_contract_ended">Kontrak berakhir %1$s</string>
 
     <!--
+      Story 3.6 — FR-9b, "tandai lunas sampai tanggal".
+
+      The confirmation names all four figures the AC asks for: the contract, the days it
+      closes and the rupiah it removes. Both sentences carry a figure rather than
+      describing the action, because FR-9b has **no undo** — the confirmation is the only
+      moment the owner can check the number before it is gone.
+
+      The removal sentence carries the epic's own shape, *"Menghapus Rp 7.000.000
+      tunggakan (28 hari) dari daftar ini."* — the rupiah first because it is what the
+      owner is trying to clear, the day count in brackets because "28 hari" alone reads as
+      a warning badge rather than as a bill being removed.
+    -->
+    <string name="kontrak_settle_title">Tandai Kontrak %1$s lunas sampai %2$s?</string>
+    <string name="kontrak_settle_impact">Menghapus %1$s tunggakan (%2$d hari) dari daftar ini.</string>
+    <string name="kontrak_settle_remaining">Sisa setelah ini: %1$s (%2$d hari).</string>
+    <!--
+      Shown when the chosen date closes no charge day at all. It is its own message
+      rather than a disabled button, because the owner picked a real date and needs to
+      know *why* it did nothing — most often because every day before it was already
+      marked by a Pengecualian Servis or a previous settlement.
+    -->
+    <string name="kontrak_settle_closes_nothing">Tanggal itu tidak menutup hari tagih apa pun. Hari-hari sebelumnya sudah ditandai lunas atau tidak ditagihkan.</string>
+    <!-- The row's verb. Spoken, and distinct from the end verb beside it. -->
+    <string name="kontrak_settle_action">Tandai lunas</string>
+    <!--
+      The row's settled line, drawn beside the end date rather than in place of it — a
+      contract can carry both, and they answer different questions.
+    -->
+    <string name="kontrak_row_settled">Lunas s.d. %1$s</string>
+    <string name="kontrak_settle_field_date">Lunas sampai</string>
+    <string name="kontrak_settle_confirm">Tandai lunas</string>
+    <!--
+      The date hint says *what the action is for*, because the alternative reading is
+      "today's due date": it narrows the choice before the owner has to ask.
+    -->
+    <string name="kontrak_settle_date_hint">Hari yang sudah dibayar di luar aplikasi</string>
+
+    <!--
+      Refusals. Each names the fault *and* the fix, per the epic context.
+
+      The before-start message names the contract's own start date for the same reason
+      the end sheet's does — the offending date is already in the field it was typed
+      into, and "pick a day on or after the contract began" is not actionable without
+      knowing which day that was.
+    -->
+    <string name="kontrak_error_settle_before_start">Kontrak dimulai %1$s, jadi tidak bisa ditandai lunas sebelum tanggal itu.</string>
+    <string name="kontrak_error_settle_blank_date">Pilih tanggal terakhir yang sudah lunas sebelum kirim.</string>
+    <string name="kontrak_error_settle_unexpected">Gagal menandai kontrak lunas. Coba lagi.</string>
+    <!-- Confirmation. A snackbar, and it names the day so a later audit can place it. -->
+    <string name="kontrak_settled">%2$d hari ditandai lunas sampai %1$s</string>
+
+    <!--
       Story 2.8 — Empat state & kerangka.
 
       Nav labels are flat and unprefixed rather than `nav_kendaraan`-style per

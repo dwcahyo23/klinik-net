@@ -202,6 +202,21 @@ internal class Screens(
          */
         val endErrorMessage: String? = null,
         val onEndErrorDismiss: () -> Unit,
+        /**
+         * Story 3.6's FR-9b wiring — the settlement sheet's four plus its own pair.
+         *
+         * Required for the same reason the three sets above are: a defaulted lambda
+         * produces a confirm that renders and silently does nothing, and this action
+         * changes what the owner is told they owe.
+         */
+        val onOpenSettle: (net.klinik.rental.ui.screens.kontrak.ContractRow) -> Unit,
+        val onCloseSettle: () -> Unit,
+        val onSettleChange:
+            ((net.klinik.rental.ui.screens.kontrak.SettleFormState) -> net.klinik.rental.ui.screens.kontrak.SettleFormState) -> Unit,
+        val onConfirmSettle: () -> Unit,
+        /** The settlement sheet's own banner pair — a fourth window, a fourth slot. */
+        val settleErrorMessage: String? = null,
+        val onSettleErrorDismiss: () -> Unit,
     )
 
     /**
@@ -369,6 +384,15 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
         onConfirmEnd = wiring.onConfirmEnd,
         endErrorMessage = wiring.endErrorMessage,
         onEndErrorDismiss = wiring.onEndErrorDismiss,
+        // Story 3.6's six, forwarded for the same reason — and this route still mounts
+        // **no sheet of its own**. The settlement sheet is drawn by `KontrakScreen`
+        // beside its three siblings, exactly as they are.
+        onOpenSettle = wiring.onOpenSettle,
+        onCloseSettle = wiring.onCloseSettle,
+        onSettleChange = wiring.onSettleChange,
+        onConfirmSettle = wiring.onConfirmSettle,
+        settleErrorMessage = wiring.settleErrorMessage,
+        onSettleErrorDismiss = wiring.onSettleErrorDismiss,
         renterOptions = wiring.renterOptions,
         vehicleOptions = wiring.vehicleOptions,
     )

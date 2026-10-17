@@ -14,7 +14,9 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
+import net.klinik.rental.data.repository.SettlementBeforeStartException
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
@@ -27,6 +29,8 @@ import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateExceptio
 import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
 import net.klinik.rental.ui.strings.RStrings
+import java.time.Clock
+import java.time.LocalDate
 import java.util.concurrent.atomic.AtomicBoolean
 
 /**
@@ -74,7 +78,25 @@ class KontrakViewModel(
     private val contracts: ContractRepository,
     private val renters: RenterRepository,
     private val vehicles: VehicleRepository,
+    /**
+     * The arrears read, for Story 3.6's confirmation figures.
+     *
+     * `ContractRepository` deliberately does **not** take a second repository: the
+     * settlement write is a single contract column, while the *figures* need the whole
+     * allocation chain, and a read chain living in the class that writes one column is
+     * where a second derivation would start. `PaymentRepository` already owns it, so the
+     * ViewModel composes the two rather than either repository owning the other.
+     */
+    private val payments: PaymentRepository,
     private val strings: RStrings,
+    /**
+     * The single clock, for "today" — the same abstraction `SetoranViewModel` takes.
+     *
+     * Needed here because a settlement is dated relative to the billing period, and a
+     * period depends on today. Without it a test that passes in October fails in
+     * November.
+     */
+    private val clock: Clock,
 ) : ViewModel() {
 
     private val form = MutableStateFlow<ContractFormState?>(null)
@@ -100,6 +122,18 @@ class KontrakViewModel(
      */
     private val endSheet = MutableStateFlow<EndContractFormState?>(null)
     private val endError = MutableStateFlow<String?>(null)
+
+    /**
+     * The FR-9b sheet — Story 3.6's.
+     *
+     * Its own flow and its own error, for the reason the two above are: three sheets
+     * means three windows, and sharing a slot would make them overwrite each other's
+     * refusals. It writes the **same `contract` row** the other two do, which is why it
+     * is guarded by [savingException] rather than given a flag of its own — one writer
+     * flag per row, not per method.
+     */
+    private val settleSheet = MutableStateFlow<SettleFormState?>(null)
+    private val settleError = MutableStateFlow<String?>(null)
 
     /**
      * Whether a write is in flight, so a double tap on Save cannot enqueue two.
@@ -203,7 +237,18 @@ class KontrakViewModel(
         // walked once and every row reads its number from this map.
         val exceptionCounts = exceptions.groupingBy { it.contractId }.eachCount()
         JoinSnapshot(
-            rows = contractRows.map { it.toRow(renterNames, vehiclePlates, exceptionCounts) },
+            rows = contractRows.map {
+                it.toRow(
+                    renterNames = renterNames,
+                    vehiclePlates = vehiclePlates,
+                    exceptionCounts = exceptionCounts,
+                    // Story 3.6: read off the domain contract rather than the entity,
+                    // so the row carries the marker through the same projection that
+                    // carries every other field. A row that read it from a second source
+                    // is a second reader of the same column.
+                    settledThroughDate = it.settledThroughDate,
+                )
+            },
             isLoading = !hasEmitted,
             exceptions = exceptions,
         )
@@ -251,6 +296,11 @@ class KontrakViewModel(
         // there to unwrap an array that `combine(vararg)` produces. `ExceptionSnapshot`
         // earns its existence because it fuses two flows; this fuses none.
         .combine(endSheet) { state, sheet -> state.copy(endSheet = sheet) }
+        // And the settlement sheet, as a fifth layer for the same reason: reading
+        // `settleSheet.value` from inside an earlier layer's lambda would emit a state
+        // carrying a stale value, so the sheet would mount showing the previously opened
+        // contract.
+        .combine(settleSheet) { state, sheet -> state.copy(settleSheet = sheet) }
         .distinctUntilChanged()
         .stateIn(
             scope = viewModelScope,
@@ -338,6 +388,13 @@ class KontrakViewModel(
      * is its own.
      */
     val endErrorMessage: StateFlow<String?> = endError
+
+    /**
+     * The settlement sheet's own failure banner — Story 3.6's fourth channel, for the
+     * same reason [endErrorMessage] is a fourth channel: four sheets means four windows,
+     * and one slot would let them overwrite each other's refusals.
+     */
+    val settleErrorMessage: StateFlow<String?> = settleError
 
     /** The interaction half: the open form and the last refusal's message. */
     private data class FormSnapshot(
@@ -914,6 +971,145 @@ class KontrakViewModel(
     /** The end sheet's own failure message. See [consumeExceptionError] on why its own. */
     fun consumeEndError() {
         endError.value = null
+    }
+
+    // ------------------------------------------------- Story 3.6: FR-9b settlement
+
+    /**
+     * Opens the settlement sheet on [row], with its impact already computed.
+     *
+     * ## Why the figures are read here rather than in the sheet
+     *
+     * Because the AC requires the confirmation to name the days and the rupiah, and a
+     * dialog that fills itself in a moment after opening is one the owner reads past. The
+     * figures come from `PaymentRepository.settlementImpact`, which allocates rather than
+     * subtracting — see its KDoc for why a rest day or a service exception makes those
+     * two differ by more than a rounding slip.
+     *
+     * The date opens **empty**, exactly as [openEndContract] leaves the end date: a
+     * pre-filled settlement date would confirm a settlement the owner never chose, and
+     * FR-9b has no undo.
+     */
+    fun openSettle(row: ContractRow) {
+        settleError.value = null
+        settleSheet.value = SettleFormState(
+            contractId = row.contract.id,
+            contractLabel = "${row.renterName} · ${row.vehiclePlate}",
+        )
+    }
+
+    /** Closes the sheet, and its failure message with it. See [closeEndContract]. */
+    fun closeSettle() {
+        settleError.value = null
+        settleSheet.value = null
+    }
+
+    /**
+     * Applies a form edit, recomputing the impact whenever the date changes.
+     *
+     * The recompute is why this is not a plain `let` like [onEndChange]: the day count
+     * and the rupiah are the *consequence* of the chosen date, so carrying a stale pair
+     * would make the confirmation name figures for a date the owner has already changed.
+     */
+    fun onSettleChange(transform: (SettleFormState) -> SettleFormState) {
+        val before = settleSheet.value ?: return
+        val after = transform(before)
+        settleSheet.value = after
+        if (after.settleDate == before.settleDate) return
+
+        val date = after.settleDate
+        val contractId = after.contractId
+        settleError.value = null
+        if (date == null) {
+            // Back to untouched: the figures belong to a date that no longer exists.
+            settleSheet.value = after.copy(daysClosed = 0, amountRemoved = 0L)
+            return
+        }
+        viewModelScope.launch {
+            try {
+                val impact = payments.settlementImpact(
+                    contractId = contractId,
+                    date = date,
+                    asOf = LocalDate.now(clock),
+                )
+                // Re-read rather than writing `after` back: the owner may have kept
+                // interacting while the allocation ran, and a stale copy would discard it.
+                val live = settleSheet.value
+                if (live != null && live.settleDate == date) {
+                    settleSheet.value = live.copy(
+                        daysClosed = impact.daysClosed,
+                        amountRemoved = impact.amountRemoved,
+                        daysRemaining = impact.daysRemaining,
+                        amountRemaining = impact.amountRemaining,
+                    )
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // The figures are unavailable, so the confirmation cannot name what the
+                // action does — and FR-9b is not undoable. Reported rather than guessed.
+                settleError.value = strings.kontrakErrorSettleUnexpected()
+            }
+        }
+    }
+
+    /**
+     * Settles the contract through the chosen date.
+     *
+     * Guarded by [savingException] for the reason that flag is shared: this writes the
+     * same `contract` row the exception editor and the end sheet do, so all three are one
+     * conflict rather than three independent ones.
+     */
+    fun settleContract() {
+        if (!savingException.compareAndSet(false, true)) return
+
+        val current = settleSheet.value
+        val date = current?.settleDate
+        if (current == null || date == null) {
+            if (current != null) {
+                settleSheet.value = current.copy(dateError = strings.kontrakErrorSettleBlankDate())
+            }
+            savingException.set(false)
+            return
+        }
+
+        val contractId = current.contractId
+
+        viewModelScope.launch {
+            try {
+                contracts.settleThrough(contractId, date)
+                val live = settleSheet.value
+                if (live != null && live === current) settleSheet.value = null
+                settleError.value = null
+                message.value = strings.kontrakSettled(
+                    strings.formatExceptionDate(date),
+                    current.daysClosed,
+                )
+            } catch (e: SettlementBeforeStartException) {
+                val live = settleSheet.value
+                if (live != null) {
+                    settleSheet.value = live.copy(
+                        dateError = strings.kontrakErrorSettleBeforeStart(e.startDate),
+                    )
+                } else {
+                    settleError.value = strings.kontrakErrorSettleBeforeStart(e.startDate)
+                }
+            } catch (e: ContractNotOpenException) {
+                settleSheet.value = null
+                settleError.value = strings.kontrakErrorContractNotOpen()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                settleError.value = strings.kontrakErrorSettleUnexpected()
+            } finally {
+                savingException.set(false)
+            }
+        }
+    }
+
+    /** The settlement sheet's own failure message. Its own channel, as the other two. */
+    fun consumeSettleError() {
+        settleError.value = null
     }
 
     /**

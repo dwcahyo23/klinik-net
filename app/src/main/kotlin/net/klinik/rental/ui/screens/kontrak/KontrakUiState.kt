@@ -70,6 +70,16 @@ data class ContractRow(
     val exceptionCount: Int = 0,
     val canEnd: Boolean = contract.isOpen,
     val endDateText: String? = null,
+    /**
+     * `formatTanggalBulan(settledThroughDate)`, or `null` when the contract carries no
+     * settlement — Story 3.6's.
+     *
+     * `null` is what both hides the settlement verb and removes this line, which is why
+     * it is one field rather than a flag plus a date: a contract that is not settled has
+     * no day to show, so a separate boolean could only ever agree with the null and
+     * disagree with itself.
+     */
+    val settledThroughText: String? = null,
 )
 
 /**
@@ -120,6 +130,8 @@ data class KontrakUiState(
     val exceptionSheet: ExceptionFormState? = null,
     val exceptionRows: List<ServiceExceptionRow> = emptyList(),
     val endSheet: EndContractFormState? = null,
+    /** The FR-9b settlement sheet, or `null`. The fourth, and the same mounting rule. */
+    val settleSheet: SettleFormState? = null,
 ) {
     /**
      * Whether the empty state applies.
@@ -224,6 +236,8 @@ fun Contract.toRow(
     renterNames: Map<String, String>,
     vehiclePlates: Map<String, String>,
     exceptionCounts: Map<String, Int> = emptyMap(),
+    // `null` when nothing has been settled. See [ContractRow.settledThroughText].
+    settledThroughDate: LocalDate? = null,
 ): ContractRow = ContractRow(
     contract = this,
     renterName = renterNames[renterId] ?: renterId,
@@ -241,6 +255,7 @@ fun Contract.toRow(
     // formatter as every other date on this screen — a second spelling here is how a
     // reconciliation ends up comparing `14 Okt` against `14/10/2026`.
     endDateText = endDate?.let(::formatTanggalBulan),
+    settledThroughText = settledThroughDate?.let(::formatTanggalBulan),
 )
 
 /**
@@ -684,3 +699,66 @@ fun EndContractFormState.selectEndDate(date: LocalDate): EndContractFormState = 
  */
 val EndContractFormState.canEndContract: Boolean
     get() = endDate != null
+
+// --------------------------------------------------------- Story 3.6: settlement
+
+/**
+ * The FR-9b sheet's state — "tandai lunas sampai tanggal".
+ *
+ * ## Why it mirrors [EndContractFormState] rather than extending it
+ *
+ * Because the two actions are opposites that would be mutually exclusive in one type:
+ * ending a contract stops the billing, settling it declares past days already paid.
+ * Merged, the state would carry a date that means *both* — the one ambiguity this app's
+ * rules exist to prevent. Two small types are cheaper than one ambiguous field.
+ *
+ * ## Why it carries the impact up front
+ *
+ * @property daysClosed and @property amountRemoved are read **before** the sheet opens,
+ *   because the AC requires the confirmation to name them and a dialog that fills itself
+ *   in a moment after opening is one the owner reads past. They are whole figures, not
+ *   pre-formatted strings, for the reason `DepositPreview` is: every rupiah is formatted
+ *   once, in the ViewModel, through the same `formatRupiah`.
+ *
+ * @property settleDate the chosen day, or `null` untouched. A **past** date is the
+ *   expected case — that is the whole point of FR-9b — so nothing here biases toward
+ *   today.
+ */
+data class SettleFormState(
+    val contractId: String,
+    /** `renter · plate`, the same label the end and exception sheets use. */
+    val contractLabel: String,
+    val settleDate: LocalDate? = null,
+    val dateError: String? = null,
+    val daysClosed: Int = 0,
+    val amountRemoved: Long = 0L,
+    val daysRemaining: Int = 0,
+    val amountRemaining: Long = 0L,
+)
+
+/**
+ * Applies a settlement date, clearing its own error.
+ *
+ * The selection **is** the fix, so an error surviving it would accuse the owner of a
+ * field they have already filled in — the same rule [selectEndDate] follows.
+ */
+fun SettleFormState.selectSettleDate(date: LocalDate): SettleFormState = copy(
+    settleDate = date,
+    dateError = null,
+)
+
+/**
+ * Whether the confirm button is allowed.
+ *
+ * A date **and** something to close. The second half is the one that matters most:
+ * FR-9b has no undo and no audit trail, so a settlement that would close no day is an
+ * action with nothing behind it that the owner cannot reverse from inside the app. A
+ * disabled button beside the field saying so is the honest control — the alternative is
+ * a live button that silently writes a no-op.
+ *
+ * The before-start case is deliberately *not* filtered here, matching [canEndContract]:
+ * the repository refuses it with a message that names the contract's start date, which
+ * is what the owner needs in order to fix it.
+ */
+val SettleFormState.canSettle: Boolean
+    get() = settleDate != null && daysClosed > 0

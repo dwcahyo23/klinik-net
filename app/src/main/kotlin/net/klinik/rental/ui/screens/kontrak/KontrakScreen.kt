@@ -222,6 +222,14 @@ fun KontrakScreen(
      */
     endErrorMessage: String? = null,
     onEndErrorDismiss: () -> Unit,
+    // Story 3.6's four, required for the same reason the two sets above are.
+    onOpenSettle: (ContractRow) -> Unit,
+    onCloseSettle: () -> Unit,
+    onSettleChange: ((SettleFormState) -> SettleFormState) -> Unit,
+    onConfirmSettle: () -> Unit,
+    /** The settlement sheet's own error slot and dismiss, as its own pair. */
+    settleErrorMessage: String? = null,
+    onSettleErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -314,6 +322,7 @@ fun KontrakScreen(
                                     } else {
                                         null
                                     },
+                                    settleClick = { onOpenSettle(row) },
                                 )
                             }
                         }
@@ -446,6 +455,22 @@ fun KontrakScreen(
                 onDismissError = onEndErrorDismiss,
             )
         }
+
+        // And the FR-9b sheet, the fourth, beside its three siblings rather than inside
+        // any of them — two `ModalBottomSheet` windows over one state is the defect
+        // Story 2.8's review found as its only `high`.
+        state.settleSheet?.let { sheet ->
+            SettleContractSheet(
+                state = sheet,
+                errorMessage = settleErrorMessage ?: state.errorMessage,
+                onClose = onCloseSettle,
+                onChange = onSettleChange,
+                onConfirmSettle = onConfirmSettle,
+                successMessage = snackbarMessage,
+                onDismissSuccess = onSnackbarDismiss,
+                onDismissError = onSettleErrorDismiss,
+            )
+        }
     }
 }
 
@@ -495,6 +520,15 @@ private fun KontrakRow(
     row: ContractRow,
     onClick: () -> Unit,
     onEndClick: (() -> Unit)?,
+    /**
+     * The settlement verb's handler.
+     *
+     * Required rather than nullable because this control is offered on **every** row
+     * that carries no settlement yet, open or ended — the inverse of [onEndClick]'s
+     * rule, and for the reason the button's own comment gives: FR-9b's day-one exit is
+     * needed most on the ended contracts the end verb is hidden from.
+     */
+    settleClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -574,6 +608,40 @@ private fun KontrakRow(
                         variant = KnButtonVariant.Ghost,
                         size = KnButtonSize.Small,
                         modifier = Modifier.testTag("kontrak-row-end-${row.contract.id}"),
+                    )
+                }
+                // And the settlement verb, drawn on **every** row rather than only an
+                // open one — the deliberate opposite of the end verb above.
+                //
+                // FR-9b exists for contracts that ended months ago with days paid
+                // elsewhere, which is exactly the row `canEnd` hides the end verb from.
+                // Requiring an open contract would make the day-one exit unavailable on
+                // the contracts that need it most, so this control is offered wherever a
+                // contract is.
+                //
+                // `null` once the contract is already settled, so a contract carrying a
+                // settlement is not offered a second one — absence rather than disabled,
+                // the same rule as the end verb.
+                if (row.settledThroughText == null) {
+                    KnButton(
+                        label = stringResource(R.string.kontrak_settle_action),
+                        onClick = settleClick,
+                        variant = KnButtonVariant.Ghost,
+                        size = KnButtonSize.Small,
+                        modifier = Modifier.testTag("kontrak-row-settle-${row.contract.id}"),
+                    )
+                }
+                // And, on a settled contract, the day it is settled through — beside the
+                // end date rather than in place of it, because the two answer different
+                // questions and a contract can carry both.
+                row.settledThroughText?.let { settled ->
+                    Text(
+                        text = stringResource(R.string.kontrak_row_settled, settled),
+                        style = MaterialTheme.knTypography.label,
+                        color = MaterialTheme.knColors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("kontrak-row-settled-${row.contract.id}"),
                     )
                 }
                 // And, on an ended row, *when* it ended — in place of the start date's
@@ -688,6 +756,14 @@ private fun KontrakScreenPreview() {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+            // And Story 3.6's six, for the same reason: a preview row whose settlement
+            // control is wired to `{}` would look exactly like one that works, and FR-9b
+            // is not undoable.
+            onOpenSettle = {},
+            onCloseSettle = {},
+            onSettleChange = { it },
+            onConfirmSettle = {},
+            onSettleErrorDismiss = {},
         )
     }
 }

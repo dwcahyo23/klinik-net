@@ -65,7 +65,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
         AllocationEntity::class,
         SettingEntity::class,
     ],
-    version = 7,
+    version = 8,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -563,6 +563,34 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v7 -> v8: adds `contract.settledThroughDate` — Story 3.6's FR-9b marker.
+         *
+         * ## Why `DEFAULT NULL` is written out rather than left implicit
+         *
+         * `ContractEntity` declares `@ColumnInfo(defaultValue = "NULL")`, so Room's
+         * compiled schema *records* a default of `NULL` for this column, and Room
+         * compares recorded defaults when it validates a migrated database. A bare
+         * `TEXT` produces the same nullability but records the default as undefined,
+         * and the migration is refused wholesale with "Migration didn't properly
+         * handle: contract" — the exact defect `MIGRATION_1_2` shipped with.
+         *
+         * ## Why no row is rewritten
+         *
+         * The whole migration is the `ALTER`. Every existing contract settles on `null`,
+         * which is what "no settlement" means, so there is nothing to back-fill and no
+         * reason to touch rows whose dates the owner relies on. The second `ALTER`-only
+         * migration after `MIGRATION_6_7`, for the same reason it is the first.
+         */
+        val MIGRATION_7_8 = object : Migration(7, 8) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `contract` " +
+                        "ADD COLUMN `settledThroughDate` TEXT DEFAULT NULL"
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -588,6 +616,7 @@ abstract class KlinikDatabase : RoomDatabase() {
                     MIGRATION_4_5,
                     MIGRATION_5_6,
                 MIGRATION_6_7,
+                MIGRATION_7_8,
                 )
                 .build()
     }

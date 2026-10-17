@@ -22,6 +22,7 @@ import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.db.entity.ServiceExceptionEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.strings.RStrings
@@ -36,8 +37,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Clock
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * The end-to-end open path: the ViewModel, the repository, Room's invalidation
@@ -92,6 +96,8 @@ class KontrakViewModelTest {
     private lateinit var contracts: ContractRepository
     private lateinit var renters: RenterRepository
     private lateinit var vehicles: VehicleRepository
+    /** Story 3.6's confirmation figures. No database handle, as its siblings. */
+    private lateinit var payments: PaymentRepository
     private lateinit var strings: RStrings
 
     @Before
@@ -116,6 +122,18 @@ class KontrakViewModelTest {
         )
         renters = RenterRepository(database.renterDao())
         vehicles = VehicleRepository(database.vehicleDao())
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            // **No database handle.** `withTransaction` asserts it is off the main
+            // thread and `StandardTestDispatcher` drains *on* it, so passing one makes
+            // every write throw into the generic banner. The transaction path is
+            // covered by `SettleContractTest`, which uses a real background thread.
+            database = null,
+        )
         strings = RStrings(context)
     }
 
@@ -1329,7 +1347,9 @@ class KontrakViewModelTest {
             ContractRepository(dao, exceptionDao),
             renters,
             vehicles,
+            payments,
             strings,
+            CLOCK,
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
         backgroundScope.launch(dispatcher) { viewModel.renterOptions.collect { } }
@@ -1361,7 +1381,9 @@ class KontrakViewModelTest {
             ContractRepository(database.contractDao(), database.serviceExceptionDao()),
             renters,
             vehicles,
+            payments,
             strings,
+            CLOCK,
         )
 
         assertTrue(
@@ -1502,4 +1524,16 @@ class KontrakViewModelTest {
             year = 2023,
             dailyRate = 250_000L,
         )
+
+    private companion object {
+        /**
+         * The single clock, pinned — for the reason `SetoranViewModelTest` pins one: a
+         * settlement is dated relative to the billing period, so a test that passed in
+         * October would fail in November.
+         */
+        val CLOCK: Clock = Clock.fixed(
+            Instant.parse("2026-10-17T09:00:00Z"),
+            ZoneOffset.UTC,
+        )
+    }
 }

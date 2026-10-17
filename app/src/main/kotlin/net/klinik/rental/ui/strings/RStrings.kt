@@ -366,6 +366,77 @@ class RStrings(private val context: Context) {
     fun kontrakErrorContractEndUnexpected(): String =
         context.getString(R.string.kontrak_error_contract_end_unexpected)
 
+    // -------------------------------------------------------------- Story 3.6
+
+    /**
+     * `Tandai Kontrak Budi Santoso · B 1235 TF lunas sampai 1 Mar 2026?` — the epic's
+     * title, verbatim in shape.
+     *
+     * Both figures are **already-formatted** strings rather than dates: the ViewModel
+     * holds no composition, so it has to produce the same text this dialog renders, and
+     * a rupiah or a date spelled in two places is one that can differ in two places.
+     */
+    fun kontrakSettleTitle(contractLabel: String, date: String): String =
+        context.getString(R.string.kontrak_settle_title, contractLabel, date)
+
+    /**
+     * `Menghapus Rp 7.000.000 tunggakan (28 hari) dari daftar ini.`
+     *
+     * Takes an already-formatted amount, for the reason every other money accessor here
+     * does.
+     */
+    fun kontrakSettleImpact(amount: String, days: Int): String =
+        context.getString(R.string.kontrak_settle_impact, amount, days)
+
+    /** The figures that *survive*, so the owner can tell a right settlement from a total one. */
+    fun kontrakSettleRemaining(amount: String, days: Int): String =
+        context.getString(R.string.kontrak_settle_remaining, amount, days)
+
+    /**
+     * A settlement date that closes no charge day.
+     *
+     * Names both likely causes — an earlier settlement, and a Pengecualian Servis — so the
+     * owner does not have to guess which one already accounted for those days.
+     */
+    fun kontrakSettleClosesNothing(): String =
+        context.getString(R.string.kontrak_settle_closes_nothing)
+
+    /**
+     * A settlement date before the contract began.
+     *
+     * Names the contract's own **start date**, for the reason
+     * [kontrakErrorContractEndBeforeStart] does: the offending date is already in the
+     * field the owner picked it in.
+     */
+    fun kontrakErrorSettleBeforeStart(startDate: java.time.LocalDate): String =
+        context.getString(
+            R.string.kontrak_error_settle_before_start,
+            formatExceptionDate(startDate),
+        )
+
+    /** A settlement date never chosen. */
+    fun kontrakErrorSettleBlankDate(): String =
+        context.getString(R.string.kontrak_error_settle_blank_date)
+
+    /**
+     * A settlement that failed for a reason this screen does not model.
+     *
+     * Reads "menandai kontrak lunas" where [kontrakErrorContractEndUnexpected] reads
+     * "mengakhiri kontrak" — four banners now live in four windows, and the owner needs
+     * to know which write failed.
+     */
+    fun kontrakErrorSettleUnexpected(): String =
+        context.getString(R.string.kontrak_error_settle_unexpected)
+
+    /**
+     * `28 hari ditandai lunas sampai 1 Mar` — the confirmation.
+     *
+     * Names the day and the count so the message is an audit fact rather than a
+     * reassurance: FR-9b leaves no other trace of the action.
+     */
+    fun kontrakSettled(date: String, days: Int): String =
+        context.getString(R.string.kontrak_settled, date, days)
+
     // -------------------------------------------------------------- Story 2.8
 
     /**

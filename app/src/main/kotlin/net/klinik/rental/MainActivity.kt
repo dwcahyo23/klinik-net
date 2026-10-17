@@ -177,7 +177,24 @@ internal fun createKontrakViewModel(context: Context): KontrakViewModel {
         ),
         renters = RenterRepository(database.renterDao()),
         vehicles = VehicleRepository(database.vehicleDao(), database),
+        // Story 3.6's confirmation figures. `ContractRepository` deliberately takes no
+        // second repository — the settlement *write* is one contract column, while the
+        // *figures* need the whole allocation chain, so the ViewModel composes the two
+        // rather than either repository owning the other. That is why this block, not a
+        // parameter inside the constructor above.
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            database = database,
+        ),
         strings = strings,
+        // The single clock, shared with `SetoranViewModel`: a settlement is dated
+        // relative to the billing period, so a test that passed in October would fail
+        // in November without one.
+        clock = Clock.systemDefaultZone(),
     )
 }
 
@@ -285,6 +302,8 @@ private fun KlinikNetApp(
     val kontrakExceptionError by kontrak.exceptionErrorMessage.collectAsStateWithLifecycle()
     // And Story 2.7's, on the same argument: three sheets, three windows, three slots.
     val kontrakEndError by kontrak.endErrorMessage.collectAsStateWithLifecycle()
+    // And Story 3.6's, the fourth window and the fourth slot.
+    val kontrakSettleError by kontrak.settleErrorMessage.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
     // Story 3.1's screen. It has no second window of its own beyond its form sheet, so one
@@ -368,6 +387,16 @@ private fun KlinikNetApp(
                     onConfirmEnd = kontrak::endContract,
                     endErrorMessage = kontrakEndError,
                     onEndErrorDismiss = kontrak::consumeEndError,
+                    // Story 3.6's six. Same reasoning, same window — the settlement
+                    // sheet is a fourth window with its own banner pair, and none of
+                    // these is defaulted so a missing wiring is a compile error rather
+                    // than a control that renders and does nothing.
+                    onOpenSettle = kontrak::openSettle,
+                    onCloseSettle = kontrak::closeSettle,
+                    onSettleChange = kontrak::onSettleChange,
+                    onConfirmSettle = kontrak::settleContract,
+                    settleErrorMessage = kontrakSettleError,
+                    onSettleErrorDismiss = kontrak::consumeSettleError,
                 ),
                 pengaturan = Screens.Pengaturan(
                     state = pengaturanState,

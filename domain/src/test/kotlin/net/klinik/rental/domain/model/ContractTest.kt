@@ -3,6 +3,7 @@ package net.klinik.rental.domain.model
 import net.klinik.rental.domain.validation.InvalidAmountException
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -162,21 +163,50 @@ class ContractTest {
         assertFalse(contract(endDate = LocalDate.of(2026, 10, 5)).isOpen)
     }
 
-    // -------------------------------------------------- out of scope, forever
+    // -------------------------------------------------- FR-9b, since Story 3.6
 
     /**
-     * `settledThroughDate` is deferred to Epic 3 by the epic context, and nothing
-     * in this story writes one. Adding a column nothing writes is speculative, so
-     * the absence is asserted rather than left to a reviewer's memory — a field
-     * added "just in case" would be a settlement claim the app cannot support.
+     * `settledThroughDate` is **declared** now — Story 3.6's FR-9b marker — and this
+     * test used to assert the opposite.
+     *
+     * It is kept, inverted, rather than deleted, because the assertion was load-bearing
+     * when it was written: Story 2.5 added the column "just in case" with no writer, and
+     * a settlement claim the app cannot support is worse than a missing one. Story 3.6
+     * supplies the writer, so the field is now earned — and the test that watched for it
+     * is exactly the one that should notice if a fourth story adds another unwritten
+     * column beside it.
+     *
+     * Asserted on the declared field so the failure names the field, not a boolean.
      */
     @Test
-    fun `the model declares no settled through date`() {
+    fun `the model declares a settlement marker and defaults it to none`() {
         val declared = Contract::class.java.declaredFields.map { it.name.lowercase() }.toSet()
-        assertFalse(
-            "settlement-through is Epic 3's, and this story has no writer for it",
+        assertTrue(
+            "FR-9b's marker arrived with Story 3.6's writer",
             declared.contains("settledthroughdate"),
         )
+        // And unset on every contract the app has written before it — a fresh contract
+        // is never silently pre-settled.
+        assertNull(Contract("c", "r", "v", LocalDate.of(2026, 10, 1), 250_000).settledThroughDate)
+    }
+
+    /**
+     * And a settlement is independent of [Contract.endDate] — a contract can both end
+     * mid-period and have its earlier days settled offline.
+     *
+     * The pair is kept apart deliberately; merging them would make one action overwrite
+     * the other, so this pins the distinction the data layer relies on when it carries
+     * `settledThroughDate` through `endContract`.
+     */
+    @Test
+    fun `a settlement and an end date are independent`() {
+        val both = contract(
+            endDate = LocalDate.of(2026, 10, 20),
+            settledThroughDate = LocalDate.of(2026, 10, 10),
+        )
+        assertEquals(LocalDate.of(2026, 10, 10), both.settledThroughDate)
+        assertEquals(LocalDate.of(2026, 10, 20), both.endDate)
+        assertFalse(both.isOpen)
     }
 
     /**
@@ -212,6 +242,7 @@ class ContractTest {
         rate: Long = 250_000L,
         restDay: DayOfWeek? = DayOfWeek.SUNDAY,
         endDate: LocalDate? = null,
+        settledThroughDate: LocalDate? = null,
     ) = Contract(
         id = id,
         renterId = renterId,
@@ -220,5 +251,6 @@ class ContractTest {
         dailyRate = rate,
         restDay = restDay,
         endDate = endDate,
+        settledThroughDate = settledThroughDate,
     )
 }

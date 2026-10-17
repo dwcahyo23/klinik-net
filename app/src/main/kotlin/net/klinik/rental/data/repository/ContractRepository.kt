@@ -259,6 +259,12 @@ class ContractRepository(
                     dailyRate = stored.dailyRate,
                     restDay = stored.restDay,
                     endDate = endDate,
+                    // Carried, not dropped: ending a contract that was already settled
+                    // through an earlier date must not un-settle it. The two actions are
+                    // independent — a contract can both end mid-period and have its
+                    // earlier days settled offline — and rebuilding the row without this
+                    // would make "Akhiri" silently undo "Tandai lunas".
+                    settledThroughDate = stored.settledThroughDate,
                 ).toEntity(),
             )
         }
@@ -305,6 +311,70 @@ class ContractRepository(
             }
 
             throw e
+        }
+    }
+
+    // ------------------------------------------------------ FR-9b: settlement
+
+    /**
+     * Marks [contractId]'s charge days at or before [date] as already paid — Story 3.6.
+     *
+     * ## What this writes, and what it deliberately does not
+     *
+     * One column on one row. The PRD is explicit that FR-9b *"tidak ada representasi per
+     * hari, tidak ada alokasi yang disimpan, dan tidak ada jejak audit selain waktu aksi
+     * itu dilakukan"* — so this creates **no** Setoran and **no** allocation row. The
+     * settlement takes effect because `PaymentRepository.previewAllocation` narrows the
+     * day list through `settledDays`, and a day that is not on the list is a closed day.
+     *
+     * A fake payment would have been the tempting encoding — one row closing each day —
+     * and it would have been wrong twice over: it would put unrecoverable fiction into a
+     * table the owner reconciles against a bank statement, and it would leave arrears
+     * depending on money that never moved.
+     *
+     * ## Why `copy` and not `toEntity()`
+     *
+     * [endContract] projects through the domain model because it changes [endDate], and
+     * the active columns derive from that. Settlement changes nothing the model carries,
+     * so projecting through it would mean every contract write in this class had to start
+     * deciding what a settlement is — and the domain model deliberately has no such field.
+     * Copying the stored row keeps the write to the one column it owns.
+     *
+     * ## Why a before-start date is refused
+     *
+     * It is structurally inert: `chargeDaysIn` filters `it >= contractStart` before
+     * settlement is applied, so such a date closes nothing while looking like it closed
+     * something. Refusing names the start date, which is the day the owner is looking
+     * for — the same reasoning [addServiceException] gives for the identical check.
+     *
+     * ## Why an ended contract may still be settled
+     *
+     * Deliberately, and unlike the exception writes. A contract that ended months ago
+     * with days already paid elsewhere is exactly the case FR-9b exists for — the owner
+     * opens a historic contract precisely because its arrears are fictional. Requiring
+     * the contract to be running would make the day-one exit unavailable on the contracts
+     * that need it most.
+     *
+     * The figures for the confirmation live in `PaymentRepository`, which already owns
+     * the read chain — this class deliberately takes no second repository, so the two
+     * stories' halves stay separate rather than one calling the other.
+     *
+     * @throws SettlementBeforeStartException when [date] precedes the contract's own
+     *   start date. Nothing is written.
+     * @throws ContractNotOpenException when nobody holds that id.
+     */
+    suspend fun settleThrough(contractId: String, date: LocalDate) {
+        inTransaction {
+            val stored = dao.findById(contractId) ?: throw ContractNotOpenException(contractId)
+            if (date.isBefore(stored.startDate)) {
+                throw SettlementBeforeStartException(
+                    contractId = contractId,
+                    startDate = stored.startDate,
+                )
+            }
+            // `copy`, so every other column keeps the value the owner already has —
+            // including the active pair, which must stay pinned to `endDate`.
+            dao.update(stored.copy(settledThroughDate = date))
         }
     }
 
@@ -526,6 +596,9 @@ class ContractRepository(
         dailyRate = dailyRate,
         restDay = restDay,
         endDate = endDate,
+        // Story 3.6: carried so the calculation layer can narrow a settled contract's
+        // day list, and so the contract row can render the marker beside its own dates.
+        settledThroughDate = settledThroughDate,
     )
 
     /**
@@ -536,6 +609,10 @@ class ContractRepository(
      * both slots, an ended one carries `NULL` in both, and
      * [ContractEntity]'s `init` refuses anything else. There is no second writer
      * to disagree with.
+     *
+     * [settledThroughDate] is carried rather than dropped, because [endContract]
+     * rebuilds the row through here: ending a contract that had been settled would
+     * silently un-settle it, which is the one outcome neither action asked for.
      */
     private fun Contract.toEntity() = ContractEntity(
         id = id,
@@ -547,6 +624,7 @@ class ContractRepository(
         activeVehicleId = if (isOpen) vehicleId else null,
         activeRenterId = if (isOpen) renterId else null,
         endDate = endDate,
+        settledThroughDate = settledThroughDate,
     )
 
     /** Entity -> domain, for an exception. The mapping the UI never sees. */

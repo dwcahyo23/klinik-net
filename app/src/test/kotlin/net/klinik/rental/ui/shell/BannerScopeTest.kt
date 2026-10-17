@@ -161,6 +161,13 @@ class BannerScopeTest {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+            // Story 3.6's FR-9b wiring, the same no-op stance every other
+            // callback in these shell fixtures takes.
+            onOpenSettle = {},
+            onCloseSettle = {},
+            onSettleChange = { it },
+            onConfirmSettle = {},
+            onSettleErrorDismiss = {},
         ),
         // Story 3.1's destination. This file proves which *window* each message is drawn
         // in, and the settings screen has a form sheet whose banner must land inside it

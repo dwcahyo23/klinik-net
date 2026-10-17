@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
      * direct `migrate` call and fail here.
      */
     @Test
-    fun `a v1 database migrates to v7 with every table and index`() {
+    fun `a v1 database migrates to v8 with every table and index`() {
         createV1Database(withVehicle = true)
 
         val migrated = openMigrated()
@@ -200,7 +200,7 @@ class DatabaseMigrationTest {
      * was ever needed, is the failure.
      */
     @Test
-    fun `a fresh install opens at v7 without a migration`() {
+    fun `a fresh install opens at v8 without a migration`() {
         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
             .addMigrations(
                 KlinikDatabase.MIGRATION_1_2,
@@ -209,13 +209,14 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
+            KlinikDatabase.MIGRATION_7_8,
             )
             .build()
         database = fresh
 
         // Touch the database so it is actually created rather than only built.
         val sql = fresh.openHelper.readableDatabase
-        assertEquals(7, sql.version)
+        assertEquals(8, sql.version)
         assertEquals(
             listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
             columnsOf(sql, "renter"),
@@ -290,7 +291,7 @@ class DatabaseMigrationTest {
      * read as coverage of the data-loss question while providing none.
      */
     @Test
-    fun `a v2 database migrates to v7 with the widened contract table`() {
+    fun `a v2 database migrates to v8 with the widened contract table`() {
         createV2Database(withVehicleAndRenter = true)
 
         val migrated = openMigrated()
@@ -308,6 +309,9 @@ class DatabaseMigrationTest {
                 "activeVehicleId",
                 "activeRenterId",
                 "endDate",
+                // Story 3.6 appends FR-9b's marker after the v3 columns; the step that
+                // appends it has its own test.
+                "settledThroughDate",
             ),
             columnsOf(sql, "contract"),
         )
@@ -385,6 +389,7 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
+            KlinikDatabase.MIGRATION_7_8,
             )
                 .build()
                 .openHelper
@@ -491,7 +496,14 @@ class DatabaseMigrationTest {
             notNullColumnsOf(sql, "contract"),
         )
         assertEquals(
-            listOf("restDay", "activeVehicleId", "activeRenterId", "endDate"),
+            listOf(
+                "restDay", "activeVehicleId", "activeRenterId", "endDate",
+                // Story 3.6's marker is nullable for the same reason the others are: it
+                // is absent until FR-9b is used, and `DEFAULT NULL` is what makes every
+                // pre-existing row read back unset rather than failing the entity's
+                // non-null guard.
+                "settledThroughDate",
+            ),
             nullableColumnsOf(sql, "contract"),
         )
     }
@@ -517,7 +529,7 @@ class DatabaseMigrationTest {
      * through its own DAO afterwards.
      */
     @Test
-    fun `a v3 database migrates to v7 with the service_exception table`() {
+    fun `a v3 database migrates to v8 with the service_exception table`() {
         createV3Database()
 
         val migrated = openMigrated()
@@ -738,7 +750,7 @@ class DatabaseMigrationTest {
      * migration is reached at all, which is why the version is asserted first.
      */
     @Test
-    fun `a v4 database migrates to v7 with the business_account table`() {
+    fun `a v4 database migrates to v8 with the business_account table`() {
         createV4Database()
 
         val migrated = openMigrated()
@@ -1027,7 +1039,7 @@ class DatabaseMigrationTest {
     }
 
     /**
-     * `MIGRATE_6_7` — a v6 database opens at v7, every existing deposit reads back
+     * `MIGRATE_6_7` — a v6 database opens at v8, every existing deposit reads back
      * **confirmed**, and every allocation row is intact.
      *
      * ## Why the back-fill assertion is the whole test
@@ -1041,7 +1053,7 @@ class DatabaseMigrationTest {
      * does not mention, and an `ADD COLUMN` that rewrote rows would show up here first.
      */
     @Test
-    fun `a v6 database migrates to v7 with every deposit back-filled as confirmed`() {
+    fun `a v6 database migrates to v8 with every deposit back-filled as confirmed`() {
         createV6Database()
 
         val migrated = openMigrated()
@@ -1136,6 +1148,97 @@ class DatabaseMigrationTest {
             1,
             runBlocking { migrated.paymentDao().forContract("c-v3") }.size,
         )
+    }
+
+    // --------------------------------------------------------------- v7 -> v8
+
+    /**
+     * The contract table gains `settledThroughDate`, and it is the only new nullable one.
+     *
+     * Asserted through PRAGMA rather than through the entity for the reason
+     * `the migrated payment table gains both columns` gives: the entity is what Room
+     * *compiles against*, so reading it proves the compiled schema and not the file on
+     * disk — which is the only thing a migration can get wrong.
+     */
+    @Test
+    fun `the migrated contract table gains settledThroughDate`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "the column is appended after endDate, never interleaved",
+            listOf(
+                "id", "renterId", "vehicleId", "startDate", "dailyRate", "restDay",
+                "activeVehicleId", "activeRenterId", "endDate", "settledThroughDate",
+            ),
+            columnsOf(sql, "contract"),
+        )
+        assertEquals(
+            "and it joins the other nullable columns",
+            listOf(
+                "restDay", "activeVehicleId", "activeRenterId",
+                "endDate", "settledThroughDate",
+            ),
+            nullableColumnsOf(sql, "contract"),
+        )
+    }
+
+    /**
+     * Every contract that existed before the migration reads back **unset** — and the
+     * one-active pair survives.
+     *
+     * Two halves because either alone is satisfiable by a broken migration: a file that
+     * gained the column but back-filled it with a default date would pass "the column is
+     * null"-free assertions, and a file whose active columns were disturbed would fail
+     * the app before the owner saw a single row. FR-9b's whole meaning is `null` = "not
+     * settled", so a contract silently arriving as settled is the one wrong answer here.
+     */
+    @Test
+    fun `existing contracts read back unsettled and keep their active pair`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+        val contract = runBlocking { migrated.contractDao().findById("c-v3")!! }
+
+        assertNull(
+            "no settlement was ever declared, so the marker is null",
+            contract.settledThroughDate,
+        )
+        assertEquals(
+            "and an open contract still carries its own ids in the active slots",
+            "v1",
+            contract.activeVehicleId,
+        )
+        assertEquals("r-v3", contract.activeRenterId)
+        assertNull("and has not ended", contract.endDate)
+    }
+
+    /**
+     * A settlement **can** be written on the migrated file, and it survives a reopen.
+     *
+     * The migration's real deliverable, and the half a fresh `null` assertion cannot
+     * prove — a column that is present but unwritable would satisfy every test above.
+     */
+    @Test
+    fun `a contract can be settled after the migration`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+        runBlocking {
+            val stored = migrated.contractDao().findById("c-v3")!!
+            migrated.contractDao().update(
+                stored.copy(settledThroughDate = java.time.LocalDate.of(2026, 10, 14)),
+            )
+        }
+
+        val after = runBlocking { migrated.contractDao().findById("c-v3")!! }
+        assertEquals("2026-10-14", after.settledThroughDate.toString())
+        // And the settlement did not disturb the one-active pair — the columns that rule
+        // is enforced by are still holding, which is what `endDate`-free means.
+        assertEquals("v1", after.activeVehicleId)
+        assertEquals("r-v3", after.activeRenterId)
     }
 
     // ------- the v5 -> v6 tests, below; their fixture is above the 6 -> 7 one
@@ -1609,14 +1712,15 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
+            KlinikDatabase.MIGRATION_7_8,
             )
             .build()
         database = opened
 
         // Touch it so the migrations actually run before the assertions below.
         assertEquals(
-            "the file must have been migrated to v7",
-            7,
+            "the file must have been migrated to v8",
+            8,
             opened.openHelper.readableDatabase.version,
         )
         return opened

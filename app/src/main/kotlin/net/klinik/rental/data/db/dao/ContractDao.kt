@@ -20,11 +20,16 @@ import net.klinik.rental.data.db.entity.ContractEntity
  * moves rows and lets SQLite say no. `ContractRepository` is where a refusal gets
  * an exception type and an Indonesian message.
  *
- * Note what is *absent*: no `status` query and no `settledThroughDate` column.
- * `endDate IS NULL` is what "open" means, settlement is Epic 3's, and service
- * exceptions live in their own table with their own DAO — `ServiceExceptionDao` —
- * which `ContractRepository` holds alongside this one. They are per contract and
- * never per vehicle, so nothing about them can be derived from a query here.
+ * Note what is *absent*: no `status` query. `endDate IS NULL` is what "open" means,
+ * and service exceptions live in their own table with their own DAO —
+ * `ServiceExceptionDao` — which `ContractRepository` holds alongside this one. They are
+ * per contract and never per vehicle, so nothing about them can be derived from a
+ * query here.
+ *
+ * `settledThroughDate` joined this DAO in Story 3.6 as a **column on `ContractEntity`**
+ * and not as a query: FR-9b is a marker the calculation layer reads off the contract
+ * it already has in hand, so there is no separate read for it and this DAO's surface
+ * is unchanged by that story.
  *
  * ## Why the two blocking-name lookups are JOINs when the list's are not
  *

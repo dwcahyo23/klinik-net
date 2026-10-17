@@ -679,6 +679,130 @@ class KontrakScreenTest {
         )
     }
 
+    /**
+     * The settlement verb's tap reaches `onOpenSettle` **with that row's contract**.
+     *
+     * `assertExists()` and `assertHasClickAction()` are both satisfied by a control wired to
+     * `{}` — which is how Stories 3.4 and 3.5 each shipped a whole feature with no production
+     * caller. So the payload is what this asserts, and it is what a bare existence check
+     * cannot see.
+     */
+    @Test
+    fun `a row's settlement verb reaches the handler with that row`() {
+        var opened: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onOpenSettle = { opened = it })
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-settle-c1")
+            .assertExists()
+            .assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertNotNull("tapping the verb must reach the handler", opened)
+        assertEquals("and it carries the row it was on", "c1", opened!!.contract.id)
+    }
+
+    /**
+     * And the settlement verb does **not** also fire the row's own click.
+     *
+     * The same nesting hazard `the end verb does not also fire the row's own click` covers,
+     * repeated because two verbs now sit inside one clickable row and each needs its own
+     * proof. A double-fire would open the exception sheet *and* the settlement sheet — two
+     * `ModalBottomSheet` windows over one state, the exact defect Story 2.8's review found.
+     */
+    @Test
+    fun `the settlement verb does not also fire the row's own click`() {
+        var openedExceptions: ContractRow? = null
+        var openedSettle: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState(),
+                    onOpenExceptions = { openedExceptions = it },
+                    onOpenSettle = { openedSettle = it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-settle-c1")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertNotNull("the settlement handler fired", openedSettle)
+        assertNull("and only it — the row's own click did not also fire", openedExceptions)
+    }
+
+    /**
+     * An **ended** row still offers the settlement verb — the deliberate opposite of the end
+     * verb, and the one case FR-9b exists for.
+     *
+     * The day-one exit is needed most on the contracts that ended long ago with their days
+     * paid elsewhere, which are exactly the rows `an ended row offers no end verb at all`
+     * shows carry no end control. Absent the settlement verb on those rows, the app's only
+     * escape from fictional historic arrears would be unreachable exactly where it is needed.
+     */
+    @Test
+    fun `an ended row still offers the settlement verb`() {
+        val ended = stateWithOneEndedRow()
+        compose.setContent { theme { Screen(state = ended) } }
+
+        assertTrue(
+            "the ended row must keep its settlement control",
+            compose.onAllNodes(hasTestTag("kontrak-row-settle-c1")).fetchSemanticsNodes().isNotEmpty(),
+        )
+        // And the end verb is still absent there — the two are genuinely independent.
+        assertTrue(
+            "while it still has no end control",
+            compose.onAllNodes(hasTestTag("kontrak-row-end-c1")).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * An **already settled** row offers no second settlement verb, and says through which day.
+     *
+     * Absence rather than disabled, for the reason the end verb's absence is: a greyed-out
+     * "Tandai lunas" still claims the action is available, and there is nothing left for it to
+     * do — a settlement cannot be extended by settling again, it can only be edited.
+     */
+    @Test
+    fun `an already settled row offers no second verb and shows the day`() {
+        val settled = populatedState().copy(
+            rows = populatedState().rows.map { row ->
+                row.copy(settledThroughText = "24 Okt")
+            },
+        )
+        compose.setContent { theme { Screen(state = settled) } }
+
+        assertTrue(
+            "a settled row must not offer a second settlement",
+            compose.onAllNodes(hasTestTag("kontrak-row-settle-c1")).fetchSemanticsNodes().isEmpty(),
+        )
+        // And it says what it was settled through, so the absence is explained rather than
+        // merely silent. `useUnmergedTree` because the row merges its descendants — the
+        // same reason `an ended row says when it ended` uses it.
+        compose.onNodeWithTag("kontrak-row-settled-c1", useUnmergedTree = true).assertExists()
+        // And the copy is the app's own, rather than a bare date the owner would have to
+        // interpret. Counted rather than asserted singly because both rows are settled in
+        // this fixture on purpose, so a single-node assertion would be ambiguous.
+        compose.onAllNodes(hasText("Lunas s.d. 24 Okt"), useUnmergedTree = true)
+            .assertCountEquals(2)
+    }
+
+    /**
+     * And the settlement verb clears the touch floor, like every other control on this row.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the row settlement verb clears the touch floor`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag("kontrak-row-settle-c1").assertAtLeast(MIN_TARGET, "contract settle verb")
+    }
+
     // ----------------------------------------------------- the end verb on a row
 
     /**
@@ -1092,6 +1216,16 @@ class KontrakScreenTest {
         onConfirmEnd: () -> Unit = {},
         endErrorMessage: String? = null,
         onEndErrorDismiss: () -> Unit = {},
+        // Story 3.6's four, and its banner pair — same argument one layer up. `onOpenSettle`
+        // is per-test for the same reason as `onOpenEnd`: the row's settlement verb is a
+        // claim a test makes about the screen, and it is only meaningful if a test can
+        // also prove the tap reaches a handler it chose.
+        onOpenSettle: (ContractRow) -> Unit = {},
+        onCloseSettle: () -> Unit = {},
+        onSettleChange: ((SettleFormState) -> SettleFormState) -> Unit = {},
+        onConfirmSettle: () -> Unit = {},
+        settleErrorMessage: String? = null,
+        onSettleErrorDismiss: () -> Unit = {},
     ) {
         KontrakScreen(
             state = state,
@@ -1128,6 +1262,12 @@ class KontrakScreenTest {
             onConfirmEnd = onConfirmEnd,
             endErrorMessage = endErrorMessage,
             onEndErrorDismiss = onEndErrorDismiss,
+            onOpenSettle = onOpenSettle,
+            onCloseSettle = onCloseSettle,
+            onSettleChange = onSettleChange,
+            onConfirmSettle = onConfirmSettle,
+            settleErrorMessage = settleErrorMessage,
+            onSettleErrorDismiss = onSettleErrorDismiss,
         )
     }
 

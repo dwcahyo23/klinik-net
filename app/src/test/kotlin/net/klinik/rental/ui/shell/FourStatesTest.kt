@@ -474,6 +474,13 @@ class FourStatesTest {
             onEndChange = { it },
             onConfirmEnd = {},
             onEndErrorDismiss = {},
+            // Story 3.6's FR-9b wiring, the same no-op stance every other
+            // callback in these shell fixtures takes.
+            onOpenSettle = {},
+            onCloseSettle = {},
+            onSettleChange = { it },
+            onConfirmSettle = {},
+            onSettleErrorDismiss = {},
         )
     }
 
