@@ -183,12 +183,15 @@ class BannerScopeTest {
             onClose = {},
             onFormChange = { it },
             onSave = {},
+            onConfirmPreview = {},
+            onDismissPreview = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
     )
 
 }
+
 
 
 

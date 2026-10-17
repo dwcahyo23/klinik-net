@@ -238,7 +238,22 @@ internal class Screens(
         val onClose: () -> Unit,
         val onFormChange:
             ((net.klinik.rental.ui.screens.setoran.DepositFormState) -> net.klinik.rental.ui.screens.setoran.DepositFormState) -> Unit,
+        /**
+         * The pad's Save, which **computes the preview** rather than writing.
+         *
+         * Named separately from [onConfirmPreview] because the two are different acts, and
+         * the numpad reaching the write directly is the defect UX-DR10 forbids: a preview
+         * that could be skipped is a confirmation, not a preview.
+         */
         val onSave: (Long) -> Unit,
+        /**
+         * The dialog's confirm and dismiss — required, not defaulted.
+         *
+         * A default would be a confirm that silently does nothing: the owner taps
+         * "Ya, simpan" and watches nothing happen with a deposit they believe they took.
+         */
+        val onConfirmPreview: () -> Unit,
+        val onDismissPreview: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
     )
@@ -405,5 +420,7 @@ internal fun DepositHost(wiring: Screens.Deposito) {
         onClose = wiring.onClose,
         onChange = wiring.onFormChange,
         onSave = wiring.onSave,
+        onConfirmPreview = wiring.onConfirmPreview,
+        onDismissPreview = wiring.onDismissPreview,
     )
 }

@@ -6,9 +6,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -21,6 +24,7 @@ import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -258,6 +262,191 @@ class DepositSheetTest {
         compose.onNodeWithTag(accountChipTag(ACCOUNT_ID)).assertAtLeast(MIN_TARGET, "account chip")
     }
 
+    // ------------------------------------------------------ the mandatory preview
+
+    /** The dialog appears when the preview is up, and not otherwise. */
+    @Test
+    fun `the preview dialog appears only when a preview exists`() {
+        compose.setContent { theme { Sheet(state = openState()) } }
+
+        compose.onNodeWithTag(TAG_PREVIEW).assertDoesNotExist()
+    }
+
+    /**
+     * And it is up when one exists — its own test because a `ComposeTestRule` accepts
+     * exactly one `setContent` per method, and a test that draws twice fails on the
+     * harness rather than on the rule it meant to check.
+     */
+    @Test
+    fun `the dialog is up when a preview exists`() {
+        compose.setContent { theme { Sheet(state = openState().copy(preview = preview())) } }
+
+        compose.onNodeWithTag(TAG_PREVIEW).assertExists()
+    }
+
+    /**
+     * And it reads UX-DR10's **exact** format — both worked examples from the epic.
+     *
+     * Asserted on the literal strings rather than on the fields, because the format *is*
+     * the acceptance criterion: the arrow, the separator between the two day counts, and
+     * the credit's explanation are all prescribed, and a test on `arrearsLine`'s
+     * components would pass on a sentence assembled three ways.
+     */
+    @Test
+    fun `the preview reads the arrears line in the epic's exact format`() {
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = openState().copy(
+                        preview = DepositPreviewUi(
+                            arrearsLine = "Tunggakan: Rp 750.000 → Rp 250.000",
+                            closesLine = "Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)",
+                            creditLine = null,
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_PREVIEW).assertExists()
+        compose.onNodeWithTag(TAG_PREVIEW_ARREARS).assertExists()
+        compose.onNodeWithText("Tunggakan: Rp 750.000 → Rp 250.000").assertExists()
+        compose.onNodeWithText("Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)").assertExists()
+    }
+
+    /**
+     * The credit line appears with its explanation, and **only** when there is credit.
+     *
+     * Both directions, because a line that is always present stops being read and a
+     * credit that appears alone is the "mystery number" the epic forbids.
+     */
+    @Test
+    fun `a credit carries its explanation`() {
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = openState().copy(
+                        preview = DepositPreviewUi(
+                            arrearsLine = "Tunggakan: Rp 750.000 → Rp 0",
+                            closesLine = "Menutup: 3 hari",
+                            creditLine = "Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithText("Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya")
+            .assertExists()
+    }
+
+    /**
+     * And with **no** credit the line is absent entirely — not present and empty.
+     *
+     * Its own test for the harness reason [no preview means no dialog] gives, and because
+     * a line that is always present stops being read.
+     */
+    @Test
+    fun `no credit means no credit line at all`() {
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = openState().copy(
+                        preview = DepositPreviewUi(
+                            arrearsLine = "Tunggakan: Rp 750.000 → Rp 250.000",
+                            closesLine = "Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)",
+                            creditLine = null,
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_PREVIEW_CREDIT).assertDoesNotExist()
+    }
+
+    /**
+     * `PREVIEW_NO_DATES` — **no per-day date appears anywhere in the dialog.**
+     *
+     * Asserted as the absence of every date this contract could show, rather than by
+     * inspecting the type: a ledger added later as a "helpful extra" would be caught
+     * here and nowhere else, and the epic's reason for the rule is the owner's own —
+     * a figure is something they can read, a table of dates is something they must verify.
+     */
+    @Test
+    fun `the preview carries no per-day dates`() {
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = openState().copy(
+                        preview = DepositPreviewUi(
+                            arrearsLine = "Tunggakan: Rp 750.000 → Rp 250.000",
+                            closesLine = "Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)",
+                            creditLine = "Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_PREVIEW).assertExists()
+        for (date in listOf("2026-10-01", "2026-10-02", "1 Okt", "2 Okt")) {
+            assertTrue(
+                "the preview must not name the day it closes: $date",
+                compose.onAllNodes(hasText(date)).fetchSemanticsNodes().isEmpty(),
+            )
+        }
+    }
+
+    /** Confirm and dismiss reach their own handlers, separately. */
+    @Test
+    fun `the dialog confirms and dismisses through separate handlers`() {
+        var confirmed = false
+        var dismissed = false
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = openState().copy(preview = preview()),
+                    onConfirmPreview = { confirmed = true },
+                    onDismissPreview = { dismissed = true },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Ya, simpan").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertTrue("confirm reaches its own handler", confirmed)
+        assertFalse("and never the dismiss one", dismissed)
+
+        compose.onNodeWithText("Cek dulu").performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        assertTrue("dismiss reaches its own handler", dismissed)
+    }
+
+    /**
+     * The dialog's dismiss reads **"Cek dulu"**, while the sheet's own close reads
+     * "Batal" — and the two must not be swapped.
+     *
+     * Pinned because the dialog's label carries a behavioural promise: nothing is
+     * cancelled and the form is still open, so a "Batal" on *that* button would tell the
+     * owner they lost their work — the wrong story, and the reason they would press
+     * confirm instead of actually checking.
+     *
+     * The sheet's close legitimately stays "Batal": *that* one does close the sheet, and
+     * naming it "Cek dulu" there would be the mirror-image lie. Both are asserted
+     * together because the two labels are one design decision: the dialog is a look, the
+     * sheet's close is a departure.
+     */
+    @Test
+    fun `the dialog dismiss reads 'check first' and the sheet close still reads 'cancel'`() {
+        compose.setContent { theme { Sheet(state = openState().copy(preview = preview())) } }
+
+        compose.onNodeWithText("Cek dulu").assertExists()
+        // Exactly one "Batal": the sheet's own close. Two would mean the dialog had been
+        // given the wrong label.
+        compose.onAllNodes(hasText("Batal")).assertCountEquals(1)
+    }
+
     // ------------------------------------------------------------------ helpers
 
     @Composable
@@ -282,7 +471,20 @@ class DepositSheetTest {
     )
 
     /** The form `onChange` transforms, for the handler test. */
-    private fun formWith() = DepositFormState()
+    /**
+ * A preview as UX-DR10 words it, for the dialog tests.
+ *
+ * Built here rather than reused from the ViewModel tests because these tests are about
+ * the **rendering**: what the owner reads, in the exact format the epic prescribes.
+ * `SetoranViewModelTest` covers where the figures come from.
+ */
+private fun preview() = DepositPreviewUi(
+    arrearsLine = "Tunggakan: Rp 750.000 → Rp 250.000",
+    closesLine = "Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)",
+    creditLine = null,
+)
+
+private fun formWith() = DepositFormState()
 
     private fun renterOptions() = listOf(
         RenterOption(
@@ -325,12 +527,19 @@ class DepositSheetTest {
         onChange: ((DepositFormState) -> DepositFormState) -> Unit = {},
         onClose: () -> Unit = {},
         onSave: (Long) -> Unit = {},
+        // Story 3.3's dialog pair. Defaults here because this helper counts handlers
+        // rather than asserting them — `the preview` tests below pass their own, and a
+        // test that only draws the sheet has no use for a dialog decision.
+        onConfirmPreview: () -> Unit = {},
+        onDismissPreview: () -> Unit = {},
     ) {
         DepositSheet(
             state = state,
             onClose = onClose,
             onChange = onChange,
             onSave = onSave,
+            onConfirmPreview = onConfirmPreview,
+            onDismissPreview = onDismissPreview,
         )
     }
 
@@ -354,3 +563,7 @@ class DepositSheetTest {
         const val TAG_AMOUNT_FIELD = "deposito-amount-field"
     }
 }
+
+
+
+

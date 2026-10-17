@@ -381,7 +381,9 @@ private fun KlinikNetApp(
                     onOpen = setoran::openDeposit,
                     onClose = setoran::closeDeposit,
                     onFormChange = setoran::onFormChange,
-                    onSave = setoran::saveDepositAmount,
+                    onSave = setoran::previewDeposit,
+                    onConfirmPreview = setoran::confirmDeposit,
+                    onDismissPreview = setoran::dismissPreview,
                     onSnackbarDismiss = setoran::consumeMessage,
                     onErrorDismiss = setoran::consumeError,
                 ),
@@ -389,4 +391,5 @@ private fun KlinikNetApp(
         )
     }
 }
+
 

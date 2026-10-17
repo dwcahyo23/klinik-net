@@ -171,6 +171,13 @@ data class AccountOption(
  * @param successMessage the confirmation for a deposit that landed, drawn **inside** the
  *   sheet — the screen's banner lives in a different window and would be invisible while
  *   this is up.
+ * @param preview the mandatory preview, or `null` when none is up.
+ *
+ *   **Non-null is what makes saving possible, not a decoration.** The ViewModel's
+ *   `confirmDeposit` refuses when this is `null`, so the preview cannot be skipped by any
+ *   path — not by a dismissed dialog, not by a caller reaching the sheet directly, and not
+ *   by a future screen that forgets to mount it. That is what UX-DR10's *"pratinjau wajib,
+ *   bukan opsional"* means in code rather than in a comment.
  */
 data class SetoranUiState(
     val form: DepositFormState? = null,
@@ -178,8 +185,42 @@ data class SetoranUiState(
     val accountOptions: List<AccountOption> = emptyList(),
     val errorMessage: String? = null,
     val successMessage: String? = null,
+    val preview: DepositPreviewUi? = null,
     val isLoading: Boolean = false,
 ) {
     /** The sheet is up. */
     val isOpen: Boolean get() = form != null
+
+    /** The preview dialog is up. Separate from [isOpen]: both windows are open at once. */
+    val isPreviewing: Boolean get() = preview != null
 }
+
+/**
+ * The preview, **already formatted**, for a dialog that renders text and never figures.
+ *
+ * ## Why the strings live here and not in the composable
+ *
+ * Because the alternative is a dialog that calls `formatRupiah` per recomposition, and a
+ * money figure assembled in two places is a money figure that can differ in two places. The
+ * ViewModel builds these once, with the same `formatRupiah` every other surface uses.
+ *
+ * ## Why there is no per-day date anywhere in this type
+ *
+ * The acceptance criterion forbids it — *"tidak ada tanggal per-hari"* — and the reason is
+ * the owner's actual question: they want to know whether the figure *looks right*, and a
+ * table of dates is something they have to verify rather than something they can read. The
+ * per-day audit still exists, in the deposit history; this type deliberately has no field
+ * to put a date in, so the ledger cannot creep back as a "helpful" extra.
+ *
+ * @property creditLine the explanation-carrying sentence, or `null` when there is no
+ *   credit. `null` rather than a "Kredit: Rp 0" line, because a zero credit is not news
+ *   and a line that always appears stops being read. See `DepositPreview.hasCredit`.
+ */
+data class DepositPreviewUi(
+    /** `Tunggakan: Rp 750.000 → Rp 250.000` — the arrow is the whole point. */
+    val arrearsLine: String,
+    /** `Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)`, or just `Menutup: 3 hari`. */
+    val closesLine: String,
+    /** `Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya`, or `null`. */
+    val creditLine: String?,
+)

@@ -58,7 +58,7 @@ development_status:
   epic-3: in-progress
   3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: done
   3-2-mencatat-setoran-dengan-numpad: done
-  3-3-melihat-pratinjau-sebelum-menyimpan: backlog
+  3-3-melihat-pratinjau-sebelum-menyimpan: done
   3-4-membatalkan-setoran-dengan-alasan: backlog
   3-5-mengoreksi-setoran-yang-salah-input: backlog
   3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: backlog
@@ -81,6 +81,7 @@ development_status:
   5-5-mengingat-kalau-backup-belum-dibuat: backlog
   5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
   epic-5-retrospective: optional
+
 
 
 

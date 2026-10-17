@@ -701,5 +701,36 @@
     <string name="deposito_error_no_contract">Penyewa ini belum punya kontrak aktif, jadi tidak ada yang bisa ditagih. Akhiri atau buka kontraknya dulu.</string>
     <string name="deposito_error_amount_zero">Nominalnya belum diisi.</string>
     <string name="deposito_error_unexpected">Gagal menyimpan setoran. Coba lagi.</string>
+
+    <!--
+      Story 3.3 — Pratinjau sebelum menyimpan.
+
+      UX-DR10 fixes this format **exactly**, down to the arrow, and the arrow is
+      the point: two numbers side by side make the *change* legible without the
+      owner doing arithmetic. Each line is one parameterised shape, so there is
+      one wording per case rather than a sentence assembled per screen.
+
+      The credit line exists only when there is credit — see
+      `DepositPreviewUi.creditLine`, which is null rather than "Kredit: Rp 0",
+      because a line that always appears stops being read.
+    -->
+    <string name="deposito_preview_title">Simpan setoran ini?</string>
+    <!-- `%1$s` before, `%2$s` after. -->
+    <string name="deposito_preview_arrears">Tunggakan: %1$s → %2$s</string>
+    <!-- With days remaining: "Menutup: %1$d hari · Sisa: %2$d hari (%3$s)". -->
+    <string name="deposito_preview_closes_with_remainder">Menutup: %1$d hari · Sisa: %2$d hari (%3$s)</string>
+    <!-- Nothing left open: "Menutup: %1$d hari". -->
+    <string name="deposito_preview_closes_only">Menutup: %1$d hari</string>
+    <!--
+      The credit line, with its explanation inline. The epic context is explicit
+      that a credit must never appear as a mystery number, so the reason it
+      carries is part of the sentence rather than a second line.
+    -->
+    <string name="deposito_preview_credit">Kredit: %1$s — dipakai otomatis untuk periode berikutnya</string>
+    <string name="deposito_preview_confirm">Ya, simpan</string>
+    <string name="deposito_preview_dismiss">Cek dulu</string>
+    <!-- The preview could not be computed — said plainly, and the save stays blocked. -->
+    <string name="deposito_error_preview_failed">Pratinjau tidak bisa dihitung. Coba buka ulang formnya.</string>
 </resources>
+
 

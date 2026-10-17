@@ -10,10 +10,12 @@ import net.klinik.rental.data.db.dao.PaymentDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.SettingDao
 import net.klinik.rental.data.db.entity.AllocationEntity
+import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.PaymentEntity
 import net.klinik.rental.domain.calculate.ChargeSchedule
 import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.domain.calculate.allocatePayments
+import net.klinik.rental.domain.calculate.arrearsOf
 import net.klinik.rental.domain.calculate.chargeDaysIn
 import net.klinik.rental.domain.model.Allocation
 import net.klinik.rental.domain.model.Payment
@@ -97,46 +99,11 @@ class PaymentRepository(
         asOf: LocalDate,
     ) {
         inTransaction {
-            // 1. The stored contract, for its frozen rate, its period and its schedule.
-            //    Read rather than taken from the caller: a `Contract` handed in may be
-            //    stale, and a rate re-derived from the vehicle would reprice a running
-            //    rental.
-            val contract = contractDao.findById(contractId)
-                ?: throw UnknownContractException(contractId)
-
-            // 2. The cutoff day, with the default supplied on read. A fresh install has
-            //    no settings row at all and must still record a deposit.
-            val cutoffDay = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
-
-            // 3. The charge days this contract owes in the current period, with its
-            //    stored exceptions applied. `contractEnd` comes from the row, so an ended
-            //    contract stops producing days without this class knowing.
-            val chargeDays = chargeDaysIn(
-                period = CutoffPeriod.containing(cutoffDay, asOf),
-                schedule = ChargeSchedule(
-                    contractStart = contract.startDate,
-                    restDay = contract.restDay,
-                    serviceExceptions = storedExceptions(contract.id),
-                    contractEnd = contract.endDate,
-                ),
-                asOf = asOf,
-            )
-
-            // 4. The payment and everything already recorded, allocated **together**.
-            val existing = paymentDao.forContract(contract.id).map { it.toDomain() }
-            val allRows = allocatePayments(
-                payments = existing + payment,
-                chargeDays = chargeDays,
-                dailyRate = contract.dailyRate,
-                asOf = asOf,
-            )
-            // Only the **new** deposit's rows are written. The allocator returns a row per
-            // payment, so `allRows` also covers the ones already stored — and inserting
-            // those again collides with `UNIQUE(paymentId, chargeDate)`, which is the
-            // constraint doing its job. The earlier deposits' placements are already
-            // correct on disk and are re-derived here only to *place the new money*, never
-            // to rewrite history.
-            val newRows = allRows.filter { it.paymentId == payment.id }
+            // 1-4. Read and allocate — the same call the preview makes. See
+            //    [previewAllocation]: one function, two callers, is what makes "the
+            //    preview cannot disagree with the save" a property of the code rather
+            //    than a property of a test.
+            val computed = previewAllocation(contractId, payment, asOf)
 
             // 5. The deposit itself, then its allocation rows.
             paymentDao.insertPayment(
@@ -149,16 +116,156 @@ class PaymentRepository(
                     method = method.name,
                     referenceNo = referenceNo,
                     notes = notes,
-                    // Distinct from `payment.date`: the owner may date a deposit in the
-                    // past for a correction while this records when they actually typed it.
+                    // Distinct from `payment.date`: the owner may date a deposit in
+                    // the past for a correction while this records when they typed it.
                     createdAt = Instant.now(),
                 ),
             )
-            newRows.forEach { row ->
+            computed.newRows.forEach { row ->
                 allocationDao.insertAllocation(row.toEntity(contractId))
             }
         }
     }
+
+    /**
+     * What a deposit *would* do, computed without writing anything.
+     *
+     * ## Why this exists as its own method
+     *
+     * Story 3.3's AC: *"pratinjau dihitung dengan mesin yang tidak menulis apa pun — dia
+     * murni membaca, sehingga kalkulasi pratinjau dan kalkulasi penyimpanan tidak mungkin
+     * berbeda"*. "Tidak mungkin berbeda" — *cannot* differ — is the requirement, and it is
+     * met structurally: [previewAllocation] is the one function both this and
+     * [saveDeposit] call. A second implementation, kept in step by hand, would satisfy a
+     * test and not the requirement.
+     *
+     * ## Why it opens no transaction
+     *
+     * Nothing is written, so there is nothing to isolate. A transaction here would buy
+     * nothing and cost something real: `withTransaction` asserts it is not on the main
+     * thread, which would make the preview untestable under the `StandardTestDispatcher`
+     * the ViewModel tests use.
+     *
+     * @throws UnknownContractException when nobody holds [contractId].
+     */
+    suspend fun previewDeposit(
+        contractId: String,
+        payment: Payment,
+        asOf: LocalDate,
+    ): DepositPreview {
+        val computed = previewAllocation(contractId, payment, asOf)
+        val contract = computed.contract
+
+        // Arrears *before*: the contract as it stands, with its stored deposits.
+        val before = arrearsOf(
+            contractId = contractId,
+            chargeDays = computed.chargeDays,
+            allocations = computed.existingRows,
+            dailyRate = contract.dailyRate,
+        )
+        // And *after*: the same list, with what the new deposit would place added.
+        val after = arrearsOf(
+            contractId = contractId,
+            chargeDays = computed.chargeDays,
+            allocations = computed.existingRows + computed.newRows,
+            dailyRate = contract.dailyRate,
+        )
+        return DepositPreview(
+            arrearsBefore = before.amount,
+            arrearsAfter = after.amount,
+            daysClosed = before.days - after.days,
+            daysRemaining = after.days,
+            // The credit is not a number the deposit *might* leave behind: it is the
+            // `chargeDate = null` row the allocator produced, so it is read back rather
+            // than computed as "amount − what was owed" — a second derivation of the
+            // same fact, and the one that could disagree with the rows on disk.
+            credit = computed.newRows.filter { it.chargeDate == null }.sumOf { it.amount },
+        )
+    }
+
+    /**
+     * Reads everything a deposit needs and allocates it — **writing nothing**.
+     *
+     * ## Why this is extracted, and why it is private
+     *
+     * It is the read-and-allocate half of [saveDeposit] as Story 3.2 wrote it: the
+     * contract, the cutoff day, the exceptions, the charge days, the stored deposits, and
+     * `allocatePayments` over all of them. Story 3.3's preview needs exactly those steps
+     * and **not** the two writes, so the two callers diverge at the last line rather than
+     * re-deriving the arithmetic.
+     *
+     * Private because it is not a useful public verb: a caller wanting only the charge
+     * days, or only the rows, would be able to skip the allocation and get an answer
+     * that disagrees with what a save would do. One entry point per question.
+     *
+     * ## Why it returns the existing rows as well as the new ones
+     *
+     * The preview needs **both** — the before-arrears is computed over the stored
+     * allocations alone, and the after over those plus the new. Returning only the new rows
+     * would force the caller to read them again, and a second read is a second snapshot.
+     */
+    private suspend fun previewAllocation(
+        contractId: String,
+        payment: Payment,
+        asOf: LocalDate,
+    ): ComputedAllocation {
+        // 1. The stored contract, for its frozen rate, its period and its schedule.
+        //    Read rather than taken from the caller: a `Contract` handed in may be
+        //    stale, and a rate re-derived from the vehicle would reprice a running
+        //    rental.
+        val contract = contractDao.findById(contractId)
+            ?: throw UnknownContractException(contractId)
+
+        // 2. The cutoff day, with the default supplied on read. A fresh install has no
+        //    settings row at all and must still record a deposit.
+        val cutoffDay = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
+
+        // 3. The charge days this contract owes in the current period, with its stored
+        //    exceptions applied. `contractEnd` comes from the row, so an ended contract
+        //    stops producing days without this class knowing.
+        val chargeDays = chargeDaysIn(
+            period = CutoffPeriod.containing(cutoffDay, asOf),
+            schedule = ChargeSchedule(
+                contractStart = contract.startDate,
+                restDay = contract.restDay,
+                serviceExceptions = storedExceptions(contract.id),
+                contractEnd = contract.endDate,
+            ),
+            asOf = asOf,
+        )
+
+        // 4. The payment and everything already recorded, allocated **together**.
+        val existing = paymentDao.forContract(contract.id).map { it.toDomain() }
+        val allRows = allocatePayments(
+            payments = existing + payment,
+            chargeDays = chargeDays,
+            dailyRate = contract.dailyRate,
+            asOf = asOf,
+        )
+        return ComputedAllocation(
+            contract = contract,
+            chargeDays = chargeDays,
+            // The stored deposits' own allocations, re-derived rather than read back:
+            // `allocatePayments` regenerates every payment's rows from the payment list,
+            // so these are the same rows the last save wrote, and reading them from the
+            // database instead would make the preview's "before" disagree with the save
+            // the moment history and re-derivation ever drift.
+            existingRows = allRows.filter { it.paymentId != payment.id },
+            // Only the **new** deposit's rows. The allocator returns a row per payment,
+            // so `allRows` also covers the stored ones — and inserting those again
+            // collides with `UNIQUE(paymentId, chargeDate)`, which is the constraint
+            // doing its job.
+            newRows = allRows.filter { it.paymentId == payment.id },
+        )
+    }
+
+    /** What one allocation pass produced. Private, like the function that builds it. */
+    private data class ComputedAllocation(
+        val contract: ContractEntity,
+        val chargeDays: List<LocalDate>,
+        val existingRows: List<Allocation>,
+        val newRows: List<Allocation>,
+    )
 
     /** Every deposit on one contract, as domain values. */
     suspend fun paymentsFor(contractId: String): List<Payment> =
@@ -253,3 +360,43 @@ enum class PaymentMethod {
 /** Thrown when a deposit names a contract nobody holds. */
 class UnknownContractException(val contractId: String) :
     IllegalStateException("no contract with id $contractId")
+
+/**
+ * What a deposit would do, in whole rupiah and whole days.
+ *
+ * ## Why these are plain figures and not dates
+ *
+ * The acceptance criterion forbids a per-day ledger here, and the reason is the owner's
+ * actual question: they want to know whether the figure *looks right*, and a table of dates
+ * is something they have to verify rather than something they can read. The per-day audit
+ * still exists — in the deposit history — and this type deliberately has no field to put a
+ * date in, so the ledger cannot creep back in as a "helpful" extra.
+ *
+ * ## Why [credit] is read from the allocator's own output
+ *
+ * Because credit is the `chargeDate = null` allocation row (AD-3), not "the amount that did
+ * not fit". Deriving it as `amount − what was owed` would be a second derivation of a fact
+ * the rows already hold, and a second derivation is a second thing that can be wrong.
+ */
+data class DepositPreview(
+    /** Arrears in whole rupiah before this deposit lands. */
+    val arrearsBefore: Long,
+    /** And after. The pair is the whole point — the AC's format is `before → after`. */
+    val arrearsAfter: Long,
+    /** How many charge days this deposit closes. */
+    val daysClosed: Int,
+    /** How many remain open afterwards. */
+    val daysRemaining: Int,
+    /**
+     * Money with no day left to sit on, in whole rupiah.
+     *
+     * Zero is a real value here — it means "this deposit closed days and left nothing" —
+     * and the preview **omits the credit line entirely** at zero rather than showing
+     * `Kredit: Rp 0`, because a zero credit is not news and a line that always appears
+     * stops being read.
+     */
+    val credit: Long,
+) {
+    /** Whether a credit line is warranted at all. See [credit]. */
+    val hasCredit: Boolean get() = credit > 0L
+}

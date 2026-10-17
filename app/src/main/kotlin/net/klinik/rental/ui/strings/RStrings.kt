@@ -503,4 +503,82 @@ class RStrings(private val context: Context) {
      */
     fun depositoErrorUnexpected(): String =
         context.getString(R.string.deposito_error_unexpected)
+
+    // -------------------------------------------------------------- Story 3.3
+
+    /**
+     * `Tunggakan: Rp 750.000 → Rp 250.000`.
+     *
+     * Takes two **already-formatted** figures. The arrow is the whole point of UX-DR10's
+     * format: two numbers side by side make the *change* legible without the owner doing
+     * arithmetic, and a sentence assembled per screen is a second place for a rupiah
+     * figure to be spelled differently.
+     */
+    fun depositoPreviewArrears(before: String, after: String): String =
+        context.getString(R.string.deposito_preview_arrears, before, after)
+
+    /**
+     * The "closes" line, in whichever of its two shapes fits.
+     *
+     * Two strings rather than one with an optional fragment, because the epic's format has
+     * two genuinely different sentences — `Menutup: 2 hari · Sisa: 1 hari (Rp 250.000)`
+     * and `Menutup: 3 hari` — and bolting a fragment onto the second would leave a dangling
+     * separator when nothing remains to say.
+     */
+    fun depositoPreviewCloses(daysClosed: Int, daysRemaining: Int, remainingAmount: String): String =
+        context.getString(
+            R.string.deposito_preview_closes_with_remainder,
+            daysClosed,
+            daysRemaining,
+            remainingAmount,
+        )
+
+    /** The no-remainder form. See [depositoPreviewCloses]. */
+    fun depositoPreviewClosesOnly(daysClosed: Int): String =
+        context.getString(R.string.deposito_preview_closes_only, daysClosed)
+
+    /**
+     * `Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya`.
+     *
+     * The explanation is **inline in the sentence**, not a second line. The epic context
+     * is explicit that a credit must never appear as a mystery number, and a number on
+     * one line with its reason on the next is two things to read where one is enough —
+     * on a sheet the owner reads standing up.
+     */
+    fun depositoPreviewCredit(credit: String): String =
+        context.getString(R.string.deposito_preview_credit, credit)
+
+    /**
+     * The dialog's title.
+     *
+     * A question rather than a heading, because the answer is not assumed: the owner may
+     * go back with "Cek dulu" rather than confirm.
+     */
+    fun depositoPreviewTitle(): String =
+        context.getString(R.string.deposito_preview_title)
+
+    /**
+     * The confirm, and the dismiss.
+     *
+     * The dismiss reads **"Cek dulu"** — "let me check first" — rather than "Batal"
+     * (cancel). Nothing is cancelled: the form is still open with its amount, and the
+     * owner has not abandoned anything. A dismiss label that says "cancel" tells them
+     * they lost their work, which is the wrong story and the reason they would press
+     * confirm instead of looking.
+     */
+    fun depositoPreviewConfirm(): String =
+        context.getString(R.string.deposito_preview_confirm)
+
+    fun depositoPreviewDismiss(): String =
+        context.getString(R.string.deposito_preview_dismiss)
+
+    /**
+     * A preview that could not be computed.
+     *
+     * Said plainly and **without offering a save anyway** — the epic context is explicit
+     * that a preview showing the wrong thing is worse than no preview, so when the
+     * computation fails the right outcome is to say so and leave the form open.
+     */
+    fun depositoErrorPreviewFailed(): String =
+        context.getString(R.string.deposito_error_preview_failed)
 }

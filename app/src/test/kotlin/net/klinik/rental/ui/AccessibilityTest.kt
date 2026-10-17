@@ -741,6 +741,10 @@ class AccessibilityTest {
             onClose = {},
             onFormChange = { it },
             onSave = {},
+            // Story 3.3's dialog pair. Required on the real wiring; stated here so this
+            // fixture keeps walking every interactive node the shell can draw.
+            onConfirmPreview = {},
+            onDismissPreview = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
@@ -837,3 +841,4 @@ class AccessibilityTest {
 
     }
 }
+

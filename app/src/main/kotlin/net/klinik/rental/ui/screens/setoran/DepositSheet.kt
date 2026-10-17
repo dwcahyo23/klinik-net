@@ -29,6 +29,7 @@ import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
+import net.klinik.rental.ui.components.KnModal
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.theme.knColors
@@ -68,6 +69,8 @@ fun DepositSheet(
     onClose: () -> Unit,
     onChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSave: (Long) -> Unit,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -241,11 +244,12 @@ fun DepositSheet(
 
             // ---- the numpad.
             //
-            // `onSave` goes straight to the handler, so the pad's own zero/negative
-            // refusal — a red flash, which is an *event* and cannot be derived from the
-            // digits — happens before the ViewModel is asked to write anything. That is
-            // why the sheet does not pre-check the amount itself: the pad already does,
-            // and a second check would produce two different answers for one keystroke.
+            // `onSave` goes to the handler that **computes the preview**, not to the one
+            // that writes. That is the whole reason the preview is mandatory: the pad
+            // has no other exit, so the dialog is the only way forward. The pad's own
+            // zero/negative refusal — a red flash, an *event* that changes no state and
+            // cannot be derived from the digits — happens before either, which is why
+            // the sheet does not pre-check the amount itself.
             KnNumPad(
                 value = form.amountDigits,
                 onValueChange = { digits -> onChange { it.copy(amountDigits = digits) } },
@@ -261,6 +265,53 @@ fun DepositSheet(
             )
         }
     }
+
+    // The mandatory preview, as a dialog over the sheet.
+    //
+    // Mounted **outside** the `ModalBottomSheet` and after it, so it composes in a
+    // separate window above rather than inside the sheet's own column — a `KnModal`
+    // nested in a `ModalBottomSheet`'s content would be two windows in one composable,
+    // which is the shape Story 2.8's review found as its only `high`.
+    //
+    // Both handlers are **required**, not defaulted. A default would be a confirm that
+    // silently does nothing, and the owner would tap "Ya, simpan" and watch nothing
+    // happen with a deposit they believe they took.
+    state.preview?.let { preview ->
+        KnModal(
+            visible = true,
+            onDismissRequest = onDismissPreview,
+            title = stringResource(R.string.deposito_preview_title),
+            confirmLabel = stringResource(R.string.deposito_preview_confirm),
+            onConfirm = onConfirmPreview,
+            // "Cek dulu" rather than "Batal": nothing is cancelled. The form is still
+            // open with its amount, and a label saying "cancel" tells the owner they lost
+            // their work — which is the wrong story, and the reason they would press
+            // confirm instead of actually checking.
+            dismissLabel = stringResource(R.string.deposito_preview_dismiss),
+            onDismiss = onDismissPreview,
+            modifier = Modifier.testTag(TAG_PREVIEW),
+        ) {
+            // Three lines, no per-day dates. The epic context is explicit that the
+            // ledger lives in the deposit history and not here, and the format below is
+            // its own sentence for each shape.
+            PreviewLine(preview.arrearsLine, Modifier.testTag(TAG_PREVIEW_ARREARS))
+            PreviewLine(preview.closesLine, Modifier.testTag(TAG_PREVIEW_CLOSES))
+            // Null rather than an empty line, so a deposit that left no credit shows no
+            // `Kredit:` line at all — a line that is always present stops being read.
+            preview.creditLine?.let { PreviewLine(it, Modifier.testTag(TAG_PREVIEW_CREDIT)) }
+        }
+    }
+}
+
+/** One preview line. A `Text`, because these are sentences rather than figures. */
+@Composable
+private fun PreviewLine(text: String, modifier: Modifier = Modifier) {
+    Text(
+        text = text,
+        style = MaterialTheme.knTypography.body,
+        color = MaterialTheme.knColors.textPrimary,
+        modifier = modifier,
+    )
 }
 
 /** The renter picker: a wrapped row of chips, one per renter. */
@@ -382,5 +433,9 @@ internal const val TAG_REFERENCE = "deposito-reference"
 internal const val TAG_NOTES = "deposito-notes"
 internal const val TAG_NUMPAD = "deposito-numpad"
 internal const val TAG_DEPOSIT_CANCEL = "deposito-cancel"
+internal const val TAG_PREVIEW = "deposito-preview"
+internal const val TAG_PREVIEW_ARREARS = "deposito-preview-arrears"
+internal const val TAG_PREVIEW_CLOSES = "deposito-preview-closes"
+internal const val TAG_PREVIEW_CREDIT = "deposito-preview-credit"
 internal const val TAG_DEPOSIT_ERROR = "deposito-error"
 internal const val TAG_DEPOSIT_SUCCESS = "deposito-success"

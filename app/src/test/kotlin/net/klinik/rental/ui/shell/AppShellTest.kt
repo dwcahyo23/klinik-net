@@ -447,10 +447,16 @@ class AppShellTest {
             onClose = {},
             onFormChange = { it },
             onSave = {},
+            // Story 3.3's dialog pair. Required rather than defaulted on the real
+            // wiring, and stated here for the same reason — a default would be a
+            // confirm that silently does nothing.
+            onConfirmPreview = {},
+            onDismissPreview = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
     )
 }
+
 
 
