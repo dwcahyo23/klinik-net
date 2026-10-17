@@ -3,6 +3,7 @@ package net.klinik.rental.ui.screens.setoran
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.model.Renter
+import java.time.LocalDate
 
 /**
  * The deposit form's own state, held by the ViewModel.
@@ -29,6 +30,15 @@ import net.klinik.rental.domain.model.Renter
  * prevent.
  */
 data class DepositFormState(
+    /**
+     * The stored deposit this form is correcting, or `null` for a new one.
+     *
+     * Non-null is the whole of "editing" — see [isEditing]. It is the id rather than a
+     * boolean because a boolean is a second thing that can disagree with the row: a form
+     * that says it is editing while carrying no id cannot be written back, and one that
+     * carries an id while saying it is new would insert a second deposit.
+     */
+    val paymentId: String? = null,
     val renterId: String? = null,
     val renterName: String = "",
     /**
@@ -41,6 +51,15 @@ data class DepositFormState(
     val vehiclePlate: String = "",
     /** `formatRupiah(contract.dailyRate)` — see the class KDoc. */
     val rateText: String = "",
+    /**
+     * When the money arrived, as a billing fact.
+     *
+     * Carried by the form rather than read from the clock at save time, and that is what
+     * makes the picker work: an owner dating a deposit back to Sunday needs the save to use
+     * *that* Sunday. `openDeposit` seeds it with the ViewModel's clock, so "today" on a new
+     * form is the same today the allocation uses.
+     */
+    val date: LocalDate,
     /** What the owner has typed on the numpad. See the class KDoc. */
     val amountDigits: String = "0",
     val method: PaymentMethod = PaymentMethod.TransferBank,
@@ -50,6 +69,16 @@ data class DepositFormState(
     val accountError: String? = null,
     val amountError: String? = null,
 ) {
+    /**
+     * Whether this form corrects a stored deposit rather than recording a new one.
+     *
+     * The single source of "editing" for the whole sheet: the title, the method chips' lock
+     * and `SetoranViewModel`'s choice of write path all read it. A separate flag would be a
+     * second thing that can disagree with the id — which is what makes
+     * `correcting a cash deposit as a transfer` expressible.
+     */
+    val isEditing: Boolean get() = paymentId != null
+
     /** Whether a renter's open contract has been found, and what is being paid. */
     val hasContract: Boolean get() = contractId != null
 
@@ -84,17 +113,35 @@ data class DepositFormState(
  * reverse — choosing a bank, switching to cash, and saving with the account silently
  * retained — would file a cash payment against a bank it never touched, which is exactly
  * the "no external source can verify this" case the method exists to distinguish.
+ *
+ * ## Why a correction refuses here, before the chips are even drawn
+ *
+ * The epic's rule is that payment method **cannot** be corrected — repairing a method means
+ * cancelling and recording again. This is the second of two refusals, and the earlier one:
+ * the sheet draws its chips disabled, so an owner who never finds the disabled state still
+ * cannot change the value. The repository's absence of a `method` parameter is the third,
+ * and the only one a caller cannot route around.
  */
-fun DepositFormState.setMethod(method: PaymentMethod): DepositFormState = if (method == this.method) {
-    this
-} else {
-    copy(
-        method = method,
-        accountId = null,
-        accountError = null,
-        referenceNo = "",
-    )
-}
+fun DepositFormState.setMethod(method: PaymentMethod): DepositFormState =
+    if (isEditing || method == this.method) {
+        this
+    } else {
+        copy(
+            method = method,
+            accountId = null,
+            accountError = null,
+            referenceNo = "",
+        )
+    }
+
+/**
+ * Applies a date correction.
+ *
+ * A bare `copy` rather than a transform that also clears something: the date has no error
+ * of its own in this story — an impossible date is refused by the calendar itself — so a
+ * second state field beside it would be a field nothing ever assigns.
+ */
+fun DepositFormState.setDate(date: LocalDate): DepositFormState = copy(date = date)
 
 /** Applies a renter, clearing the errors on the fields the new contract replaces. */
 fun DepositFormState.selectRenter(renter: Renter?, contract: DepositContract?): DepositFormState {

@@ -119,6 +119,17 @@ fun KnBadge(
  *   request to a Material `Surface`; exposing the source is the only way to
  *   exercise the real component's focus path rather than a bare `Box` wearing the
  *   same modifier. Defaults to an internal instance, so callers never need it.
+ * @param enabled defaults to `true` — a chip is a filter toggle, and a filter that
+ *   cannot be toggled is a different component. It exists for the one case where the
+ *   chip is on screen **to state a fact rather than to offer a choice**: the deposit
+ *   sheet's payment-method row during a correction, which the epic forbids changing.
+ *
+ *   A disabled chip here rather than a guarded `onClick`, because a control that
+ *   renders live, keeps its 48dp target and its selected tint, and then ignores the
+ *   tap is indistinguishable from a broken app — the exact defect `Screens.Kontrak`'s
+ *   KDoc exists to prevent. `Surface(enabled = false)` also drops the click action
+ *   from the semantics tree, so a screen reader announces the fact rather than
+ *   inviting an action that would not happen.
  */
 @Composable
 fun KnChip(
@@ -129,6 +140,7 @@ fun KnChip(
     count: Int? = null,
     leadingIcon: ImageVector? = null,
     interactionSource: MutableInteractionSource? = null,
+    enabled: Boolean = true,
 ) {
     val kn = MaterialTheme.knColors
     val selectedContainer = MaterialTheme.knColors.primaryFill
@@ -147,6 +159,11 @@ fun KnChip(
 
     androidx.compose.material3.Surface(
         onClick = onClick,
+        // The disabled chip keeps its own colours rather than Material's alpha: this app
+        // has no disabled token, and fading the label is a contrast decision made without
+        // one. What tells the owner the row is fixed is the *absence* of the click action,
+        // which `Surface` makes real rather than simulated.
+        enabled = enabled,
         modifier = modifier
             .minTouchTarget()
             .focusRing(focused, MaterialTheme.knRadii.full)

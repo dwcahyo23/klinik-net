@@ -8,11 +8,14 @@ import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
-import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertIsSelected
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -30,6 +33,7 @@ import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 /**
  * Robolectric render of the **real** deposit sheet.
@@ -145,6 +149,7 @@ class DepositSheetTest {
             form = DepositFormState(
                 renterId = RENTER_NO_CONTRACT,
                 renterName = "Agus Prasetyo",
+                date = TEST_DATE,
             ),
         )
         compose.setContent { theme { Sheet(state = noContract) } }
@@ -447,6 +452,135 @@ class DepositSheetTest {
         compose.onAllNodes(hasText("Batal")).assertCountEquals(1)
     }
 
+    // ------------------------------------------------------ Story 3.5: correcting
+
+    /**
+     * The title says the sheet is **correcting**, not recording.
+     *
+     * Asserted because the two are indistinguishable otherwise: both forms carry a renter, a
+     * rate, a numpad and a Save, and an owner who cannot tell them apart cannot tell whether
+     * Save will record a second deposit.
+     */
+    @Test
+    fun `in edit mode the title reads Koreksi Setoran`() {
+        compose.setContent { theme { Sheet(state = editingState()) } }
+
+        compose.onNodeWithText("Koreksi Setoran").assertExists()
+        compose.onNodeWithText("Catat Setoran").assertDoesNotExist()
+    }
+
+    /**
+     * The method chips are **disabled** while correcting — not merely guarded.
+     *
+     * The negative half is the claim: `KnChip`'s `enabled = false` is what removes the click
+     * action from the semantics tree, so a chip that renders live, keeps its 48dp target and
+     * its selected tint while ignoring the tap is a control that reads as broken. A guarded
+     * `onClick` would pass every other assertion in this file and still ship that.
+     */
+    @Test
+    fun `in edit mode the method chips are disabled`() {
+        compose.setContent { theme { Sheet(state = editingState()) } }
+
+        compose.onNodeWithTag(TAG_METHOD_TRANSFER).assertExists().assertIsNotEnabled()
+        compose.onNodeWithTag(TAG_METHOD_CASH).assertExists().assertIsNotEnabled().assertIsSelected()
+    }
+
+    /** And on a **new** deposit they are live, so the pair proves the lock is conditional. */
+    @Test
+    fun `on a new deposit the method chips are enabled`() {
+        compose.setContent { theme { Sheet(state = openState()) } }
+
+        compose.onNodeWithTag(TAG_METHOD_TRANSFER).assertExists().assertIsEnabled()
+        compose.onNodeWithTag(TAG_METHOD_CASH).assertExists().assertIsEnabled()
+    }
+
+    /**
+     * The date picker's **confirm** stores the day the dialog was seeded on.
+     *
+     * This is the round-trip the `DepositSheet`'s own KDoc names as "the classic off-by-one":
+     * `selectedDateMillis` is UTC midnight for the picked calendar day, read back through the
+     * same UTC offset it was written with. Converting through the device zone instead would
+     * move the date by a day for anyone west of Greenwich.
+     *
+     * The confirm is **clicked** rather than merely asserted to exist. `assertExists()` cannot
+     * tell a handler wired to the conversion from one wired to nothing, and
+     * `ContractFormSheetTest.confirming the date dialog stores the picked day unchanged` is the
+     * in-repo precedent for exactly that hole.
+     */
+    @Test
+    fun `confirming the date dialog stores the picked day unchanged`() {
+        var latest: DepositFormState? = null
+        val seedDate = LocalDate.of(2026, 10, 5)
+        val state = openState().copy(
+            form = openState().form!!.copy(date = seedDate),
+        )
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = state,
+                    onChange = { transform -> latest = transform(latest ?: state.form!!) },
+                )
+            }
+        }
+
+        // Through the field's trailing calendar affordance — the field itself is disabled,
+        // so it takes no click of its own.
+        compose.onNodeWithContentDescription("Pilih tanggal setteran masuk")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithTag(TAG_DEPOSIT_DATE_DIALOG).assertExists()
+
+        compose.onNodeWithTag(TAG_DEPOSIT_DATE_CONFIRM)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals(
+            "the confirm must store the day the dialog was seeded on",
+            seedDate,
+            latest?.date,
+        )
+    }
+
+    /** Dismissing the calendar closes it and leaves the stored date alone. */
+    @Test
+    fun `dismissing the date dialog leaves the field untouched`() {
+        var latest: DepositFormState? = null
+        val seedDate = LocalDate.of(2026, 10, 5)
+        val state = openState().copy(form = openState().form!!.copy(date = seedDate))
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = state,
+                    onChange = { transform -> latest = transform(latest ?: state.form!!) },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Pilih tanggal setteran masuk")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithTag(TAG_DEPOSIT_DATE_DISMISS)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TAG_DEPOSIT_DATE_DIALOG).assertDoesNotExist()
+        assertEquals("and no date was written", seedDate, latest?.date ?: seedDate)
+    }
+
+    /** The field shows the stored date in the app's own month form, not the ISO column text. */
+    @Test
+    fun `the date field shows the stored date in the app's own format`() {
+        compose.setContent { theme { Sheet(state = editingState()) } }
+
+        compose.onNodeWithTag(TAG_DEPOSIT_FIELD_DATE).assertExists()
+        // `formatTanggalBulan`'s month form — the same one the contract list uses, so the
+        // two screens cannot spell a date differently. The ISO `2026-10-05` is asserted
+        // absent because a correction form showing the column's own text would be the app
+        // leaking its storage format onto the screen.
+        compose.onNodeWithText("5 Okt").assertExists()
+        compose.onNodeWithText("2026-10-05").assertDoesNotExist()
+    }
+
     // ------------------------------------------------------------------ helpers
 
     @Composable
@@ -465,9 +599,25 @@ class DepositSheetTest {
             contractId = CONTRACT_ID,
             vehiclePlate = "B 1235 TF",
             rateText = "Rp 250.000",
+            date = TEST_DATE,
         ),
         renterOptions = renterOptions(),
         accountOptions = accountOptions(),
+    )
+
+    /**
+     * The same sheet, correcting a stored deposit.
+     *
+     * Cash, so the account field is unmounted and the tests below are about the date and the
+     * method lock rather than about two pickers at once.
+     */
+    private fun editingState() = openState().copy(
+        form = openState().form!!.copy(
+            paymentId = PAYMENT_ID,
+            amountDigits = "750000",
+            date = LocalDate.of(2026, 10, 5),
+            method = PaymentMethod.Tunai,
+        ),
     )
 
     /** The form `onChange` transforms, for the handler test. */
@@ -484,7 +634,7 @@ private fun preview() = DepositPreviewUi(
     creditLine = null,
 )
 
-private fun formWith() = DepositFormState()
+private fun formWith() = DepositFormState(date = TEST_DATE)
 
     private fun renterOptions() = listOf(
         RenterOption(
@@ -558,6 +708,15 @@ private fun formWith() = DepositFormState()
         const val RENTER_NO_CONTRACT = "renter-2"
         const val CONTRACT_ID = "contract-1"
         const val ACCOUNT_ID = "account-1"
+        const val PAYMENT_ID = "payment-1"
+
+        /**
+         * The date every hand-built form opens on.
+         *
+         * A named constant rather than `LocalDate.now()`: the field renders it, so a test that
+         * asserted text would otherwise pass in October and fail in November.
+         */
+        val TEST_DATE: LocalDate = LocalDate.of(2026, 10, 17)
 
         /** The tag an amount field *would* carry, asserted never to exist. */
         const val TAG_AMOUNT_FIELD = "deposito-amount-field"

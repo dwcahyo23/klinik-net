@@ -11,12 +11,17 @@ import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.klinik.rental.data.repository.AccountRequiredException
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.DepositAlreadyCanceledException
+import net.klinik.rental.data.repository.MissingDepositRelationException
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
+import net.klinik.rental.data.repository.UnknownDepositException
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Payment
+import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.strings.RStrings
 import java.time.Clock
@@ -68,6 +73,19 @@ class SetoranViewModel(
      * nothing reads.
      */
     private val saving = AtomicBoolean(false)
+
+    /**
+     * How many times an edit form has been asked for, so a stale read can tell it lost.
+     *
+     * Not a `Boolean` because two opens can race: a dismissal between them must cancel the
+     * one before it as well, and a flag that a second open resets would let the first
+     * through. A counter has no such blind spot — every close and every new open moves it,
+     * so only the most recent request may write.
+     *
+     * Plain `Int` and not an `AtomicInteger`: every mutation and read happens on the
+     * ViewModel's single dispatcher thread, which is what `viewModelScope.launch` gives.
+     */
+    private var openRequests = 0
 
     /**
      * The pickers' options, read once and shared.
@@ -208,12 +226,94 @@ class SetoranViewModel(
      * and re-keying it.
      *
      * The date is today rather than a blank field: a deposit arrives today unless the owner
-     * is correcting, and correction is 3.5's subject.
+     * is correcting, and the correction's date comes from the picker rather than from a
+     * default.
+     *
+     * Seeded from [clock] rather than `LocalDate.now()` so the date the form proposes and
+     * the `asOf` the allocation runs against are the same instant — two sources of "today"
+     * is how a deposit written at 23:59 lands in the wrong billing period.
      */
     fun openDeposit() {
         errorMessage.value = null
         message.value = null
-        form.value = DepositFormState()
+        // Cancels any edit still reading, for the same reason `closeDeposit` does: this form
+        // is replacing it, and a correction that landed after this would overwrite the sheet
+        // the owner just opened for a new deposit.
+        openRequests++
+        form.value = DepositFormState(date = LocalDate.now(clock))
+    }
+
+    /**
+     * Opens the sheet to correct [paymentId] — Story 3.5's.
+     *
+     * ## Why this reads rather than being handed a deposit
+     *
+     * Because the form is populated from the **stored** row, not from whatever the caller
+     * last saw. A stale caller — a history list emitting before the owner's edit landed — must
+     * not be able to write back values the database has moved on from, and a correction is
+     * exactly the write that would overwrite them.
+     *
+     * ## Why a refusal opens no form at all
+     *
+     * Because a correction form with a blank plate, a blank rate or a blank renter is a form
+     * the owner cannot check what they are correcting. `PaymentRepository.findDeposit`
+     * resolves all of them or returns nothing, so the two outcomes here are a complete form
+     * and a message — never a half-built one.
+     *
+     * @param paymentId the stored deposit to correct.
+     */
+    fun openEditDeposit(paymentId: String) {
+        errorMessage.value = null
+        message.value = null
+        previewState.value = null
+        cancelState.value = null
+        // Bumped **before** the read, and checked after it. The read below suspends, and
+        // the owner can dismiss the sheet across that suspension — without this token the
+        // launch would write the form afterwards and the sheet would spring open again
+        // after being told to go. `closeDeposit` is what invalidates it.
+        val request = ++openRequests
+        form.value = null
+
+        viewModelScope.launch {
+            try {
+                val stored = payments.findDeposit(paymentId)
+                if (request != openRequests) return@launch
+                if (stored == null) {
+                    // Its own copy rather than `depositoErrorUnexpected`, which reads
+                    // "Gagal menyimpan setoran" — a failed *save*, about an open that has
+                    // not saved anything. An owner who tapped a row that no longer exists
+                    // needs to know the deposit is gone, not that writing failed.
+                    errorMessage.value = strings.depositoErrorNotFound()
+                    return@launch
+                }
+                form.value = DepositFormState(
+                    paymentId = stored.id,
+                    renterId = stored.renterId,
+                    renterName = stored.renterName,
+                    contractId = stored.contractId,
+                    vehiclePlate = stored.vehiclePlate,
+                    // Formatted here rather than by the repository: `formatRupiah` is in
+                    // `ui.format`, and the epic context pins the dependency direction as
+                    // domain → data → ui. This is the same path the options flow below takes.
+                    rateText = formatRupiah(stored.dailyRate),
+                    date = stored.date,
+                    amountDigits = stored.amount.toString(),
+                    method = stored.method,
+                    accountId = stored.accountId,
+                    referenceNo = stored.referenceNo.orEmpty(),
+                    notes = stored.notes.orEmpty(),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: MissingDepositRelationException) {
+                // The relations are foreign-key protected, so this is a state the database
+                // forbids rather than one a routine correction reaches. Said plainly
+                // anyway: a refusal the owner can read beats a blank form.
+                errorMessage.value = strings.depositoErrorNotFound()
+            } catch (e: Exception) {
+                errorMessage.value = strings.depositoErrorUnexpected()
+            }
+        }
     }
 
     fun onFormChange(transform: (DepositFormState) -> DepositFormState) {
@@ -239,13 +339,17 @@ class SetoranViewModel(
      * to land on the field the owner still has to fix.
      */
     fun previewDeposit(amount: Long) {
-        if (!saving.compareAndSet(false, true)) return
-
-        val current = form.value
-        if (current == null) {
-            saving.set(false)
+        val current = form.value ?: return
+        // A correction writes directly and has no preview to compute — UX-DR11's
+        // "correcting a field is not a destructive act". Branched **before** the saving
+        // lock so [saveCorrection] takes it itself: taking it here and handing it on
+        // would be the same lock acquired twice, which always fails.
+        if (current.isEditing) {
+            saveCorrection(amount)
             return
         }
+
+        if (!saving.compareAndSet(false, true)) return
         val contractId = current.contractId
         if (contractId == null) {
             errorMessage.value = strings.depositoErrorNoContract()
@@ -269,7 +373,12 @@ class SetoranViewModel(
                         // one here would mean the id in the dialog and the id stored
                         // could differ.
                         id = PREVIEW_ID,
-                        date = today,
+                        // The **form's** date, not the clock's — the same value
+                        // `saveDepositAmount` writes. Reading the clock here instead
+                        // would let a back-dated new deposit be previewed on one day
+                        // and stored on another, which is exactly the "preview cannot
+                        // disagree with the save" property Story 3.3 exists to hold.
+                        date = current.date,
                         amount = amount,
                     ),
                     asOf = today,
@@ -351,6 +460,16 @@ class SetoranViewModel(
             saving.set(false)
             return
         }
+        if (current.isEditing) {
+            // The mirror of `saveCorrection`'s guard. Both write paths are reachable from the
+            // sheet's numpad, and a form carrying a `paymentId` that reached the *new-deposit*
+            // path would mint a fresh id and record a **second** deposit against the same
+            // renter — the one outcome this story's "one current value" rule forbids, and one
+            // no sheet state makes visible.
+            saving.set(false)
+            saveCorrection(amount)
+            return
+        }
         val contractId = current.contractId
         if (contractId == null) {
             // No contract, so nothing to bill. Not a field refusal: there is no control
@@ -375,7 +494,7 @@ class SetoranViewModel(
                     contractId = contractId,
                     payment = Payment(
                         id = payments.newPaymentId(),
-                        date = today,
+                        date = current.date,
                         amount = amount,
                     ),
                     method = current.method,
@@ -416,11 +535,125 @@ class SetoranViewModel(
         }
     }
 
+    /**
+     * Writes a correction to the deposit the form is correcting.
+     *
+     * ## Why this saves with no dialog in between
+     *
+     * UX-DR11: correcting a field is not a destructive act — the row survives, its history
+     * position survives, and nothing is destroyed — so a confirmation would be the
+     * "over-confirmation that teaches people to stop reading" the epic context warns about.
+     * The *preview* is the same rule one step further: it exists to catch an amount typed
+     * wrong the first time, and an amount being edited has already been seen.
+     *
+     * ## Why the method is never sent
+     *
+     * Because it cannot be changed, and [DepositFormState.setMethod] refuses before the
+     * sheet's chips are even tappable. `PaymentRepository.correctDeposit` has no parameter to
+     * receive it, so the third refusal is structural — the one a caller cannot route around.
+     *
+     * @param amount the figure `KnNumPad`'s Save handed over, on the same terms as
+     *   [saveDepositAmount]: the pad has already refused zero, and this does not re-parse.
+     */
+    fun saveCorrection(amount: Long) {
+        if (!saving.compareAndSet(false, true)) return
+
+        val current = form.value
+        val paymentId = current?.paymentId
+        if (current == null || paymentId == null) {
+            // No stored deposit behind the form, so there is nothing to correct. The
+            // un-skippable counterpart to [confirmDeposit]'s: a caller that reached the
+            // write without an edit open gets a refusal rather than an insert.
+            saving.set(false)
+            return
+        }
+        val contractId = current.contractId
+        if (contractId == null) {
+            // Said rather than swallowed. A silent return here would leave the owner tapping
+            // Save on a form whose renter has no rental — and the sheet says exactly that
+            // in place of the picker, so the sentence they already read is the right one.
+            errorMessage.value = strings.depositoErrorNoContract()
+            saving.set(false)
+            return
+        }
+        if (current.showsAccountField && current.accountId == null) {
+            form.value = current.copy(accountError = strings.depositoErrorAccountRequired())
+            saving.set(false)
+            return
+        }
+
+        val today = LocalDate.now(clock)
+        val accountId = if (current.showsAccountField) current.accountId else null
+
+        viewModelScope.launch {
+            try {
+                payments.correctDeposit(
+                    contractId = contractId,
+                    paymentId = paymentId,
+                    // The form's date, not the clock: dating a deposit back to Sunday is the
+                    // correction this story exists for.
+                    date = current.date,
+                    amount = amount,
+                    accountId = accountId,
+                    referenceNo = current.referenceNo.trim().ifBlank { null },
+                    notes = current.notes.trim().ifBlank { null },
+                    asOf = today,
+                )
+                val live = form.value
+                if (live != null && live === current) form.value = null
+                previewState.value = null
+                errorMessage.value = null
+                // Distinct from `depositoSaved`: the two announce different outcomes of the
+                // same gesture, and a snackbar saying "tersimpan" after a correction would
+                // imply a second deposit was recorded.
+                message.value = strings.depositoCorrected(formatRupiah(amount))
+            } catch (e: AccountRequiredException) {
+                // The repository's half of the transfer-account rule. The sheet already
+                // refuses it on the field, so reaching here means a caller bypassed the
+                // sheet — and the message still has to land somewhere the owner sees.
+                refuseOnField(current) { it.copy(accountError = strings.depositoErrorAccountRequired()) }
+            } catch (e: DepositAlreadyCanceledException) {
+                errorMessage.value = strings.depositoErrorAlreadyCanceled()
+            } catch (e: UnknownDepositException) {
+                errorMessage.value = strings.depositoErrorNotFound()
+            } catch (e: InvalidAmountException) {
+                refuseOnField(current) { it.copy(amountError = strings.depositoErrorAmountZero()) }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Reported, never swallowed. A correction the owner believes landed when it
+                // did not leaves arrears on a figure they no longer trust.
+                errorMessage.value = strings.depositoErrorUnexpected()
+            } finally {
+                saving.set(false)
+            }
+        }
+    }
+
+    /**
+     * Puts a refusal back on the form the write was made from — and only if it is still there.
+     *
+     * The `live === current` guard [saveDepositAmount]'s close uses, applied to the refusal
+     * rather than the success. Without it a write that fails after the owner dismissed or
+     * changed the form would resurrect a sheet that is no longer there, or land an error on
+     * fields belonging to a deposit they are now looking at.
+     */
+    private fun refuseOnField(
+        current: DepositFormState,
+        refusal: (DepositFormState) -> DepositFormState,
+    ) {
+        val live = form.value
+        if (live != null && live === current) form.value = refusal(current)
+    }
+
     /** A closed form takes every dialog with it. See the close in [saveDepositAmount]. */
     fun closeDeposit() {
         errorMessage.value = null
         previewState.value = null
         cancelState.value = null
+        // Cancels any edit open still reading — see [openRequests]. Without this the launch
+        // would open the sheet again after the owner dismissed it.
+        openRequests++
         form.value = null
     }
 

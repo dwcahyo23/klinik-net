@@ -220,6 +220,13 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
             contractDao = database.contractDao(),
             exceptionDao = database.serviceExceptionDao(),
             settingDao = database.settingDao(),
+            // Story 3.5's three, for `findDeposit`'s resolution of the renter, the vehicle
+            // and the contract the correction form displays. Without them that read finds
+            // no renter and refuses every correction — and because the parameters are
+            // nullable, nothing fails at build time to say so.
+            renterDao = database.renterDao(),
+            vehicleDao = database.vehicleDao(),
+            businessAccountDao = database.businessAccountDao(),
             database = database,
         ),
         renterRepository = RenterRepository(database.renterDao()),

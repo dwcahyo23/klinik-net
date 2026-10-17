@@ -760,6 +760,35 @@
     -->
     <string name="deposito_error_cancel_reason_required">Tulis alasan pembatalannya. Tanpa alasan, riwayat setteran ini tidak bisa diaudit.</string>
     <string name="deposito_error_already_canceled">Setoran ini sudah dibatalkan, jadi tidak bisa dibatalkan lagi.</string>
+
+    <!--
+      Story 3.5 — Mengoreksi setoran (correcting a mistyped deposit).
+
+      A correction is the lighter of the two gestures in this epic: nothing is destroyed, so
+      this block has no confirmation dialog and no impact sentence — `deposito_cancel_*`
+      above is the tier that does.
+    -->
+    <!-- The sheet's title while correcting. "Koreksi", not "Ubah", because the word names what the owner is doing to the record rather than what they are doing to a field. -->
+    <string name="deposito_edit_title">Koreksi Setoran</string>
+    <!-- The date field's label and hint. The hint says what the date *is* — an arrival day, not a billing day — because the two are exactly what this field is for correcting. -->
+    <string name="deposito_field_date">Tanggal setoran</string>
+    <string name="deposito_date_hint">Pilih tanggal setteran masuk</string>
+    <string name="deposito_date_confirm">Pilih</string>
+    <string name="deposito_date_dismiss">Batal</string>
+    <!--
+      The confirmation. Deliberately **not** `deposito_saved`: that says "tersimpan", which
+      after a correction implies a second deposit was recorded rather than that this one now
+      reads differently. `%1$s` is the corrected amount.
+    -->
+    <string name="deposito_corrected">Setoran %1$s diperbarui</string>
+    <!--
+      A deposit nobody holds — the row was cancelled, or never existed.
+
+      Its own sentence rather than `deposito_error_unexpected`, which reads "Gagal menyimpan
+      setoran": a failed *save*, about an open that has not saved anything. This one says
+      the thing that is actually true, which is that there is nothing left to correct.
+    -->
+    <string name="deposito_error_not_found">Setoran ini sudah tidak ada, jadi tidak bisa dikoreksi.</string>
 </resources>
 
 

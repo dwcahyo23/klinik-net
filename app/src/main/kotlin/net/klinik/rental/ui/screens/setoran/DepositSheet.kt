@@ -10,18 +10,28 @@ import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.rememberModalBottomSheetState
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.CalendarDays
+import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.ui.components.KnBadgeTone
@@ -32,9 +42,13 @@ import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnModal
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.components.KnSnackbar
+import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
+import java.time.Instant
+import java.time.LocalDate
+import java.time.ZoneOffset
 
 /**
  * The deposit sheet: who paid, how much, and how it arrived.
@@ -95,7 +109,13 @@ fun DepositSheet(
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
-                text = stringResource(R.string.deposito_title),
+                // The title changes because the sheet's whole job does: a correction
+                // updates a stored row in place, while "Catat Setoran" promises a new one.
+                // An owner who cannot tell the two apart cannot tell whether tapping Save
+                // will record a second deposit.
+                text = stringResource(
+                    if (form.isEditing) R.string.deposito_edit_title else R.string.deposito_title,
+                ),
                 style = MaterialTheme.knTypography.title,
                 color = MaterialTheme.knColors.textPrimary,
                 modifier = Modifier.testTag(TAG_DEPOSIT_TITLE),
@@ -107,13 +127,29 @@ fun DepositSheet(
                 style = MaterialTheme.knTypography.label,
                 color = MaterialTheme.knColors.textSecondary,
             )
-            RenterPicker(
-                options = state.renterOptions,
-                selectedId = form.renterId,
-                onSelect = { option ->
-                    onChange { it.selectRenter(option.renter, option.contract) }
-                },
-            )
+            // Unmounted while correcting, not disabled.
+            //
+            // A deposit is permanently anchored to the contract it was recorded against —
+            // re-homing one is a cancel and a fresh record, not a field edit — and a picker
+            // the owner can tap here would rewrite `contractId` under a `paymentId` that
+            // still names the old rental, so the save would fail with "deposit gone" for a
+            // reason the owner cannot see. Absence is the honest signal: there is no choice
+            // to make, so there is no control.
+            if (!form.isEditing) {
+                RenterPicker(
+                    options = state.renterOptions,
+                    selectedId = form.renterId,
+                    onSelect = { option ->
+                        onChange { it.selectRenter(option.renter, option.contract) }
+                    },
+                )
+            } else {
+                ReadOnlyFact(
+                    label = form.renterName,
+                    value = null,
+                    modifier = Modifier.testTag(TAG_DEPOSIT_RENTER_FACT),
+                )
+            }
 
             // ---- what it settles, filled from the contract
             //
@@ -137,6 +173,21 @@ fun DepositSheet(
                 )
             }
 
+            // ---- when it arrived.
+            //
+            // Above the method row rather than beside the amount, because the amount is on
+            // the numpad *below* this column and a date the owner is correcting pairs with
+            // the fact it is correcting — the contract, not the figure.
+            //
+            // Shown for a **new** deposit too, and that is not a leak: the epic context
+            // states plainly that a deposit's amount may be dated in the past for
+            // correction, and a field that appears only while editing would make
+            // back-dating a correction-only privilege rather than a fact about the money.
+            DepositDateField(
+                date = form.date,
+                onPick = { date -> onChange { it.setDate(date) } },
+            )
+
             // ---- how it arrived
             Text(
                 text = stringResource(R.string.deposito_method_label),
@@ -152,12 +203,19 @@ fun DepositSheet(
                 KnChip(
                     text = stringResource(R.string.deposito_method_transfer),
                     selected = form.method == PaymentMethod.TransferBank,
+                    // Disabled, not guarded. The epic forbids changing a deposit's method —
+                    // repairing one means cancelling and recording again — and a chip that
+                    // renders live and ignores the tap reads as a broken app rather than as
+                    // a rule. `setMethod` refuses as well, so this is the second of three
+                    // refusals and the repository's absent parameter is the third.
+                    enabled = !form.isEditing,
                     onClick = { onChange { it.setMethod(PaymentMethod.TransferBank) } },
                     modifier = Modifier.testTag(TAG_METHOD_TRANSFER),
                 )
                 KnChip(
                     text = stringResource(R.string.deposito_method_cash),
                     selected = form.method == PaymentMethod.Tunai,
+                    enabled = !form.isEditing,
                     onClick = { onChange { it.setMethod(PaymentMethod.Tunai) } },
                     modifier = Modifier.testTag(TAG_METHOD_CASH),
                 )
@@ -378,7 +436,7 @@ private fun AccountPicker(
 @Composable
 private fun ReadOnlyFact(
     label: String,
-    value: String,
+    value: String?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -394,15 +452,21 @@ private fun ReadOnlyFact(
             style = MaterialTheme.knTypography.body,
             color = MaterialTheme.knColors.textSecondary,
         )
-        Text(
-            text = value,
-            style = MaterialTheme.knTypography.figure,
-            color = MaterialTheme.knColors.textPrimary,
-            // `tabular-nums` on the figure so a list of contracts shows its rates in a
-            // column — the epic's AR-11, and the comparison the owner makes when
-            // choosing which contract to pay.
-            fontFamily = FontFamily.Monospace,
-        )
+        // The value is `null` for a row that carries only one fact — the renter's name on a
+        // correction form, which has no figure to put beside it. Unmounted rather than
+        // blank: an empty `Text` in a `SpaceBetween` row still occupies a node, and the
+        // label would appear left-aligned against nothing.
+        value?.let {
+            Text(
+                text = it,
+                style = MaterialTheme.knTypography.figure,
+                color = MaterialTheme.knColors.textPrimary,
+                // `tabular-nums` on the figure so a list of contracts shows its rates in a
+                // column — the epic's AR-11, and the comparison the owner makes when
+                // choosing which contract to pay.
+                fontFamily = FontFamily.Monospace,
+            )
+        }
     }
 }
 
@@ -439,3 +503,101 @@ internal const val TAG_PREVIEW_CLOSES = "deposito-preview-closes"
 internal const val TAG_PREVIEW_CREDIT = "deposito-preview-credit"
 internal const val TAG_DEPOSIT_ERROR = "deposito-error"
 internal const val TAG_DEPOSIT_SUCCESS = "deposito-success"
+internal const val TAG_DEPOSIT_FIELD_DATE = "deposito-field-date"
+internal const val TAG_DEPOSIT_RENTER_FACT = "deposito-renter-fact"
+internal const val TAG_DEPOSIT_DATE_DIALOG = "deposito-date-dialog"
+internal const val TAG_DEPOSIT_DATE_CONFIRM = "deposito-date-confirm"
+internal const val TAG_DEPOSIT_DATE_DISMISS = "deposito-date-dismiss"
+
+/**
+ * The arrival-date field, and the Material3 calendar it opens.
+ *
+ * ## Why Material3's `DatePickerDialog` and not a hand-built one
+ *
+ * Because this is the one input where a wrong value is invisible — `3` and `30` look alike
+ * in a field, and a month is off by one in every hand-rolled calendar. `ContractFormSheet`'s
+ * start-date field makes the same choice for the same reason, and reusing the shape is what
+ * keeps the two sheets behaving identically.
+ *
+ * AR-16 bans Material *icons*, not Material components: `DatePickerDialog` renders through
+ * this app's own `MaterialTheme`, so its colours and type come from the tokens.
+ *
+ * ## Why the field is disabled and carries a calendar affordance
+ *
+ * Because the date arrives from the dialog, never from typing — so `formatTanggalBulan`
+ * produces the display format in exactly one place, and the affordance is what the owner
+ * taps. Same shape as `ContractFormSheet.StartDateField`.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun DepositDateField(
+    date: LocalDate,
+    onPick: (LocalDate) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    val hint = stringResource(R.string.deposito_date_hint)
+
+    KnField(
+        label = stringResource(R.string.deposito_field_date),
+        value = formatTanggalBulan(date),
+        onValueChange = {},
+        placeholder = hint,
+        enabled = false,
+        trailingIcon = Lucide.CalendarDays,
+        trailingContentDescription = hint,
+        onTrailingIconClick = { open = true },
+        modifier = modifier.testTag(TAG_DEPOSIT_FIELD_DATE),
+    )
+
+    if (open) {
+        // Seeded from the current selection, so reopening lands on the day the owner
+        // already chose rather than snapping back to today.
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = date.toUtcMillis(),
+        )
+        DatePickerDialog(
+            onDismissRequest = { open = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // `selectedDateMillis` is UTC midnight for the picked calendar
+                        // day, so it is read back through the same UTC offset it was
+                        // written with. Converting through the device zone here would move
+                        // the date by a day for anyone west of Greenwich — the classic
+                        // off-by-one this whole component exists to avoid, and the one
+                        // `DepositSheetTest` drives the confirm button for.
+                        pickerState.selectedDateMillis?.let { millis ->
+                            onPick(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
+                        }
+                        open = false
+                    },
+                    modifier = Modifier.testTag(TAG_DEPOSIT_DATE_CONFIRM),
+                ) {
+                    Text(stringResource(R.string.deposito_date_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(
+                    onClick = { open = false },
+                    modifier = Modifier.testTag(TAG_DEPOSIT_DATE_DISMISS),
+                ) {
+                    Text(stringResource(R.string.deposito_date_dismiss))
+                }
+            },
+            modifier = Modifier.testTag(TAG_DEPOSIT_DATE_DIALOG),
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+}
+
+/**
+ * A `LocalDate` as UTC midnight in epoch millis.
+ *
+ * The inverse of the read-back in [DepositDateField], and deliberately both in UTC — see
+ * that composable on why. `ContractFormSheet` holds an identical private helper for its own
+ * start date; a shared one would be a `public` function in `ui.format` for the sake of two
+ * call sites, and the arithmetic is two lines.
+ */
+private fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()

@@ -5,10 +5,13 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.AllocationDao
+import net.klinik.rental.data.db.dao.BusinessAccountDao
 import net.klinik.rental.data.db.dao.ContractDao
 import net.klinik.rental.data.db.dao.PaymentDao
+import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.SettingDao
+import net.klinik.rental.data.db.dao.VehicleDao
 import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.PaymentEntity
@@ -19,6 +22,7 @@ import net.klinik.rental.domain.calculate.arrearsOf
 import net.klinik.rental.domain.calculate.chargeDaysIn
 import net.klinik.rental.domain.model.Allocation
 import net.klinik.rental.domain.model.Payment
+import net.klinik.rental.domain.validation.InvalidAmountException
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -63,6 +67,18 @@ class PaymentRepository(
     private val contractDao: ContractDao,
     private val exceptionDao: ServiceExceptionDao,
     private val settingDao: SettingDao,
+    /**
+     * The three relations [findDeposit] resolves, so the correction form can be handed a
+     * complete deposit rather than ids it would have to look up itself.
+     *
+     * Nullable rather than required for the same reason [database] is: the ViewModel tests
+     * run on a `StandardTestDispatcher` that drains on the main thread, where
+     * `withTransaction` throws, so they pass no database — and `findDeposit` opens no
+     * transaction, so a test that only exercises `saveDeposit` has no need of these.
+     */
+    private val renterDao: RenterDao? = null,
+    private val vehicleDao: VehicleDao? = null,
+    private val businessAccountDao: BusinessAccountDao? = null,
     private val database: KlinikDatabase? = null,
 ) {
 
@@ -384,6 +400,178 @@ class PaymentRepository(
     }
 
     /**
+     * Corrects a stored deposit in place, in one transaction with its allocations.
+     *
+     * ## What happens, in this order (AR-8)
+     *
+     *  1. Refuse a non-positive amount, an unknown or foreign-contract deposit, a cancelled
+     *     one, and a transfer with no account — every refusal before anything is written.
+     *  2. Write the deposit's new values. **The row keeps its identity and its history
+     *     position**: this is an in-place update, not a revision table, because the epic's
+     *     criterion is *"Setoran hanya punya satu nilai terkini — riwayat perubahan tidak
+     *     menyimpan versi lama."*
+     *  3. Release every allocation on the contract and rewrite them all, from the stored
+     *     deposits with **this one already updated**.
+     *
+     * ## Why step 3 excludes the stored row rather than placing it twice
+     *
+     * Because [previewAllocation] reads the deposits from the database, and step 2 has
+     * already written the correction. Passing the corrected value as the payment to place,
+     * with `excludePaymentId` naming the same row, is what makes the allocator see exactly
+     * what a fresh save would have seen — the survivors plus one deposit carrying the
+     * corrected date and amount.
+     *
+     * The obvious alternative is the `RECOMPUTE_ID` placeholder [cancelDeposit] uses, and
+     * it is **wrong here**: the placeholder takes a slice of the oldest open day, so every
+     * survivor lands one rupiah short of closing it and a day that should be closed reopens.
+     * `CorrectDepositTest` caught exactly that — a Rp 500.000 correction produced three
+     * allocation rows where two were due.
+     *
+     * ## Why the write is wholesale rather than this deposit's rows alone
+     *
+     * The reason [cancelDeposit] gives: changing what one deposit places can move the
+     * survivors onto different days, so recomputing only this deposit's rows would leave
+     * them placed as if nothing had changed — and `Σ allocation == amount` would still hold
+     * while the days each deposit closes were wrong.
+     *
+     * @param method deliberately **absent**. The AC is explicit that payment method cannot
+     *   change — repairing a method means cancelling and recording again — so there is no
+     *   parameter through which a caller could express one, and the stored value is carried
+     *   by the `copy` below. A structural absence rather than a check, because a check
+     *   invites a caller to pass the old value and rely on the refusal.
+     * @throws InvalidAmountException when [amount] is zero or negative.
+     * @throws UnknownDepositException when [paymentId] names no stored deposit, or one on a
+     *   different contract.
+     * @throws DepositAlreadyCanceledException when the deposit is already cancelled.
+     * @throws AccountRequiredException when the deposit is a transfer with a null [accountId].
+     * @throws UnknownAccountException when [accountId] names no stored account.
+     */
+    suspend fun correctDeposit(
+        contractId: String,
+        paymentId: String,
+        date: LocalDate,
+        amount: Long,
+        accountId: String?,
+        referenceNo: String?,
+        notes: String?,
+        asOf: LocalDate = asOf(),
+    ) {
+        // The amount rule, before the transaction opens — a form state rather than a data
+        // condition, so there is no reason to take a write lock to discover one.
+        InvalidAmountException.requireValid(amount)
+
+        inTransaction {
+            // 1. The stored deposit. Read rather than taken from the caller: this decides
+            //    whether it is still correctable, and it carries the method that step 2
+            //    keeps.
+            val stored = paymentDao.findById(paymentId)
+                ?: throw UnknownDepositException(paymentId)
+            if (stored.contractId != contractId) {
+                throw UnknownDepositException(paymentId)
+            }
+            if (stored.status == PaymentEntity.STATUS_CANCELED) {
+                throw DepositAlreadyCanceledException(paymentId, stored.cancelReason)
+            }
+            // The transfer-account rule **below the sheet**, for the reason the epic context
+            // gives: two screens can pass the same UI check, so the check that counts is the
+            // one under them. A transfer with no account is a claim the app cannot support.
+            if (stored.method == PaymentMethod.TransferBank.name && accountId == null) {
+                throw AccountRequiredException(paymentId)
+            }
+            // And the account must be one that exists. The sheet offers only stored ones, but
+            // this is the layer a caller that bypasses the sheet reaches, and the foreign key
+            // would otherwise refuse with a raw `SQLiteConstraintException` mid-transaction —
+            // a constraint failure where the owner can act, naming no account.
+            if (accountId != null && businessAccountDao?.findById(accountId) == null) {
+                throw UnknownAccountException(accountId)
+            }
+
+            // 2. The correction itself, in place.
+            paymentDao.updatePayment(
+                stored.copy(
+                    date = date,
+                    amount = amount,
+                    accountId = accountId,
+                    referenceNo = referenceNo?.trim()?.ifBlank { null },
+                    notes = notes?.trim()?.ifBlank { null },
+                ),
+            )
+
+            // 3. Re-allocate from the deposits that survive, the corrected one among them.
+            val computed = previewAllocation(
+                contractId = contractId,
+                payment = Payment(id = paymentId, date = date, amount = amount),
+                excludePaymentId = paymentId,
+                asOf = asOf,
+            )
+
+            allocationDao.deleteForContract(contractId)
+            // **Both** halves: `newRows` is the corrected deposit's own placement, and
+            // dropping it would leave a stored deposit that closes no day.
+            (computed.existingRows + computed.newRows).forEach { row ->
+                allocationDao.insertAllocation(row.toEntity(contractId))
+            }
+        }
+    }
+
+    /**
+     * The stored deposit, projected for the correction form — Story 3.5's `findDeposit`.
+     *
+     * ## Why the relations resolve here rather than in the ViewModel
+     *
+     * Because a correction form that opens with a blank plate or a blank rate is a form the
+     * owner cannot check what they are correcting against. Resolving them here means this
+     * returns either a complete [EditableDeposit] or nothing, so the sheet has no state in
+     * which it is holding half a deposit and would rather render the blanks than say so.
+     *
+     * It is also what keeps the three separate `first()` reads out of `SetoranViewModel`:
+     * that class already holds repositories for all three relations, so resolving them there
+     * would duplicate the lookups [SetoranViewModel]'s own options flow performs — the
+     * "two readers of the same table" shape `ContractRepository.observeContracts`'s KDoc
+     * warns about.
+     *
+     * @return the projection, or `null` when no confirmed deposit holds [paymentId]. A
+     *   cancelled deposit reads as absent rather than as a third answer, because correcting
+     *   one is not a thing this method can describe.
+     * @throws MissingDepositRelationException when the deposit, its contract, its renter or
+     *   its vehicle cannot be resolved — a state the foreign keys forbid, so the throw is
+     *   the loud half of a pair whose quiet half would be a form full of blanks.
+     */
+    suspend fun findDeposit(paymentId: String): EditableDeposit? {
+        val stored = paymentDao.findById(paymentId) ?: return null
+        if (stored.status != PaymentEntity.STATUS_CONFIRMED) return null
+
+        val contract = contractDao.findById(stored.contractId)
+            ?: throw MissingDepositRelationException(paymentId, "kontrak")
+        val renter = renterDao?.findById(contract.renterId)
+            ?: throw MissingDepositRelationException(paymentId, "penyewa")
+        val vehicle = vehicleDao?.findById(contract.vehicleId)
+            ?: throw MissingDepositRelationException(paymentId, "kendaraan")
+
+        // `valueOf` rather than a fallback: a stored method this cannot decode is a
+        // database holding a value the app does not understand, and inventing one — a cash
+        // deposit shown as a transfer, or the reverse — is exactly the "a figure that looks
+        // right and is not" the epic refuses. The throw names it instead.
+        val method = PaymentMethod.entries.firstOrNull { it.name == stored.method }
+            ?: throw MissingDepositRelationException(paymentId, "metode pembayaran")
+
+        return EditableDeposit(
+            id = stored.id,
+            contractId = stored.contractId,
+            renterId = renter.id,
+            renterName = renter.name,
+            vehiclePlate = vehicle.plate,
+            dailyRate = contract.dailyRate,
+            date = stored.date,
+            amount = stored.amount,
+            method = method,
+            accountId = stored.accountId,
+            referenceNo = stored.referenceNo,
+            notes = stored.notes,
+        )
+    }
+
+    /**
      * The arrears the contract would show once [paymentId] is cancelled — the number the
      * confirmation dialog has to name.
      *
@@ -560,6 +748,44 @@ enum class PaymentMethod {
 /** Thrown when a deposit names a contract nobody holds. */
 class UnknownContractException(val contractId: String) :
     IllegalStateException("no contract with id $contractId")
+
+/**
+ * A correction that left a bank transfer with no business account.
+ *
+ * `null` means Tunai on every other path, so this cannot be a shape the entity rejects —
+ * which is why the rule is a refusal here rather than a `require` on the row. Epic context:
+ * *"two screens can pass the same UI check, so the check that counts is the one below the
+ * screen."* The sheet already refuses it; this is the copy for a caller that did not come
+ * through the sheet.
+ */
+class AccountRequiredException(val paymentId: String) :
+    IllegalStateException("correcting deposit $paymentId needs a business account")
+
+/**
+ * A correction naming a business account the app does not hold.
+ *
+ * Checked rather than left to `payment.accountId`'s `RESTRICT` foreign key, because the
+ * constraint refuses with a `SQLiteConstraintException` that names a table rather than an
+ * account — and the sheet's own picker already offers only stored accounts, so the only way
+ * here is a caller that bypassed it.
+ */
+class UnknownAccountException(val accountId: String) :
+    IllegalStateException("no business account with id $accountId")
+
+/**
+ * A deposit that exists but whose surrounding records do not.
+ *
+ * ## Why it is a throw rather than a half-built return
+ *
+ * Because every row this names is protected by a `RESTRICT` foreign key — a contract
+ * cannot go while a deposit points at it, a renter or vehicle cannot go while a contract
+ * points at it — so the state is one the database forbids. That makes the throw the *loud*
+ * half of a pair whose quiet half would be a correction form with a blank plate and a blank
+ * rate: the owner sees an edit form and cannot tell what they are editing. Failing here
+ * says the record is unusable, which is true and actionable.
+ */
+class MissingDepositRelationException(val paymentId: String, val relation: String) :
+    IllegalStateException("deposit $paymentId has no resolvable $relation")
 
 /**
  * What a deposit would do, in whole rupiah and whole days.

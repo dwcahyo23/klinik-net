@@ -118,7 +118,12 @@ class AppShellTest {
     fun `the FAB is absent while the deposit sheet is open`() {
         val open = testScreens(
             depositoState = net.klinik.rental.ui.screens.setoran.SetoranUiState(
-                form = net.klinik.rental.ui.screens.setoran.DepositFormState(),
+                form = net.klinik.rental.ui.screens.setoran.DepositFormState(
+                    // Pinned rather than defaulted: this test is about window stacking, so
+                    // the date only has to be *a* date — but a `now()` default would make
+                    // the fixture drift with the wall clock.
+                    date = java.time.LocalDate.of(2026, 10, 17),
+                ),
             ),
         )
         compose.setContent { theme { AppShell(screens = open, isLandscape = true) } }

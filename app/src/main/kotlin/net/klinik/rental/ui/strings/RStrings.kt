@@ -628,4 +628,32 @@ class RStrings(private val context: Context) {
      */
     fun depositoCanceled(amount: String): String =
         context.getString(R.string.deposito_cancel_done, amount)
+
+    // -------------------------------------------------------------- Story 3.5
+
+    /**
+     * `Setoran Rp 250.000 diperbarui` — the correction's confirmation.
+     *
+     * Distinct from [depositoSaved] for the reason [depositoCanceled] gives its sibling,
+     * and the same rule one level down: after a correction nothing new was *recorded*, so a
+     * snackbar reading "tersimpan" would tell the owner a second deposit exists when the
+     * one they corrected is the one that changed.
+     *
+     * Takes an **already-formatted** amount, for the reason every other money accessor on
+     * this class does — the ViewModel has no composition, and assembling a rupiah figure
+     * here by hand would be the second spelling of it.
+     */
+    fun depositoCorrected(amount: String): String =
+        context.getString(R.string.deposito_corrected, amount)
+
+    /**
+     * A correction whose deposit nobody holds.
+     *
+     * Its own sentence rather than [depositoErrorUnexpected], which reads "Gagal menyimpan
+     * setoran" — a failed *save*, about an open that has not saved anything. This is the
+     * other half of the rule the cancellation copy above states: the sheet's refusals each
+     * name the fault they are refusing, so a correction pointed at a vanished row says so.
+     */
+    fun depositoErrorNotFound(): String =
+        context.getString(R.string.deposito_error_not_found)
 }
