@@ -462,7 +462,13 @@ fun KontrakScreen(
         state.settleSheet?.let { sheet ->
             SettleContractSheet(
                 state = sheet,
-                errorMessage = settleErrorMessage ?: state.errorMessage,
+                // **No fallback to `state.errorMessage`**, unlike the end sheet above —
+                // this one is deliberate. The screen's banner answers a *contract list*
+                // failure, and drawing it inside the settlement window would put one
+                // message in a window the owner reads as a settlement problem. Four sheets
+                // mean four slots, and a slot that falls back to another screen's message
+                // is the two-window confusion this wiring exists to prevent.
+                errorMessage = settleErrorMessage,
                 onClose = onCloseSettle,
                 onChange = onSettleChange,
                 onConfirmSettle = onConfirmSettle,
@@ -763,6 +769,10 @@ private fun KontrakScreenPreview() {
             onCloseSettle = {},
             onSettleChange = { it },
             onConfirmSettle = {},
+            // Explicit rather than defaulted, for the same reason the pair above is: a
+            // fixture that differs from production in a *defaulted* argument is a fixture
+            // that stops predicting production.
+            settleErrorMessage = null,
             onSettleErrorDismiss = {},
         )
     }

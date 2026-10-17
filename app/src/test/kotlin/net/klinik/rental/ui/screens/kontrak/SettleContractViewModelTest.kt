@@ -318,6 +318,100 @@ class SettleContractViewModelTest {
         assertEquals("and no figures", 0, viewModel.uiState.value.settleSheet!!.daysClosed)
     }
 
+    /**
+     * Moving to a date that closes **nothing** disables the confirm — the money-path case.
+     *
+     * The sequence matters: a date that closes seventeen days first, then one that closes
+     * none. Before the fix, `onSettleChange` published the new state carrying the *previous*
+     * date's figures while the impact read was still in flight, so the moment `uiState`
+     * emitted the new date it did so with `daysClosed` still 17 — leaving `canSettle` true
+     * and the button confirming a settlement the owner would read as the one they had just
+     * chosen. On an action FR-9b gives no undo, a confirm button live against figures for a
+     * date nobody picked is the worst state this sheet can be in.
+     *
+     * The figures are asserted through `uiState`, which is the only surface the sheet
+     * renders — so this is the owner's actual view, not the ViewModel's internal state.
+     */
+    @Test
+    fun `moving to a date that closes nothing disables the confirm`() = runTest(dispatcher) {
+        val viewModel = observingViewModel()
+        viewModel.openSettle(budiRow(viewModel))
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(
+            "a date past every charge day leaves the button available",
+            viewModel.uiState.value.settleSheet!!.canSettle,
+        )
+
+        // Now a date before the contract even began: it closes nothing at all.
+        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 9, 30)) }
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(
+            "the confirm must not be live on the previous date's figures",
+            viewModel.uiState.value.settleSheet!!.canSettle,
+        )
+        assertEquals(
+            "with nothing closed, rather than the seventeen the last date closed",
+            0,
+            viewModel.uiState.value.settleSheet!!.daysClosed,
+        )
+        assertEquals(
+            "and nothing removed",
+            0L,
+            viewModel.uiState.value.settleSheet!!.amountRemoved,
+        )
+        assertNull(
+            "and nothing was written",
+            database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate,
+        )
+    }
+
+    /**
+     * And an impact that could not be computed leaves the confirm **disabled**.
+     *
+     * The other half of the same rule, and the one that is deterministically observable: a
+     * settlement whose figures the ViewModel could not read is an action the owner was never
+     * shown, so a live confirm would be the same defect as a stale figure — a button over
+     * numbers nobody read, on an action with no undo.
+     *
+     * Reached by closing the database's contract DAO out from under the read, which is the
+     * only way to make `settlementImpact` fail without a contrived fixture; the assertion is
+     * that the *button* is gone, not that a particular failure message appeared.
+     */
+    @Test
+    fun `an impact that cannot be computed leaves the confirm disabled`() = runTest(dispatcher) {
+        val viewModel = observingViewModel()
+        viewModel.openSettle(budiRow(viewModel))
+        dispatcher.scheduler.advanceUntilIdle()
+        // Pick a date that does close something, so a *successful* read would enable it.
+        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(
+            "the read succeeds normally, so the button is available",
+            viewModel.uiState.value.settleSheet!!.canSettle,
+        )
+
+        // Now break the contract read. `close()` on an already-closed database throws, and
+        // `IllegalStateException` is what the read surfaces — the same shape as a corrupt
+        // store, which is the realistic case.
+        database.close()
+        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 10)) }
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertFalse(
+            "an unreadable impact must not leave the confirm live",
+            viewModel.uiState.value.settleSheet!!.canSettle,
+        )
+        assertEquals(
+            "and the figures read as none rather than as the previous date's",
+            0,
+            viewModel.uiState.value.settleSheet!!.daysClosed,
+        )
+    }
+
     // ------------------------------------------------------------------ helpers
 
     /**

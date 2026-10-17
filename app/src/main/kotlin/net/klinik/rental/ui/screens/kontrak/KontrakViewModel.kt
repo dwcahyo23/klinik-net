@@ -17,6 +17,7 @@ import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.SettlementBeforeStartException
+import net.klinik.rental.data.repository.UnknownContractException
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
@@ -1020,11 +1021,18 @@ class KontrakViewModel(
         val date = after.settleDate
         val contractId = after.contractId
         settleError.value = null
-        if (date == null) {
-            // Back to untouched: the figures belong to a date that no longer exists.
-            settleSheet.value = after.copy(daysClosed = 0, amountRemoved = 0L)
-            return
-        }
+        // The figures belong to a date that no longer exists — or to one whose impact is
+        // not known yet. Zeroed **before** the read, because `canSettle` reads
+        // `daysClosed > 0`: publishing `after` with the previous date's figures would leave
+        // the confirm button live, showing a day count and a rupiah for a date the owner
+        // did not pick. On an action FR-9b gives no undo, that is the whole failure.
+        settleSheet.value = after.copy(
+            daysClosed = 0,
+            amountRemoved = 0L,
+            daysRemaining = 0,
+            amountRemaining = 0L,
+        )
+        if (date == null) return
         viewModelScope.launch {
             try {
                 val impact = payments.settlementImpact(
@@ -1049,6 +1057,20 @@ class KontrakViewModel(
                 // The figures are unavailable, so the confirmation cannot name what the
                 // action does — and FR-9b is not undoable. Reported rather than guessed.
                 settleError.value = strings.kontrakErrorSettleUnexpected()
+                // And the confirm goes with them: a settlement whose impact could not be
+                // computed is an action the owner was never shown, so leaving it
+                // confirmable would be the same defect as a stale figure — a live button
+                // over numbers nobody read. Re-read rather than writing `after` back, for
+                // the same reason the success path does.
+                val live = settleSheet.value
+                if (live != null && live.settleDate == date) {
+                    settleSheet.value = live.copy(
+                        daysClosed = 0,
+                        amountRemoved = 0L,
+                        daysRemaining = 0,
+                        amountRemaining = 0L,
+                    )
+                }
             }
         }
     }
@@ -1094,7 +1116,11 @@ class KontrakViewModel(
                 } else {
                     settleError.value = strings.kontrakErrorSettleBeforeStart(e.startDate)
                 }
-            } catch (e: ContractNotOpenException) {
+            } catch (e: UnknownContractException) {
+                // The contract is gone, so the sheet is about a row that no longer
+                // exists — close it rather than leaving a form that can only fail.
+                // And the message is the *contract list's*, because the fact is the same
+                // one: a contract the screen can no longer open.
                 settleSheet.value = null
                 settleError.value = strings.kontrakErrorContractNotOpen()
             } catch (e: CancellationException) {

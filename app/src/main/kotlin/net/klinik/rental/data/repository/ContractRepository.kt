@@ -361,11 +361,14 @@ class ContractRepository(
      *
      * @throws SettlementBeforeStartException when [date] precedes the contract's own
      *   start date. Nothing is written.
-     * @throws ContractNotOpenException when nobody holds that id.
+     * @throws UnknownContractException when nobody holds that id. Deliberately **not**
+     *   [ContractNotOpenException]: that type reads "this contract has ended", which is
+     *   the one state this write accepts — an ended contract with days paid elsewhere is
+     *   precisely what FR-9b exists for.
      */
     suspend fun settleThrough(contractId: String, date: LocalDate) {
         inTransaction {
-            val stored = dao.findById(contractId) ?: throw ContractNotOpenException(contractId)
+            val stored = dao.findById(contractId) ?: throw UnknownContractException(contractId)
             if (date.isBefore(stored.startDate)) {
                 throw SettlementBeforeStartException(
                     contractId = contractId,

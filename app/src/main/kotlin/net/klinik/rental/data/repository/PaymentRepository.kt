@@ -884,7 +884,16 @@ enum class PaymentMethod {
     Tunai,
 }
 
-/** Thrown when a deposit names a contract nobody holds. */
+/**
+ * A write naming a contract nobody holds — a deposit's, or Story 3.6's settlement.
+ *
+ * One type for the fact rather than one per caller, and **deliberately not
+ * `ContractNotOpenException`**: that type's wording is "this contract has ended, so it is
+ * read-only", which is false for a settlement. An ended contract is precisely the row
+ * FR-9b exists for — its days were paid elsewhere — and `settleThrough` settles one happily,
+ * so reporting it as un-openable would tell the owner the opposite of the truth about the
+ * case they are trying to fix.
+ */
 class UnknownContractException(val contractId: String) :
     IllegalStateException("no contract with id $contractId")
 

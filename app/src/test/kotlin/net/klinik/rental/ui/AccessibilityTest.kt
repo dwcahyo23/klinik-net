@@ -727,6 +727,9 @@ class AccessibilityTest {
             onCloseSettle = {},
             onSettleChange = { it },
             onConfirmSettle = {},
+            // Explicit, not defaulted — this file's whole job is to predict production,
+            // and a defaulted argument is a difference it cannot see.
+            settleErrorMessage = null,
             onSettleErrorDismiss = {},
         ),
         // Story 3.1's destination. This file walks *every* interactive node on the shell

@@ -55,14 +55,14 @@ development_status:
   2-7-mengakhiri-kontrak-sewa: done
   epic-2-retrospective: optional # all 8 stories done, but 6 deferred device-check items (2.6 x3, 2.7 x3) still point here — one is high/unverified: a future end date frees the car immediately
 
-  epic-3: in-progress
+  epic-3: done
   3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: done
   3-2-mencatat-setoran-dengan-numpad: done
   3-3-melihat-pratinjau-sebelum-menyimpan: done
   3-4-membatalkan-setoran-dengan-alasan: done
   3-5-mengoreksi-setoran-yang-salah-input: done
-  3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: backlog
-  epic-3-retrospective: optional
+  3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: done
+  epic-3-retrospective: optional # all 6 stories done. Two open carry-overs: Story 3.4's `requestCancel` and Story 3.5's `openEditDeposit` are both implemented and tested but have no production caller — no deposit history list exists until Epic 4.1, so neither is mountable yet. Both are recorded in their specs' `deferred` frontmatter.
 
   epic-4: backlog
   4-1-daftar-tunggakan-yang-langsung-terbaca: backlog

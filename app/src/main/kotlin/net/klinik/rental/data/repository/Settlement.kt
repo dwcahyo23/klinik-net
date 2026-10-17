@@ -49,13 +49,4 @@ data class SettlementImpact(
     val daysRemaining: Int,
     /** Rupiah still owed afterwards. */
     val amountRemaining: Long,
-) {
-    /**
-     * Whether this settlement would close anything at all.
-     *
-     * Read by the confirmation's confirm button, because a settlement that closes no day
-     * is a no-op wearing the costume of an action — and PRD FR-9b gives it no audit
-     * trail and no undo, so a wrong one is not recoverable from inside the app.
-     */
-    val closesSomething: Boolean get() = daysClosed > 0
-}
+)

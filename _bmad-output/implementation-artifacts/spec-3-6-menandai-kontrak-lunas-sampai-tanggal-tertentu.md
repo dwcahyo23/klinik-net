@@ -2,7 +2,7 @@
 title: 'Story 3.6 — Menandai kontrak lunas sampai tanggal tertentu'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '46487d49f198672c0d4ae1b906d058a962ed4d73'
 review_loop_iteration: 0
 followup_review_recommended: false
@@ -117,6 +117,42 @@ deferred: []
 
 ## Review Triage Log
 
+### 2026-10-18 — Review pass 1
+- verdicts: 37 findings — high 3, medium 8, low 12, false 0, maybe-false 14
+- findings:
+  - `[high]` `[patch]` **`sprint-status.yaml` still marks 3.6 `backlog`** (blind-hunter B1). Verified: line 64 reads `backlog` while 3.5 reads `done`. Every prior story in this epic updated the file, so this is the same omission the parent caught and fixed for 3.5 after its review. Fixed.
+  - `[high]` `[patch]` **`SettleContractSheet` has no render test at all** (verification-gap G1; intent-alignment I5). Searched `TAG_SETTLE_SHEET|SettleContractSheet|TAG_SETTLE_CONFIRM`: the only three files are the spec, the sheet, and `KontrakScreen`'s call site — no test file. The AC's "confirmation names contract, vehicle, renter, days, rupiah" is proven only on ViewModel state; nothing observes the copy the owner actually reads. `SettleContractSheetTest` added.
+  - `[high]` `[patch]` **The sheet's confirm button can be pressed on stale figures** (blind-hunter B2). `onSettleChange` publishes `after` — which still carries the *previous* date's `daysClosed` — and only replaces the figures when the read returns. `canSettle` reads `daysClosed > 0`, so a date change from a settling date to one that closes nothing leaves the button live with figures the owner did not ask for, on an action with no undo. The state is cleared on the date-changing path rather than after the read. Covered by a new test.
+  - `[medium]` `[patch]` **`KontrakScreen` renders the settlement error into the sheet from `state.errorMessage`** (intent-alignment I4): `errorMessage = settleErrorMessage ?: state.errorMessage`. Three of the sheet's own refusals would draw the screen's banner inside the settlement window — the exact two-window confusion this repo's `Screens.Kontrak` KDoc exists to prevent. The fallback reads only when the settle slot is null.
+  - `[medium]` `[patch]` **`throws ContractNotOpenException` is wrong for a settlement read** (blind-hunter B3). The KDoc for [settleThrough] declares that exception, but an *ended* contract is exactly the row FR-9b exists for, so the type says "not open" for a contract that is merely ended and settleable. The ViewModel's catch on that type is therefore reached by the wrong case. Renamed to a settlement-specific unknown-contract refusal.
+  - `[medium]` `[patch]` **`KontrakScreenPreview` and `AccessibilityTest` leave `settleErrorMessage` defaulted** (blind-hunter B4; verification-gap G4). Both are fixtures, so the impact is a null rather than a wrong figure, but the slot is the one the sheet reads when `settleErrorMessage` is null — the same fallback the medium finding above is about. Fixed with the fallback.
+  - `[medium]` `[patch]` **`closesSomething` on `SettlementImpact` is dead** (blind-hunter B6). Grepped: defined, documented, and never read — `canSettle` re-derives `daysClosed > 0` from `SettleFormState` instead. A second spelling of one rule, which is what this repo's KDocs keep warning against. Removed.
+  - `[medium]` `[patch]` **The `MIGRATION_7_8` step is not registered in `KlinikDatabase.build`'s list** — verified **false**: the diff's `KlinikDatabase.kt` shows `MIGRATION_7_8` added to `addMigrations` (line 251 of the diff) and `DatabaseMigrationTest`'s `openMigrated` registers it in all four call sites. Recorded as false rather than silently dropped because it was checked at the cited location.
+  - `[medium]` `[patch]` **`Settlement.kt` and `SettleContractSheet.kt` end without a trailing newline** (blind-hunter B5; verification-gap O5). Confirmed by the diff's three `\ No newline at end of file` markers. Fixed.
+  - `[low]` `[patch]` `SettleContractTest`'s `SETTLE_PARTIAL` KDoc is duplicated verbatim above the test — an orphaned first block from an earlier draft (blind-hunter B7). Removed.
+  - `[low]` `[patch]` `ContractEntity.endDate` gained a `= null` default it did not have, which is a public API relaxation unrelated to this story (blind-hunter B8). Reverted; the new field keeps its own default only.
+  - `[low]` `[patch]` The settlement marker renders as `Lunas s.d. 24 Okt` with no label saying it is a settlement (blind-hunter B9). Readable, and the missing verb was a deliberate space decision on a row that already carries an end date.
+  - `[low]` `[reject]` `kontrak_settle_title` reads "lunas sampai %2$s?" with an empty date before the owner picks one (blind-hunter B12). The sheet's placeholder and the disabled confirm are the two halves of the same answer, and the title's date slot filling is the intended behaviour — this is what `EndContractSheet` does with its own title.
+  - `[maybe-false]` `[defer]` The date picker's UTC round-trip is asserted only in the domain `SettlementTest`, never through the sheet (verification-gap G2). The same handler is shared with the contract form, whose `ContractFormSheetTest` proves the round-trip under a west-of-Greenwich zone added in Story 3.5 — and this story reuses `ContractDateField` rather than adding a second implementation. Recorded as unverified rather than duplicated.
+  - `[maybe-false]` `[reject]` `settleThrough` does not verify `startDate` is non-null before comparing (edge-case E2). `ContractEntity` refuses a contract that ends before it starts and `startDate` is non-null on every row the app constructs, so the comparison cannot NPE.
+  - `[maybe-false]` `[reject]` `SettlementBeforeStartException` extends `IllegalStateException`, which the ViewModel also catches generically (edge-case E3). The specific catch precedes it, so the specific message wins — the same ordering `ContractRepository`'s other exceptions rely on.
+  - `[maybe-false]` `[reject]` The date field's `toString()` renders ISO (`2026-10-24`) rather than the app's `formatTanggalBulan` (edge-case E6). That is `ContractDateField`'s pre-existing behaviour shared with the exception sheet, and this story did not change it.
+  - `[maybe-false]` `[reject]` `SettleFormState.contractLabel` is built by string interpolation in the ViewModel rather than passed in (edge-case E8). It is built once from the row the sheet renders and never re-derived, and `EndContractFormState.contractLabel` is built the same way by `openEndContract`.
+  - `[maybe-false]` `[reject]` No `clearSettle` counterpart exists for `onSettleChange`'s exception path (edge-case E9). `settleError` is a single nullable flow read at every exit, so a second clear path would be a second mechanism for the same state.
+  - `[maybe-false]` `[reject]` The success snackbar is drawn inside the settlement sheet, so the screen-level snackbar it also sets is unreachable while the sheet is up (edge-case E10). The sheet closes on success (`settleContract` sets `settleSheet.value = null`) before the snackbar is drawn, so the screen-level slot is the one that renders.
+  - `[maybe-false]` `[reject]` `SettleContractSheet`'s `onDismissError` defaults to `{}`, so a caller that forgets it leaves an unreachable banner (edge-case E11). The same default exists on `ExceptionFormSheet` and `DepositSheet` for the same reason, and `KontrakScreen` passes it explicitly.
+  - `[maybe-false]` `[reject]` `SettlementImpact` is unvalidated — `daysClosed` could be negative if a caller misuses it (edge-case E13). Both figures come from `arrearsEntry`'s two reads and the difference of two day counts is non-negative whenever the settlement only closes days; nothing else constructs it.
+  - `[maybe-false]` `[reject]` The `settleError` catch writes the banner even when the sheet was dismissed mid-read (edge-case E14). The read is a `viewModelScope.launch` that re-reads `settleSheet.value` before writing, and the banner pair is exactly where a dismissal-side failure belongs.
+  - `[maybe-false]` `[reject]` A contract whose only day is a rest day reports `daysClosed = 0` and the confirm stays disabled (edge-case E15). That is the honest answer — the settlement would close nothing — and the sheet says so in words rather than silently refusing.
+  - `[maybe-false]` `[reject]` `previewAllocation` now narrows the day list by settlement, which could change what `saveDeposit`'s re-allocation writes (edge-case E1). That is the correct behaviour: a deposit recorded after settlement must not reopen a settled day, and the allocator placing on a narrowed list is what enforces it.
+  - `[maybe-false]` `[reject]` `endContract` carries the settlement through `toEntity()`, so a contract whose settlement predates its end keeps both (edge-case E2). `SettleContractTest.ending a settled contract preserves the settlement` asserts exactly this on the stored row.
+  - `[maybe-false]` `[reject]` The marker is not cleared by `endContract` when it should be for a contract that ended before the settlement date (edge-case E3). A settlement later than the end date closes days the contract never reached, which is inert rather than wrong — `chargeDaysIn` stops at `contractEnd` first.
+  - `[maybe-false]` `[reject]` `settledDays` is applied inside `previewAllocation` rather than in `arrearsOf`, so any future caller of `arrearsOf` must remember it (edge-case E4). This is the spec's stated single-application-point design, and `arrearsOf`'s own KDoc scopes it to the days the caller lists — passing it an un-narrowed list is the caller choosing what to bill.
+  - `[maybe-false]` `[reject]` The new nullable column's `DEFAULT NULL` is verified only by `nullableColumnsOf`, not by reading a pre-migration row through the entity (verification-gap O3). `existing contracts read back unsettled and keep their active pair` reads `c-v3` back through `contractDao()` and asserts `settledThroughDate` is null, which is exactly the pre-migration row.
+  - `[maybe-false]` `[reject]` `KontrakViewModelTest`'s two construction sites were updated, but a third construction site elsewhere was missed (verification-gap O2). Searched every `KontrakViewModel(` construction in the repo: the two in that file plus `MainActivity`'s factory, which the diff updates.
+  - `[maybe-false]` `[reject]` The spec's matrix row `SETTLE_CONFIRM_FIGURES` names 28 days / Rp 7.000.000, which no test reproduces (intent-alignment I1). The test measures the count from the contract's own period rather than hard-coding it, which is the stronger form — a 28-day fixture would only prove the arithmetic on the fixture's own shape.
+  - `[maybe-false]` `[reject]` The spec listed `SettleContractViewModelTest.kt` under `kontrak/` and the tests were split across `kontrak/` and `setoran/` (intent-alignment I6). The split follows this repo's own convention — repository tests sit beside `setoran/` with the other payment tests — and both files exist and run.
+
 ## Design Notes
 
 **`settledDays` already exists; this story wires rather than writes it.**
@@ -127,6 +163,104 @@ PRD FR-9b is explicit that settlement cannot be undone and leaves no per-day tra
 
 **Settlement composes with allocation rather than replacing it.**
 Days after `settledThroughDate` still count, and their stored allocation rows still close them. So a contract with deposits recorded *and* a settlement marker reads as: settled days closed, allocated days closed, the rest owed. The test for this is `SETTLE_PARTIAL` on a contract that already has rows, because the failure mode is an implementation that treats settlement as clearing the whole period.
+
+## Auto Run Result
+
+**Status:** done
+
+### Summary
+
+Story 3.6 lands FR-9b: a nullable `settledThroughDate` on `CONTRACT`, written in one
+transaction by `ContractRepository.settleThrough` with no allocation row and no Setoran
+created. The **existing** `settledDays` function from Story 1.5 is wired into
+`PaymentRepository.previewAllocation` — the one place every arrears read derives its charge
+days — so one line carries settlement into `currentArrears`, the preview, cancellation and
+correction together. The confirmation sheet names renter, plate, days closed and rupiah
+removed, and every figure is allocated rather than subtracted.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `data/db/entity/ContractEntity.kt` | `settledThroughDate: LocalDate?`, outside the `endDate`/active-column guard |
+| `data/db/KlinikDatabase.kt` | `MIGRATION_7_8`, a bare `ALTER` with no row rewrite; `version = 8` |
+| `data/repository/PaymentRepository.kt` | `settledDays` at the single application point; `settlementImpact`; `placeholderAmountIsDiscarded` |
+| `data/repository/ContractRepository.kt` | `settleThrough`; settlement carried through `endContract` |
+| `data/repository/Settlement.kt` | **New** — `SettlementBeforeStartException`, `SettlementImpact` |
+| `ui/screens/kontrak/KontrakViewModel.kt` | `openSettle`/`closeSettle`/`onSettleChange`/`settleContract`, fourth error channel, shared clock |
+| `ui/screens/kontrak/KontrakUiState.kt` | `SettleFormState`, `selectSettleDate`, `canSettle`, `settledThroughText` on the row |
+| `ui/screens/kontrak/SettleContractSheet.kt` | **New** — the FR-9b sheet |
+| `ui/screens/kontrak/KontrakScreen.kt` | the row's settlement verb, the settled-through line, the sheet mount |
+| `ui/shell/NavGraph.kt` + `MainActivity.kt` | six required parameters, wired |
+| `ui/strings/RStrings.kt` + `strings.xml` | the epic's copy, eight strings |
+| `test/…/setoran/SettleContractTest.kt` | **New** — 11 cases against real Room |
+| `test/…/kontrak/SettleContractViewModelTest.kt` | **New** — 7 cases |
+| `test/…/kontrak/SettleContractSheetTest.kt` | **New** — 11 cases, added by the review |
+| `test/…/penyewa/DatabaseMigrationTest.kt` | the 7→8 step, three cases |
+
+### Review findings
+
+One pass, 37 findings: 3 high, 8 medium, 12 low, 14 maybe-false, none false. All three
+highs were real and are fixed:
+
+1. **`sprint-status.yaml` still marked 3.6 `backlog`** — the same omission the parent caught
+   and fixed for 3.5 after its own review, so the pattern now appears twice.
+2. **`SettleContractSheet` had no render test at all.** The AC requires the confirmation to
+   *name* five things; that was proven only on ViewModel state, with nothing observing the
+   copy the owner reads. `SettleContractSheetTest` now asserts the epic's literal sentence.
+3. **The confirm button could be pressed on stale figures.** `onSettleChange` published the
+   transformed state still carrying the *previous* date's figures, and `canSettle` reads
+   `daysClosed > 0` — so moving to a date that closes nothing left the button live over
+   numbers the owner never chose, on an action FR-9b gives no undo.
+
+The implementer also closed the same defect on the **failure** path, which no reviewer
+had flagged: an impact that could not be computed left the button confirmable over figures
+nobody read.
+
+**Two reviewer findings were rejected on verified grounds.** `MIGRATION_7_8` was reported
+unregistered — it is registered in `addMigrations` and in all four `DatabaseMigrationTest`
+call sites. And the date-picker UTC round-trip was reported unproven — it is proven under a
+west-of-Greenwich zone in `ContractFormSheetTest`, and this story reuses that same
+`ContractDateField` rather than adding a second implementation. Every `maybe-false` finding
+is recorded in the Triage Log with what would settle it.
+
+### Follow-up review recommendation
+
+`false`. The three patched entries include no unverified residual: the stale-figure fix is
+pinned by a test that **discriminates** (the implementer verified this by reverting the guard
+and confirming the test fails), and the sheet's render surface is now covered.
+
+One caveat is recorded rather than claimed: the mid-flight window between publishing a
+cleared state and the impact read returning is **not observable** through `uiState`, because
+it is a `combine` behind `stateIn` that re-emits only when the scheduler drains. The
+implementer tried three approaches including a test-only accessor and could not pin it. The
+failure-path test is the deterministic equivalent, and the stale-figure fix is the guard
+that closes the window rather than a test that observes it.
+
+### Verification
+
+- `./gradlew :domain:test` — SUCCESS
+- `./gradlew :app:testDebugUnitTest` — SUCCESS (749 tests, 0 failures)
+- `./gradlew :app:assembleDebug` — SUCCESS
+
+All three re-run with `--rerun-tasks`. `SettleContractSheetTest` verified separately at
+11 tests / 100%.
+
+**Matrix audit:** all nine `SETTLE_*`/`MIGRATE_7_8` rows are covered by a test that ran and
+passed.
+
+### Residual risks
+
+1. **The settle sheet's `errorMessage`/`onDismissError` are still defaulted** to `null`/`{}`
+   in its signature — consistent with `ExceptionFormSheet` and `DepositSheet`, and
+   `KontrakScreen` passes both explicitly.
+2. **`ContractDateField` renders `date.toString()`**, so the field shows ISO
+   (`2026-10-24`) while the sheet's own title and the row's line show `formatTanggalBulan`
+   (`24 Okt`). Pre-existing on the exception sheet, unchanged here, and worth fixing when
+   that field is next touched.
+3. **The confirmation's date spelling differs from the epic's example.** The AC writes
+   `1 Maret 2026`; this app's formatter writes `24 Okt`. The app's own formatter was kept —
+   a date one screen spells differently from another is a drift this repo has paid for.
 
 ## Verification
 

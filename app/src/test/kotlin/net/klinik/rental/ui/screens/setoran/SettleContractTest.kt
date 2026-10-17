@@ -12,7 +12,7 @@ import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.SettlementBeforeStartException
 import net.klinik.rental.domain.model.Payment
-import net.klinik.rental.domain.validation.ContractNotOpenException
+import net.klinik.rental.data.repository.UnknownContractException
 import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -118,18 +118,6 @@ class SettleContractTest {
     }
 
     /**
-     * `SETTLE_PARTIAL` — settlement **composes with** allocation rather than replacing it.
-     *
-     * A Rp 750.000 deposit closes three of the seventeen days, leaving Rp 3.500.000 owed.
-     * Settling through 5 Oct then closes the two charge days on or before it (1 and 2
-     * Oct — 3, 4 and 5 Oct are the rest of the week already closed by the deposit, so
-     * they contribute nothing either way), and the fourteen days after it still count.
-     *
-     * The allocation rows are **unchanged**: settlement narrows the day list and never
-     * rewrites a row, which is what `Settlement.kt`'s own KDoc claims and this is where
-     * it is checked.
-     */
-    /**
  * `SETTLE_PARTIAL` — settlement **composes with** allocation rather than replacing it,
  * and it does so by re-deriving.
  *
@@ -146,17 +134,10 @@ class SettleContractTest {
  * 15 days at Rp 250.000 is Rp 3.750.000 owed; less the deposit's Rp 750.000 leaves
  * **Rp 3.000.000**, and twelve days open.
  *
- * ## Known defect, asserted red on purpose
- *
- * `PaymentRepository.settlementImpact` reports **13** days closed where the arrears
- * arithmetic gives 12. The cause is the Rp 1 `RECOMPUTE_ID` placeholder it allocates
- * before reading the day's total: the placeholder takes a rupiah from a day the deposit
- * covers, that day lands Rp 1 short of `dailyRate`, and `arrearsOf` counts a partly-paid
- * day as open — so the day count is inflated by one while the rupiah is unaffected
- * (the assertion on Rp 3.000.000 passes). It is the same placeholder hazard
- * `correctDeposit` had to route around in Story 3.5, reached from the read side this
- * time. The correct figure is asserted so the defect stays visible rather than being
- * edited into the test.
+ * The Rp 1 placeholder once made this read **13** days, because it took a rupiah off a
+ * day the deposit already covered and `arrearsOf` counts a partly-paid day as open.
+ * `previewAllocation`'s `placeholderAmountIsDiscarded` now hands the placeholder nothing,
+ * which is why the count below is the honest twelve.
  */
     @Test
     fun `a partial settlement leaves the later days owing and re-derives the deposit`() = runBlocking {
@@ -295,10 +276,17 @@ class SettleContractTest {
         )
     }
 
-    /** `SETTLE_UNKNOWN` — a contract nobody holds is refused rather than created. */
-    @Test
+    /**
+ * `SETTLE_UNKNOWN` — a contract nobody holds is refused rather than created.
+ *
+ * Asserted against `UnknownContractException` and **not** `ContractNotOpenException`,
+ * because the two say different things and the difference is load-bearing here: that type's
+ * wording is "this contract has ended", which is the one state this write accepts. An ended
+ * contract is exactly what FR-9b exists for.
+ */
+@Test
     fun `settling an unknown contract is refused`() {
-        assertThrows(ContractNotOpenException::class.java) {
+        assertThrows(UnknownContractException::class.java) {
             runBlocking { contracts.settleThrough("no-such-contract", asOf) }
         }
     }

@@ -148,7 +148,7 @@ data class ContractEntity(
     val activeRenterId: String?,
     /** `null` means the contract is still running. */
     @ColumnInfo(defaultValue = "NULL")
-    val endDate: LocalDate? = null,
+    val endDate: LocalDate?,
     /**
      * FR-9b, Story 3.6: charge days at or before this are treated as **already paid**,
      * `null` meaning no settlement.
