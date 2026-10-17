@@ -449,4 +449,58 @@ class RStrings(private val context: Context) {
      */
     fun pengaturanErrorUnexpected(): String =
         context.getString(R.string.pengaturan_error_unexpected)
+
+    // -------------------------------------------------------------- Story 3.2
+
+    /**
+     * A deposit that landed.
+     *
+     * Takes an **already-formatted** amount, not a `Long`: the caller is the ViewModel,
+     * which has no composition and therefore no `stringResource`, and assembling money by
+     * hand here would be the second spelling of a rupiah figure on this screen. The
+     * acceptance criterion for the numpad says the figure is large and tabular, so the
+     * same value has to survive that treatment and this sentence.
+     */
+    fun depositoSaved(amount: String): String =
+        context.getString(R.string.deposito_saved, amount)
+
+    /**
+     * A transfer with no account chosen.
+     *
+     * Lands on the **account field**, so the sheet's `copy(accountError = …)` puts it
+     * there — which is why this takes no parameters and returns the bare sentence.
+     */
+    fun depositoErrorAccountRequired(): String =
+        context.getString(R.string.deposito_error_account_required)
+
+    /**
+     * The renter has no running contract.
+     *
+     * The only refusal with no field to blame, so it goes on the sheet's banner rather
+     * than on the amount. It names the fix — open or close a contract first — because
+     * "there is nothing to bill" on its own leaves the owner with a form that cannot be
+     * completed and no idea why.
+     */
+    fun depositoErrorNoContract(): String =
+        context.getString(R.string.deposito_error_no_contract)
+
+    /**
+     * An amount that is zero, or digits that are not a figure at all.
+     *
+     * Says *belum diisi* rather than naming a format, because the case reaching here is
+     * the numpad showing `0` — and the numpad's own flash is the immediate answer. This
+     * is the sheet-level fallback for a value seeded from outside the pad, where the
+     * flash never fired.
+     */
+    fun depositoErrorAmountZero(): String =
+        context.getString(R.string.deposito_error_amount_zero)
+
+    /**
+     * A deposit that failed for a reason this screen does not model.
+     *
+     * Says nothing about what went wrong because nothing is known: naming a cause would
+     * be a guess shown to the owner as fact, about money they believe they handed over.
+     */
+    fun depositoErrorUnexpected(): String =
+        context.getString(R.string.deposito_error_unexpected)
 }

@@ -1,0 +1,59 @@
+package net.klinik.rental.data.db.dao
+
+import androidx.room.Dao
+import androidx.room.Query
+import androidx.room.Upsert
+import net.klinik.rental.data.db.entity.SettingEntity
+
+/**
+ * Reads and writes for `SETTINGS`.
+ *
+ * ## Why there is no `@Insert` and an `@Upsert` instead
+ *
+ * Because configuration is *changed*, not appended: Story 5.4 moves the cutoff day from 25 to
+ * 20, which is an update to an existing key rather than a second row with the same key. An
+ * `@Insert` would refuse that with a constraint failure the owner cannot act on, and a
+ * delete-then-insert would leave a window where the setting does not exist — which, for the
+ * cutoff day, means a deposit recorded in that window is allocated against the wrong period.
+ *
+ * `@Upsert` makes "write this setting" one statement with no gap.
+ *
+ * ## Why the default is supplied on read, not stored
+ *
+ * [findInt] falls back to [default] when the key is absent, so a **fresh install can record a
+ * deposit on its first run** rather than failing because configuration has not been written.
+ * The alternative — seeding a row at migration time — puts a value in the database that the
+ * owner never chose, and makes "unset" indistinguishable from "set to the default" the moment
+ * Story 5.4 wants to show what a value actually is.
+ */
+@Dao
+interface SettingDao {
+
+    /** The raw stored value, or `null` when the key has never been written. */
+    @Query("SELECT value FROM settings WHERE key = :key")
+    suspend fun findValue(key: String): String?
+
+    /**
+     * The stored value read as an [Int], falling back to [default].
+     *
+     * The fallback covers three cases that all want the same answer: the key was never
+     * written, it holds something unparseable (a half-finished edit, or a value written by a
+     * future version), or the caller asked for a key that does not exist. In all three the
+     * owner gets a working app and a figure that is at least explicable.
+     *
+     * An **unparseable** value falls back rather than throwing, and that is a deliberate
+     * choice: configuration is not money, and refusing to record a deposit because a setting
+     * is corrupt would be a worse failure than recording it against the default cutoff.
+     */
+    suspend fun findInt(key: String, default: Int): Int =
+        findValue(key)?.trim()?.toIntOrNull() ?: default
+
+    /**
+     * Writes the setting, replacing any existing row for the key.
+     *
+     * Named rather than a bare `upsert`, so "the only writer of this table" stays one
+     * greppable fact — the same argument `PaymentDao.insertPayment` makes.
+     */
+    @Upsert
+    suspend fun putSetting(setting: SettingEntity)
+}

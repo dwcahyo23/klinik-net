@@ -155,6 +155,26 @@ interface ContractDao {
     @Query("SELECT * FROM contract ORDER BY startDate ASC, id ASC")
     fun allContracts(): Flow<List<ContractEntity>>
 
+    /**
+     * Every **open** contract, as a [Flow].
+     *
+     * Added by Story 3.2 for the deposit form's renter picker, which has to know which
+     * renters have a rental running so it can fill the vehicle and rate from it.
+     *
+     * Asked on `endDate IS NULL` rather than on the two active columns, and deliberately
+     * differently from [findActiveByVehicleId] and [findActiveByRenterId] above: those two
+     * answer on the *indexed* active column because the `UNIQUE` index is what they need to
+     * settle a write. This one is a read that wants every open row, and no index exists on
+     * `endDate` alone — so it filters the contract table directly.
+     *
+     * Two definitions of "open" in one DAO is the drift `ContractEntity`'s KDoc warns about,
+     * and this is the honest answer to it: the definitions are equivalent, and which column
+     * answers is a question about *why* the query is being asked, not about the rule. Both
+     * say `endDate == null`; one also asks SQLite to use an index.
+     */
+    @Query("SELECT * FROM contract WHERE endDate IS NULL ORDER BY startDate DESC, id ASC")
+    fun observeOpen(): Flow<List<ContractEntity>>
+
     // ----------------------------------------------------------------- writes
 
     /**

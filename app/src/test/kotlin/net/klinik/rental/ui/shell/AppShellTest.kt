@@ -23,6 +23,7 @@ import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
+import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -66,6 +67,63 @@ class AppShellTest {
 
         compose.onNodeWithTag(TAG_BOTTOM_NAV).assertExists()
         compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(0)
+    }
+
+    /**
+     * Story 3.2's FAB is on the shell, so it appears over **every** destination — and the
+     * branch that puts it somewhere else would be a control the owner reaches on some
+     * tablets and not others, which is what AR-18's "identical graph in both
+     * orientations" exists to prevent.
+     *
+     * One test per orientation rather than both in one, because a `ComposeTestRule`
+     * accepts exactly one `setContent` per method — the reason this file's own harness
+     * drives a single tree per pass.
+     */
+    @Test
+    fun `the deposit FAB appears in landscape`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
+        compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(1)
+    }
+
+    @Test
+    fun `the deposit FAB appears in portrait`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
+
+        compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
+        compose.onAllNodesWithTag(TAG_BOTTOM_NAV).assertCountEquals(1)
+    }
+
+    /** And it clears the 48dp floor — UX-DR17's 54dp, measured rather than assumed. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the deposit FAB clears the touch floor`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        compose.onNodeWithTag(TAG_DEPOSIT_FAB)
+            .assertExists()
+            .assertWidthIsAtLeast(48.dp)
+            .assertHeightIsAtLeast(48.dp)
+    }
+
+    /**
+     * The FAB **disappears** while the sheet is open.
+     *
+     * Both are windows: a FAB showing through an open sheet is the same defect at a
+     * smaller size as two `ModalBottomSheet`s over one state, which was the only `high`
+     * Story 2.8's review found.
+     */
+    @Test
+    fun `the FAB is absent while the deposit sheet is open`() {
+        val open = testScreens(
+            depositoState = net.klinik.rental.ui.screens.setoran.SetoranUiState(
+                form = net.klinik.rental.ui.screens.setoran.DepositFormState(),
+            ),
+        )
+        compose.setContent { theme { AppShell(screens = open, isLandscape = true) } }
+
+        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
     }
 
     @Test
@@ -311,7 +369,10 @@ class AppShellTest {
         val MIN_TARGET: Dp = 48.dp
     }
 
-    private fun testScreens() = Screens(
+    private fun testScreens(
+        depositoState: net.klinik.rental.ui.screens.setoran.SetoranUiState =
+            net.klinik.rental.ui.screens.setoran.SetoranUiState(),
+    ) = Screens(
         kendaraan = Screens.Kendaraan(
             state = KendaraanUiState(),
             snackbarMessage = null,
@@ -380,5 +441,16 @@ class AppShellTest {
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
+        deposito = Screens.Deposito(
+            state = depositoState,
+            onOpen = {},
+            onClose = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
     )
 }
+
+

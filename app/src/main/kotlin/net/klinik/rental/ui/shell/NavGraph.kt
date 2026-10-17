@@ -22,6 +22,7 @@ import net.klinik.rental.ui.screens.penyewa.RenterFormSheet
 import net.klinik.rental.ui.screens.pengaturan.AccountRow
 import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
+import net.klinik.rental.ui.screens.setoran.DepositSheet
 
 /**
  * The app's single navigation graph (AR-18).
@@ -102,6 +103,19 @@ internal class Screens(
     val penyewa: Penyewa,
     val kontrak: Kontrak,
     val pengaturan: Pengaturan,
+    /**
+     * The deposit sheet's wiring.
+     *
+     * A destination class with **no route** — the sheet is mounted by `AppShell` over
+     * whichever screen is showing, not navigated to. Story 3.2's AC opens the form from
+     * "Beranda atau speed dial" and neither exists, so the shell's FAB is the door; that
+     * is a quick action, not a place you browse, and a fifth nav tab would make it one.
+     *
+     * The sheet's *content* state is collected separately from the shell's own state, for
+     * the reason `AppShell` takes state rather than ViewModels: a test drives the whole
+     * shell with hand-built values and no database.
+     */
+    val deposito: Deposito,
 ) {
     /** The fleet destination's wiring. */
     class Kendaraan(
@@ -207,6 +221,24 @@ internal class Screens(
         val onFormChange:
             ((net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> Unit,
         val onSave: () -> Unit,
+        val onSnackbarDismiss: () -> Unit,
+        val onErrorDismiss: () -> Unit,
+    )
+
+    /**
+     * The deposit sheet's wiring — no route, mounted by the shell.
+     *
+     * [state] is the **whole** sheet state including the pickers, because the sheet and
+     * the FAB are mounted by two different composables and both read it. Splitting it
+     * would mean the FAB collecting what it does not draw.
+     */
+    class Deposito(
+        val state: net.klinik.rental.ui.screens.setoran.SetoranUiState,
+        val onOpen: () -> Unit,
+        val onClose: () -> Unit,
+        val onFormChange:
+            ((net.klinik.rental.ui.screens.setoran.DepositFormState) -> net.klinik.rental.ui.screens.setoran.DepositFormState) -> Unit,
+        val onSave: (Long) -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
     )
@@ -347,5 +379,31 @@ private fun PengaturanRoute(wiring: Screens.Pengaturan) {
         snackbarMessage = wiring.snackbarMessage,
         onSnackbarDismiss = wiring.onSnackbarDismiss,
         onErrorDismiss = wiring.onErrorDismiss,
+    )
+}
+
+/**
+ * The deposit sheet — mounted here, over whichever destination is showing.
+ *
+ * ## Why this is a function and not three lines in `AppShell`
+ *
+ * It is the same wiring `KendaraanRoute` and `PenyewaRoute` do, and giving it a name means
+ * the shell's two branches (rail / bottom nav) stay identical. A sheet composed inside
+ * the `if (isLandscape)` branch and again in the `else` is two places to forget.
+ *
+ * ## Why it has no route
+ *
+ * A deposit is a quick action, not a place the owner browses. Adding a fifth nav tab would
+ * make it one, and the epic context is explicit that the bottom nav and the rail are for
+ * destinations while quick actions live behind the FAB — and that Beranda's grid will be
+ * the *only* door there once it exists.
+ */
+@Composable
+internal fun DepositHost(wiring: Screens.Deposito) {
+    DepositSheet(
+        state = wiring.state,
+        onClose = wiring.onClose,
+        onChange = wiring.onFormChange,
+        onSave = wiring.onSave,
     )
 }

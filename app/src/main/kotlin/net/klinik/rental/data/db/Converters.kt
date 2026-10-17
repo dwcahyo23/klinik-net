@@ -2,6 +2,7 @@ package net.klinik.rental.data.db
 
 import androidx.room.TypeConverter
 import java.time.DayOfWeek
+import java.time.Instant
 import java.time.LocalDate
 
 /**
@@ -72,4 +73,30 @@ class Converters {
 
     @TypeConverter
     fun toDayOfWeek(value: Int?): DayOfWeek? = value?.let(DayOfWeek::of)
+
+    /**
+     * `Instant` <-> ISO-8601 TEXT, for `PAYMENT.createdAt`.
+     *
+     * ## Why this exists at all, when the other date columns use [LocalDate]
+     *
+     * A deposit has two dates and they are different kinds of fact. [LocalDate] is **when the
+     * money arrived relative to the rental period** — a billing fact, and it has to sort and
+     * compare against other billing days. `createdAt` is **when the owner typed it in** — an
+     * audit fact that is never compared against a charge day and never ordered by.
+     *
+     * Conflating them would mean typing a deposit in late enough to change which period it
+     * falls in, which is a real thing the owner does (Story 3.5's correction case). Keeping
+     * them apart is what lets a deposit be dated in the past while still recording when it was
+     * actually entered.
+     *
+     * ISO-8601 instant text rather than epoch millis, for the same reason the date columns use
+     * ISO rather than integers: a value read straight out of the database is legible, and
+     * `Instant.toString()` *is* the standard format — so there is one definition of it and
+     * not a hand-formatted second one.
+     */
+    @TypeConverter
+    fun fromInstant(value: Instant?): String? = value?.toString()
+
+    @TypeConverter
+    fun toInstant(value: String?): Instant? = value?.let(Instant::parse)
 }

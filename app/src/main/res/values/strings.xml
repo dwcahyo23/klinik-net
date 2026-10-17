@@ -654,4 +654,52 @@
 
     <!-- Confirmations. A snackbar, not a screen state change. -->
     <string name="pengaturan_account_saved">Rekening %1$s tersimpan</string>
+
+    <!--
+      Story 3.2 — Setoran (deposits).
+
+      The numpad's own copy is not here: `KnNumPad` ships its digits and its Save
+      label, because a second set of digits would be a second keyboard.
+    -->
+    <!-- The FAB's label, and the sheet's title. -->
+    <string name="deposito_action">Catat Setoran</string>
+    <string name="deposito_title">Catat setoran</string>
+    <string name="deposito_renter_label">Penyewa</string>
+    <string name="deposito_renter_none">Pilih penyewa</string>
+    <!--
+      Shown where the vehicle and rate would be, for a renter with no running
+      contract. Names the *reason* the form cannot proceed rather than leaving two
+      blank fields, which would read as a bug.
+    -->
+    <string name="deposito_no_contract">Belum ada kontrak aktif untuk penyewa ini.</string>
+    <string name="deposito_amount_label">Nominal</string>
+    <string name="deposito_method_label">Metode pembayaran</string>
+    <string name="deposito_method_transfer">Transfer Bank</string>
+    <string name="deposito_method_cash">Tunai</string>
+    <!--
+      The account and reference fields, both Transfer-Bank only.
+
+      For Tunai they are **unmounted**, not blanked: the epic context is explicit that
+      filling a field in empty "menciptakan ilusi data yang padahal tidak ada".
+    -->
+    <string name="deposito_account_label">Rekening usaha</string>
+    <string name="deposito_account_none">Pilih rekening</string>
+    <string name="deposito_reference_label">Kode transaksi (opsional)</string>
+    <string name="deposito_notes_label">Catatan (opsional)</string>
+    <string name="deposito_notes_hint">Misalnya: atas nama istri Budi</string>
+    <string name="deposito_cancel">Batal</string>
+    <string name="deposito_saved">Setoran %1$s tersimpan</string>
+
+    <!--
+      Refusals. Each names what to do.
+
+      `deposito_error_no_contract` is the only one without a field to land on — there
+      is no control the owner can change when the renter has no running rental — so
+      it goes on the sheet's banner.
+    -->
+    <string name="deposito_error_account_required">Pilih rekening usaha yang menerima transfer ini.</string>
+    <string name="deposito_error_no_contract">Penyewa ini belum punya kontrak aktif, jadi tidak ada yang bisa ditagih. Akhiri atau buka kontraknya dulu.</string>
+    <string name="deposito_error_amount_zero">Nominalnya belum diisi.</string>
+    <string name="deposito_error_unexpected">Gagal menyimpan setoran. Coba lagi.</string>
 </resources>
+

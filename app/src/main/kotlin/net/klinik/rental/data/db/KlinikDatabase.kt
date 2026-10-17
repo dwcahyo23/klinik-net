@@ -7,15 +7,21 @@ import androidx.room.RoomDatabase
 import androidx.room.TypeConverters
 import androidx.room.migration.Migration
 import androidx.sqlite.db.SupportSQLiteDatabase
+import net.klinik.rental.data.db.dao.AllocationDao
 import net.klinik.rental.data.db.dao.BusinessAccountDao
 import net.klinik.rental.data.db.dao.ContractDao
+import net.klinik.rental.data.db.dao.PaymentDao
 import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
+import net.klinik.rental.data.db.dao.SettingDao
 import net.klinik.rental.data.db.dao.VehicleDao
+import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.BusinessAccountEntity
 import net.klinik.rental.data.db.entity.ContractEntity
+import net.klinik.rental.data.db.entity.PaymentEntity
 import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.db.entity.ServiceExceptionEntity
+import net.klinik.rental.data.db.entity.SettingEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 
 /**
@@ -55,8 +61,11 @@ import net.klinik.rental.data.db.entity.VehicleEntity
         RenterEntity::class,
         ServiceExceptionEntity::class,
         BusinessAccountEntity::class,
+        PaymentEntity::class,
+        AllocationEntity::class,
+        SettingEntity::class,
     ],
-    version = 5,
+    version = 6,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -71,6 +80,12 @@ abstract class KlinikDatabase : RoomDatabase() {
     abstract fun serviceExceptionDao(): ServiceExceptionDao
 
     abstract fun businessAccountDao(): BusinessAccountDao
+
+    abstract fun paymentDao(): PaymentDao
+
+    abstract fun allocationDao(): AllocationDao
+
+    abstract fun settingDao(): SettingDao
 
     companion object {
         private const val NAME = "klinik.db"
@@ -401,6 +416,116 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v5 -> v6: adds `PAYMENT`, `ALLOCATION` and `SETTINGS`.
+         *
+         * ## What is load-bearing in the statements below
+         *
+         * Three things, each of which fails loudly rather than degrading:
+         *
+         *  - **`UNIQUE(paymentId, chargeDate)` on `allocation`**, under Room's derived name
+         *    `index_allocation_paymentId_chargeDate`. This is a **correctness** constraint, not
+         *    an index: without it one deposit could write two rows for the same charge day, and
+         *    `Σ allocation == amount` would break in a way no sum of the other rows reveals.
+         *    Room compares the index set for equality on open, so a differently-named index
+         *    is refused wholesale — `DatabaseMigrationTest`'s `indexesOf` assertion is what
+         *    proves the name rather than assuming it.
+         *
+         *  - **`ON DELETE RESTRICT` on both of `payment`'s foreign keys**, and on
+         *    `allocation.paymentId`. A deposit is money the owner took: cancelling it (Story
+         *    3.4) is a *delete*, and `CASCADE` here would let a cascade take the payment with
+         *    its allocations in either direction. The `payment.accountId` restriction is also
+         *    the delete refusal Story 3.1 deferred — a bank account with deposits on it
+         *    cannot be deleted.
+         *
+         *  - **`DEFAULT NULL` on every nullable column.** Room compares recorded column
+         *    defaults against the compiled schema and refuses the whole migration when they
+         *    disagree, so a `@ColumnInfo(defaultValue = "NULL")` with no matching clause here
+         *    is not a cosmetic omission: the database will not open.
+         *
+         * ## Why `settings` is created empty
+         *
+         * No `cutoffDay` row is seeded. `SettingDao.findInt` supplies the default on read, so a
+         * fresh install records its first deposit against the default cutoff rather than
+         * failing because configuration was never written — and "unset" stays distinguishable
+         * from "set to 25", which matters the moment Story 5.4 wants to show the owner what
+         * the value actually is.
+         *
+         * No `--` comments appear inside any statement. A SQL line comment inside a Kotlin raw
+         * string reaches SQLite verbatim and swallows the rest, which surfaces as a bare
+         * `near "/": syntax error` with no line of this file named in it.
+         */
+        val MIGRATION_5_6 = object : Migration(5, 6) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `payment` (
+                        `id` TEXT NOT NULL,
+                        `contractId` TEXT NOT NULL,
+                        `accountId` TEXT DEFAULT NULL,
+                        `date` TEXT NOT NULL,
+                        `amount` INTEGER NOT NULL,
+                        `method` TEXT NOT NULL,
+                        `referenceNo` TEXT DEFAULT NULL,
+                        `notes` TEXT DEFAULT NULL,
+                        `createdAt` TEXT NOT NULL,
+                        PRIMARY KEY (`id`),
+                        FOREIGN KEY (`contractId`) REFERENCES `contract` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT,
+                        FOREIGN KEY (`accountId`) REFERENCES `business_account` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT
+                    )
+                    """.trimIndent(),
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_payment_contractId` " +
+                        "ON `payment` (`contractId`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_payment_accountId` " +
+                        "ON `payment` (`accountId`)",
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `allocation` (
+                        `id` TEXT NOT NULL,
+                        `paymentId` TEXT NOT NULL,
+                        `contractId` TEXT NOT NULL,
+                        `chargeDate` TEXT DEFAULT NULL,
+                        `amount` INTEGER NOT NULL,
+                        PRIMARY KEY (`id`),
+                        FOREIGN KEY (`paymentId`) REFERENCES `payment` (`id`)
+                            ON UPDATE CASCADE ON DELETE RESTRICT
+                    )
+                    """.trimIndent(),
+                )
+                // The duplicate-day guard, and the arrears query's index. Both are needed;
+                // the first is correctness, the second is what keeps the number the app is
+                // built around off a table scan. `chargeDate` is the *column* name, so the
+                // index Room derives from it is `index_allocation_paymentId_chargeDate` —
+                // not the domain value's shorter spelling.
+                db.execSQL(
+                    "CREATE UNIQUE INDEX IF NOT EXISTS `index_allocation_paymentId_chargeDate` " +
+                        "ON `allocation` (`paymentId`, `chargeDate`)",
+                )
+                db.execSQL(
+                    "CREATE INDEX IF NOT EXISTS `index_allocation_contractId_date` " +
+                        "ON `allocation` (`contractId`, `chargeDate`)",
+                )
+
+                db.execSQL(
+                    """
+                    CREATE TABLE IF NOT EXISTS `settings` (
+                        `key` TEXT NOT NULL,
+                        `value` TEXT NOT NULL,
+                        PRIMARY KEY (`key`)
+                    )
+                    """.trimIndent(),
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -419,7 +544,13 @@ abstract class KlinikDatabase : RoomDatabase() {
             Room.databaseBuilder(context, KlinikDatabase::class.java, NAME)
                 // Every schema change ships its migration here. No
                 // `fallbackToDestructiveMigration` — see the class KDoc.
-                .addMigrations(MIGRATION_1_2, MIGRATION_2_3, MIGRATION_3_4, MIGRATION_4_5)
+                .addMigrations(
+                    MIGRATION_1_2,
+                    MIGRATION_2_3,
+                    MIGRATION_3_4,
+                    MIGRATION_4_5,
+                    MIGRATION_5_6,
+                )
                 .build()
     }
 }

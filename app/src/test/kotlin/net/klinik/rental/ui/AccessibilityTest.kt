@@ -63,6 +63,7 @@ import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
+import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -729,6 +730,15 @@ class AccessibilityTest {
             onAdd = {},
             onEdit = {},
             onCloseForm = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+        deposito = Screens.Deposito(
+            state = SetoranUiState(),
+            onOpen = {},
+            onClose = {},
             onFormChange = { it },
             onSave = {},
             onSnackbarDismiss = {},

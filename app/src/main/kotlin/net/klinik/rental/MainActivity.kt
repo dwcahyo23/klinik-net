@@ -19,17 +19,20 @@ import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
 import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
 import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
+import net.klinik.rental.ui.screens.setoran.SetoranViewModel
 import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
+import java.time.Clock
 import java.time.LocalDate
 
 /**
@@ -94,6 +97,14 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    private val setoranViewModel: SetoranViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createSetoranViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -112,6 +123,7 @@ class MainActivity : ComponentActivity() {
                     penyewa = penyewaViewModel,
                     kontrak = kontrakViewModel,
                     pengaturan = pengaturanViewModel,
+                    setoran = setoranViewModel,
                 )
             }
         }
@@ -186,6 +198,44 @@ internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
 }
 
 /**
+ * The deposit ViewModel over the same singleton.
+ *
+ * Four repositories, and that count is worth noting: a deposit names a **contract** (whose
+ * rate and period it settles), a **renter** (who the owner thinks in terms of), a
+ * **vehicle** (for the plate on the confirmation) and a **business account** (where the
+ * transfer landed). None of the three existing ViewModels holds all four, so this is a
+ * fourth factory rather than a fourth constructor parameter somewhere else.
+ *
+ * @param clock the single `Clock` the epic context requires. A deposit's allocation is
+ *   relative to a billing period, and the period depends on today — so pinning this to
+ *   `LocalDate.now()` would make the whole screen untestable, since a test passing in
+ *   October fails in November.
+ */
+internal fun createSetoranViewModel(context: Context): SetoranViewModel {
+    val database = KlinikDatabase.get(context)
+    return SetoranViewModel(
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            database = database,
+        ),
+        renterRepository = RenterRepository(database.renterDao()),
+        vehicleRepository = VehicleRepository(database.vehicleDao()),
+        accountRepository = BusinessAccountRepository(database.businessAccountDao()),
+        contractRepository = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+            database,
+        ),
+        strings = RStrings(context),
+        clock = Clock.systemDefaultZone(),
+    )
+}
+
+/**
  * The app shell: one graph, a rail in landscape and a bottom nav in portrait.
  *
  * Stateless by design — every screen is driven from its own `UiState` and every
@@ -215,6 +265,7 @@ private fun KlinikNetApp(
     penyewa: PenyewaViewModel,
     kontrak: KontrakViewModel,
     pengaturan: PengaturanViewModel,
+    setoran: SetoranViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -233,6 +284,7 @@ private fun KlinikNetApp(
     // banner pair is enough — unlike the contracts screen's three sheets.
     val pengaturanState by pengaturan.uiState.collectAsStateWithLifecycle()
     val pengaturanSnackbar by pengaturan.snackbarMessage.collectAsStateWithLifecycle()
+    val setoranState by setoran.uiState.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -321,7 +373,20 @@ private fun KlinikNetApp(
                     onSnackbarDismiss = pengaturan::consumeMessage,
                     onErrorDismiss = pengaturan::consumeError,
                 ),
+                // Story 3.2's deposit sheet. No route — the shell mounts it over
+                // whichever destination is showing, because a deposit is a quick
+                // action rather than a place the owner browses.
+                deposito = Screens.Deposito(
+                    state = setoranState,
+                    onOpen = setoran::openDeposit,
+                    onClose = setoran::closeDeposit,
+                    onFormChange = setoran::onFormChange,
+                    onSave = setoran::saveDepositAmount,
+                    onSnackbarDismiss = setoran::consumeMessage,
+                    onErrorDismiss = setoran::consumeError,
+                ),
             ),
         )
     }
 }
+

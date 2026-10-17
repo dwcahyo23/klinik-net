@@ -10,6 +10,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.ui.screens.kendaraan.TAG_BANNER
+import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Rule
 import org.junit.Test
@@ -176,6 +177,18 @@ class BannerScopeTest {
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
+        deposito = Screens.Deposito(
+            state = SetoranUiState(),
+            onOpen = {},
+            onClose = {},
+            onFormChange = { it },
+            onSave = {},
+            onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
     )
 
 }
+
+
+

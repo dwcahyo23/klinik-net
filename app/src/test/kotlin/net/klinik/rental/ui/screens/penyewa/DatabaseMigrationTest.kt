@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
      * direct `migrate` call and fail here.
      */
     @Test
-    fun `a v1 database migrates to v5 with every table and index`() {
+    fun `a v1 database migrates to v6 with every table and index`() {
         createV1Database(withVehicle = true)
 
         val migrated = openMigrated()
@@ -200,20 +200,21 @@ class DatabaseMigrationTest {
      * was ever needed, is the failure.
      */
     @Test
-    fun `a fresh install opens at v5 without a migration`() {
+    fun `a fresh install opens at v6 without a migration`() {
         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
             .addMigrations(
                 KlinikDatabase.MIGRATION_1_2,
                 KlinikDatabase.MIGRATION_2_3,
                 KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
+                KlinikDatabase.MIGRATION_5_6,
             )
             .build()
         database = fresh
 
         // Touch the database so it is actually created rather than only built.
         val sql = fresh.openHelper.readableDatabase
-        assertEquals(5, sql.version)
+        assertEquals(6, sql.version)
         assertEquals(
             listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
             columnsOf(sql, "renter"),
@@ -288,7 +289,7 @@ class DatabaseMigrationTest {
      * read as coverage of the data-loss question while providing none.
      */
     @Test
-    fun `a v2 database migrates to v5 with the widened contract table`() {
+    fun `a v2 database migrates to v6 with the widened contract table`() {
         createV2Database(withVehicleAndRenter = true)
 
         val migrated = openMigrated()
@@ -381,6 +382,7 @@ class DatabaseMigrationTest {
                     KlinikDatabase.MIGRATION_2_3,
                     KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
+                KlinikDatabase.MIGRATION_5_6,
             )
                 .build()
                 .openHelper
@@ -513,7 +515,7 @@ class DatabaseMigrationTest {
      * through its own DAO afterwards.
      */
     @Test
-    fun `a v3 database migrates to v5 with the service_exception table`() {
+    fun `a v3 database migrates to v6 with the service_exception table`() {
         createV3Database()
 
         val migrated = openMigrated()
@@ -734,7 +736,7 @@ class DatabaseMigrationTest {
      * migration is reached at all, which is why the version is asserted first.
      */
     @Test
-    fun `a v4 database migrates to v5 with the business_account table`() {
+    fun `a v4 database migrates to v6 with the business_account table`() {
         createV4Database()
 
         val migrated = openMigrated()
@@ -861,6 +863,195 @@ class DatabaseMigrationTest {
         assertEquals("a1", stored.id)
         assertEquals("BCA", stored.bankName)
         assertEquals("1234567890", stored.number)
+    }
+
+    // --------------------------------------------------------------- v5 -> v6
+
+    /**
+     * Builds a **v5** database: the v4 shape plus Story 3.1's `business_account`.
+     *
+     * Separate from [createV4Database] for the same reason the v4 fixture is separate from
+     * the v3 one: each exists to exercise exactly one migration step, and reusing one
+     * fixture with a flag makes the assertion depend on how the flag was passed.
+     *
+     * A **real** account row, because the v5→v6 migration adds a foreign key to that
+     * table and the interesting case is the one where the parent has rows: a migration
+     * that creates `payment` before `business_account`, or one run with foreign keys off,
+     * passes against an empty parent and fails against a populated one.
+     */
+    private fun createV5Database() {
+        createV4Database()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `business_account` (
+                    `id` TEXT NOT NULL,
+                    `bankName` TEXT NOT NULL,
+                    `number` TEXT NOT NULL,
+                    PRIMARY KEY (`id`)
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO business_account (id, bankName, number)
+                VALUES ('a-v5', 'BCA', '1234567890')
+                """.trimIndent(),
+            )
+
+            db.version = 5
+        }
+    }
+
+    /**
+     * `MIGRATE_5_6` — a v5 database opens at v6 with the three new tables, and every
+     * pre-existing row survives.
+     *
+     * ## Why a v5 fixture when the v1 and v4 fixtures already reach v6
+     *
+     * They prove the migration *chain* runs. Neither proves the **5→6 step alone** works:
+     * a chain can be correct while one link is a no-op, and this story's link is the one
+     * that creates two tables referencing each other plus one referencing a table the
+     * *previous* story added. That is the link least likely to be exercised by accident.
+     */
+    @Test
+    fun `a v5 database migrates to v6 with every table and index`() {
+        createV5Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "the payment table has exactly these columns, in this order",
+            listOf(
+                "id", "contractId", "accountId", "date", "amount",
+                "method", "referenceNo", "notes", "createdAt",
+            ),
+            columnsOf(sql, "payment"),
+        )
+        assertEquals(
+            "and the allocation table these",
+            listOf("id", "paymentId", "contractId", "chargeDate", "amount"),
+            columnsOf(sql, "allocation"),
+        )
+        assertEquals(
+            "with the key/value shape the settings table declares",
+            listOf("key", "value"),
+            columnsOf(sql, "settings"),
+        )
+        // The credit row's `chargeDate` must be nullable or AD-3's cross-period credit
+        // cannot exist — and Room refuses the whole migration when the recorded default
+        // disagrees with the entity's `@ColumnInfo`, so this asserts it rather than
+        // trusting that to have happened.
+        assertEquals(
+            "the credit row's day is the one nullable column",
+            listOf("chargeDate"),
+            nullableColumnsOf(sql, "allocation"),
+        )
+        assertEquals(
+            "and the rest are NOT NULL",
+            listOf("id", "paymentId", "contractId", "amount"),
+            notNullColumnsOf(sql, "allocation"),
+        )
+        // Every pre-existing row survives, including the account the new foreign key
+        // points at.
+        assertEquals(
+            "the account row the new FK depends on survives",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM business_account"),
+        )
+        assertEquals(
+            "as do the fleet, the renters, the contracts and the exceptions",
+            listOf(1, 1, 1, 1),
+            listOf(
+                countOf(sql, "SELECT COUNT(*) FROM vehicle"),
+                countOf(sql, "SELECT COUNT(*) FROM renter"),
+                countOf(sql, "SELECT COUNT(*) FROM contract"),
+                countOf(sql, "SELECT COUNT(*) FROM service_exception"),
+            ),
+        )
+    }
+
+    /**
+     * The unique index that stops one deposit writing two rows for one charge day is
+     * really in the **migrated file**, under the name Room derives — and it refuses.
+     *
+     * The name assertion alone would pass for an index Room created itself from the
+     * compiled schema; provoking the duplicate is what proves the *migration's* statement
+     * ran and created it, which is the half a compiled-schema-only index cannot satisfy.
+     */
+    @Test
+    fun `the migrated allocation table refuses two rows for one deposit and day`() {
+        createV5Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertTrue(
+            "the derived name is what Room compares, so it is not incidental",
+            indexesOf(sql, "allocation")
+                .any { (name, unique) ->
+                    name == "index_allocation_paymentId_chargeDate" && unique
+                },
+        )
+
+        runBlocking {
+            migrated.contractDao().insertContract(
+                net.klinik.rental.data.db.entity.ContractEntity(
+                    id = "c-56",
+                    renterId = "r-v3",
+                    vehicleId = "v1",
+                    startDate = java.time.LocalDate.of(2026, 11, 1),
+                    dailyRate = 250_000,
+                    restDay = null,
+                    activeVehicleId = null,
+                    activeRenterId = null,
+                    endDate = java.time.LocalDate.of(2026, 11, 30),
+                )
+            )
+        }
+        // A real deposit, because the allocation's own foreign key would otherwise
+        // refuse the row **first** — and a test asserting "the duplicate is refused"
+        // would pass on the wrong constraint. This is the same ordering trap the
+        // `business_account` fixture avoids by holding a real parent row: the
+        // constraint under test has to be the *only* thing that can refuse.
+        runBlocking {
+            migrated.paymentDao().insertPayment(
+                net.klinik.rental.data.db.entity.PaymentEntity(
+                    id = "p-56",
+                    contractId = "c-56",
+                    accountId = "a-v5",
+                    date = java.time.LocalDate.of(2026, 11, 5),
+                    amount = 250_000,
+                    method = "TransferBank",
+                    referenceNo = null,
+                    notes = null,
+                    createdAt = java.time.Instant.parse("2026-11-05T09:00:00Z"),
+                )
+            )
+        }
+        val day = "2026-11-05"
+        sql.execSQL(
+            "INSERT INTO allocation (id, paymentId, contractId, chargeDate, amount) " +
+                "VALUES ('al-1', 'p-56', 'c-56', '$day', 250000)"
+        )
+        val failure = runCatching {
+            sql.execSQL(
+                "INSERT INTO allocation (id, paymentId, contractId, chargeDate, amount) " +
+                    "VALUES ('al-2', 'p-56', 'c-56', '$day', 250000)"
+            )
+        }.exceptionOrNull()
+
+        assertTrue(
+            "the duplicate day must be refused, got $failure",
+            failure is android.database.sqlite.SQLiteConstraintException,
+        )
+        assertEquals(
+            "and the row count stays at one",
+            1,
+            countOf(sql, "SELECT COUNT(*) FROM allocation"),
+        )
     }
 
     // ------------------------------------------------------------------ helpers
@@ -1186,14 +1377,15 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_2_3,
                 KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
+                KlinikDatabase.MIGRATION_5_6,
             )
             .build()
         database = opened
 
         // Touch it so the migrations actually run before the assertions below.
         assertEquals(
-            "the file must have been migrated to v5",
-            5,
+            "the file must have been migrated to v6",
+            6,
             opened.openHelper.readableDatabase.version,
         )
         return opened
@@ -1321,4 +1513,5 @@ class DatabaseMigrationTest {
         endDate = LocalDate.of(2026, 6, 30),
     )
 }
+
 

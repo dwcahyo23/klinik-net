@@ -1,11 +1,15 @@
 package net.klinik.rental.ui.shell
 
 import android.content.res.Configuration
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
@@ -14,6 +18,8 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import net.klinik.rental.ui.components.KnBottomNav
 import net.klinik.rental.ui.components.KnNavRail
+import net.klinik.rental.ui.theme.KlinikNetTheme
+import net.klinik.rental.ui.theme.knSpacing
 
 /**
  * The app's chrome: a rail in landscape, a bottom nav in portrait, over the same
@@ -68,6 +74,7 @@ internal fun AppShell(
     val backStackEntry by navController.currentBackStackEntryAsState()
     val selectedIndex = Destination.indexOf(backStackEntry?.destination?.route)
     val items = destinationNavItems()
+    val spacing = MaterialTheme.knSpacing
 
     val navigateTo: (Int) -> Unit = { index ->
         // A null route is ignored rather than clamped. Clamping would turn a
@@ -84,34 +91,69 @@ internal fun AppShell(
         }
     }
 
-    if (isLandscape) {
-        Row(modifier.fillMaxSize()) {
-            KnNavRail(
-                items = items,
-                selectedIndex = selectedIndex,
-                onSelect = navigateTo,
-                modifier = Modifier.testTag(TAG_RAIL),
-            )
-            AppNavGraph(
-                navController = navController,
-                screens = screens,
-                modifier = Modifier.weight(1f),
-            )
+    // The deposit FAB, mounted by the **shell** rather than by any destination.
+    //
+    // Story 3.2's AC opens the deposit form from "Beranda atau speed dial", and neither
+    // exists: UX-DR17 assigned the FAB and speed dial to Epic 2, and no Epic 2 story
+    // built one, while Beranda itself is Story 4.3. So the shell carries a
+    // `fab-mini` — UX-DR17's 54dp variant for exactly the single-action case — rather
+    // than a speed dial holding one entry, which is a menu that hides the action behind
+    // a tap.
+    //
+    // Mounted here and not inside a screen because it must appear over **every** screen.
+    // When Beranda arrives it becomes the one door there and the FAB moves inside it,
+    // which is what UX-DR17 requires: *"speed dial TIDAK muncul di Beranda"*.
+    //
+    // `Box`, because a `ModalBottomSheet` must be composed beside the layout rather
+    // than inside it — and the FAB needs to float *over* the current screen, which a
+    // `Column` sibling could not do. Both are children of one `Box`, so the shell
+    // draws the graph and the sheet in the same place.
+    Box(modifier.fillMaxSize()) {
+        if (isLandscape) {
+            Row(Modifier.fillMaxSize()) {
+                KnNavRail(
+                    items = items,
+                    selectedIndex = selectedIndex,
+                    onSelect = navigateTo,
+                    modifier = Modifier.testTag(TAG_RAIL),
+                )
+                AppNavGraph(
+                    navController = navController,
+                    screens = screens,
+                    modifier = Modifier.weight(1f),
+                )
+            }
+        } else {
+            Column(Modifier.fillMaxSize()) {
+                AppNavGraph(
+                    navController = navController,
+                    screens = screens,
+                    modifier = Modifier.weight(1f),
+                )
+                KnBottomNav(
+                    items = items,
+                    selectedIndex = selectedIndex,
+                    onSelect = navigateTo,
+                    modifier = Modifier.testTag(TAG_BOTTOM_NAV),
+                )
+            }
         }
-    } else {
-        Column(modifier.fillMaxSize()) {
-            AppNavGraph(
-                navController = navController,
-                screens = screens,
-                modifier = Modifier.weight(1f),
-            )
-            KnBottomNav(
-                items = items,
-                selectedIndex = selectedIndex,
-                onSelect = navigateTo,
-                modifier = Modifier.testTag(TAG_BOTTOM_NAV),
-            )
-        }
+
+        // The FAB floats over whichever branch drew, aligned to the bottom-end with
+        // the shell's own gutter. `align` rather than a nested `Box`, so it adds no
+        // layout of its own and cannot shift the graph above it.
+        DepositFab(
+            visible = !screens.deposito.state.isOpen,
+            onOpen = screens.deposito.onOpen,
+            modifier = Modifier
+                .align(Alignment.BottomEnd)
+                .padding(spacing.lg),
+        )
+
+        // And the sheet, last so it composes above the FAB — two windows over one
+        // state is the defect Story 2.8's review found, and a FAB showing *through*
+        // an open sheet is the same shape in a smaller size.
+        DepositHost(screens.deposito)
     }
 }
 

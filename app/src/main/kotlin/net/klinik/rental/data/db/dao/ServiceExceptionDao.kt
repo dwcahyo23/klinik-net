@@ -60,6 +60,19 @@ interface ServiceExceptionDao {
     fun observeAll(): Flow<List<ServiceExceptionEntity>>
 
     /**
+     * Every exception on one contract, for the charge-day calculation.
+     *
+     * Added by Story 3.2, which is the first caller that needs the exceptions as a *set*:
+     * building a `ChargeSchedule` for a contract means reading exactly that contract's
+     * excused days rather than every stored exception and filtering in Kotlin.
+     *
+     * The `UNIQUE(contractId, date)` index covers this as a prefix seek, so it is not a scan
+     * — which is why no index is needed for it.
+     */
+    @Query("SELECT * FROM service_exception WHERE contractId = :contractId ORDER BY date ASC")
+    suspend fun forContract(contractId: String): List<ServiceExceptionEntity>
+
+    /**
      * The exception on [date] for this contract, or `null`.
      *
      * The courtesy pre-check's only caller — `ContractRepository` asks this before
