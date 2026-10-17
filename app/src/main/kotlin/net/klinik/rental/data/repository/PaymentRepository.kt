@@ -235,7 +235,17 @@ class PaymentRepository(
         )
 
         // 4. The payment and everything already recorded, allocated **together**.
-        val existing = paymentDao.forContract(contract.id).map { it.toDomain() }
+        //
+        //    `forContract` returns **every** deposit, cancelled ones included, so the
+        //    exclusion happens here and in one place. That is the whole answer to the
+        //    `Payment` KDoc's warning that a status "would invite callers to filter
+        //    instead": a filter in the query would put the rule in every reader of this
+        //    table, while here it sits in the only place that computes anything. A
+        //    cancelled deposit reaching the allocator by mistake would fail
+        //    `Σ allocation == amount` loudly, not quietly.
+        val existing = paymentDao.forContract(contract.id)
+            .filter { it.status == PaymentEntity.STATUS_CONFIRMED }
+            .map { it.toDomain() }
         val allRows = allocatePayments(
             payments = existing + payment,
             chargeDays = chargeDays,
@@ -266,6 +276,173 @@ class PaymentRepository(
         val existingRows: List<Allocation>,
         val newRows: List<Allocation>,
     )
+
+    /**
+     * Cancels one deposit, keeping the row and dropping its effect.
+     *
+     * ## What happens, in this order, in one transaction (AR-8)
+     *
+     *  1. Read the deposit. Refuse a blank reason and an already-cancelled one.
+     *  2. Mark it `canceled` with the reason. **The row survives** — the epic's criterion
+     *     is *"tidak ada hard delete"*, because a row that cannot be read cannot answer
+     *     why the owner's arrears jumped on a given day.
+     *  3. Delete its allocation rows: those encode its *effect*, which is exactly what
+     *     cancelling reverses.
+     *  4. Re-allocate the contract from the deposits that survive, and write **all** their
+     *     rows back.
+     *
+     * ## Why step 4 rewrites every row and not just the cancelled deposit's
+     *
+     * Because releasing Rp 500.000 can shift what deposits recorded *later* land on: an
+     * earlier day opens up and the next deposit's money moves onto it. Re-allocating only
+     * the cancelled row would leave the survivors placed as if nothing had changed — and
+     * `Σ allocation == amount` would still hold while the days each deposit closes were
+     * wrong. Recomputing wholesale is what [previewAllocation] already does for a save, so
+     * this is the same function with a different final write.
+     *
+     * ## Why a partial cancel is not recoverable
+     *
+     * If step 3 and step 4 could interleave with a crash, the contract would be left with
+     * some deposits' rows released and others placed under the old day list — an arrears
+     * figure that is wrong and looks right. That is what the transaction is for.
+     *
+     * @throws BlankCancelReasonException when [reason] is blank. Checked **before** the
+     *   transaction opens: a blank reason is a form state, not a data condition, and there
+     *   is no reason to take a write lock to discover one.
+     * @throws DepositAlreadyCanceledException when the deposit is already cancelled.
+     * @throws UnknownDepositException when [paymentId] names no stored deposit.
+     */
+    suspend fun cancelDeposit(contractId: String, paymentId: String, reason: String) {
+        // The AC's rule, refused before anything is written, so a refused cancellation
+        // leaves the deposit exactly as it was.
+        if (reason.isBlank()) throw BlankCancelReasonException(paymentId)
+
+        inTransaction {
+            // 1. The stored deposit. Read rather than taken from the caller — a `Payment`
+            //    handed in may be stale, and this decides whether it is still cancellable.
+            val stored = paymentDao.findById(paymentId)
+                ?: throw UnknownDepositException(paymentId)
+            if (stored.status == PaymentEntity.STATUS_CANCELED) {
+                // The original reason stands: a second cancellation must not overwrite the
+                // audit trail with a newer, less accurate explanation.
+                throw DepositAlreadyCanceledException(paymentId, stored.cancelReason)
+            }
+
+            // 2. Mark it, keeping the row.
+            paymentDao.updatePayment(
+                stored.copy(
+                    status = PaymentEntity.STATUS_CANCELED,
+                    cancelReason = reason.trim(),
+                ),
+            )
+
+            // 3. Release what it placed.
+            allocationDao.deleteForPayment(paymentId)
+
+            // 4. Re-allocate the contract from the survivors. `previewAllocation` filters
+            //    cancelled deposits out on its own, so the one marked in step 2 is
+            //    excluded here without a second rule — which is the point of putting the
+            //    filter there.
+            val computed = previewAllocation(
+                contractId = contractId,
+                // A Rp 1 placeholder: `allocatePayments` needs a payment to place, and
+                // this call happens *after* the cancellation, so the survivors' rows are
+                // what comes back and the placeholder's own row is discarded.
+                payment = Payment(
+                    id = RECOMPUTE_ID,
+                    date = asOf(),
+                    amount = 1,
+                ),
+                asOf = asOf(),
+            )
+
+            // Wholesale, because step 4 can move the survivors as well as the cancelled
+            // deposit — see the KDoc.
+            allocationDao.deleteForContract(contractId)
+            computed.existingRows.forEach { row ->
+                allocationDao.insertAllocation(row.toEntity(contractId))
+            }
+        }
+    }
+
+    /**
+     * The arrears the contract would show once [paymentId] is cancelled — the number the
+     * confirmation dialog has to name.
+     *
+     * ## Why this allocates rather than subtracts
+     *
+     * Because "arrears after cancelling" is **not** "arrears now minus the deposit's
+     * amount". Cancelling can move *later* deposits onto days that just opened, so the
+     * contract's arrears is whatever the survivors place, and the only honest way to know
+     * that is to allocate without the deposit and read the result.
+     *
+     * Subtracting would be a second derivation of a fact the allocator already owns — the
+     * exact shape Story 3.3 exists to prevent, and the one whose failure the owner finds
+     * too late because the figure looks plausible.
+     *
+     * @return whole rupiah, or the contract's **current** arrears when the deposit is
+     *   unknown or already cancelled, so a dialog never promises a change it cannot make.
+     */
+    suspend fun arrearsAfterCanceling(
+        contractId: String,
+        paymentId: String,
+        asOf: LocalDate,
+    ): Long {
+        val stored = paymentDao.findById(paymentId) ?: return currentArrears(contractId, asOf)
+        // Already cancelled: nothing would change, so the "after" is the present.
+        if (stored.status == PaymentEntity.STATUS_CANCELED) return currentArrears(contractId, asOf)
+        return arrearsExcluding(contractId, paymentId, asOf)
+    }
+
+    /**
+     * The contract's arrears with one deposit left out, allocated honestly.
+     *
+     * The allocator is fed the survivors plus a Rp 1 placeholder whose rows are then
+     * discarded. One rupiah rather than a second "allocate nothing" path, because two
+     * paths is exactly what this story's Design Notes refuse — and because the same
+     * function answers both "what is owed now" and "what would cancelling change".
+     */
+    private suspend fun arrearsExcluding(
+        contractId: String,
+        paymentId: String,
+        asOf: LocalDate,
+    ): Long {
+        val contract = contractDao.findById(contractId)
+            ?: throw UnknownContractException(contractId)
+        val cutoffDay = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
+        val chargeDays = chargeDaysIn(
+            period = CutoffPeriod.containing(cutoffDay, asOf),
+            schedule = ChargeSchedule(
+                contractStart = contract.startDate,
+                restDay = contract.restDay,
+                serviceExceptions = storedExceptions(contract.id),
+                contractEnd = contract.endDate,
+            ),
+            asOf = asOf,
+        )
+        val survivors = paymentDao.forContract(contract.id)
+            .filter { it.id != paymentId && it.status == PaymentEntity.STATUS_CONFIRMED }
+            .map { it.toDomain() }
+        val rows = allocatePayments(
+            payments = survivors + Payment(id = RECOMPUTE_ID, date = asOf, amount = 1),
+            chargeDays = chargeDays,
+            dailyRate = contract.dailyRate,
+            asOf = asOf,
+        ).filter { it.paymentId != RECOMPUTE_ID }
+        return arrearsOf(
+            contractId = contractId,
+            chargeDays = chargeDays,
+            allocations = rows,
+            dailyRate = contract.dailyRate,
+        ).amount
+    }
+
+    /** The contract's arrears exactly as it stands — every confirmed deposit applied. */
+    suspend fun currentArrears(contractId: String, asOf: LocalDate): Long =
+        arrearsExcluding(contractId, paymentId = "", asOf = asOf)
+
+    /** "Today" for a write that has no date of its own. See the call sites. */
+    private fun asOf(): LocalDate = LocalDate.now()
 
     /** Every deposit on one contract, as domain values. */
     suspend fun paymentsFor(contractId: String): List<Payment> =
@@ -339,6 +516,16 @@ class PaymentRepository(
          * which is the difference Story 5.4 needs to show a real value.
          */
         const val DEFAULT_CUTOFF_DAY = 25
+
+        /**
+         * The id the re-allocation allocates a Rp 1 placeholder under, and then discards.
+         *
+         * A placeholder rather than "no payment at all" because `allocatePayments` needs a
+         * payment to place, and a second allocate-nothing path would be the second
+         * derivation this story exists to refuse. One rupiah cannot close a day at any rate
+         * this app uses, and its row is filtered out before anything is written.
+         */
+        const val RECOMPUTE_ID = "__recompute__"
     }
 }
 
@@ -400,3 +587,16 @@ data class DepositPreview(
     /** Whether a credit line is warranted at all. See [credit]. */
     val hasCredit: Boolean get() = credit > 0L
 }
+/** A cancellation with no reason. The epic refuses these before the write. */
+class BlankCancelReasonException(val paymentId: String) :
+    IllegalStateException("cancelling deposit $paymentId requires a reason")
+
+/** A second cancellation of a deposit already cancelled. */
+class DepositAlreadyCanceledException(
+    val paymentId: String,
+    val existingReason: String?,
+) : IllegalStateException("deposit $paymentId was already canceled")
+
+/** A cancellation naming a deposit nobody holds. */
+class UnknownDepositException(val paymentId: String) :
+    IllegalStateException("no deposit with id $paymentId")

@@ -581,4 +581,51 @@ class RStrings(private val context: Context) {
      */
     fun depositoErrorPreviewFailed(): String =
         context.getString(R.string.deposito_error_preview_failed)
+
+    // -------------------------------------------------------------- Story 3.4
+
+    /**
+     * `Batalkan setoran Rp 250.000?` — the cancellation dialog's title.
+     *
+     * Takes an **already-formatted** amount, for the reason every other money accessor
+     * here does: the dialog that names a figure and the figure on the row behind it have
+     * to be the same figure.
+     */
+    fun depositoCancelTitle(amount: String): String =
+        context.getString(R.string.deposito_cancel_title, amount)
+
+    /**
+     * `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.`
+     *
+     * A sentence naming the renter rather than a second figure with an arrow, because this
+     * is the epic's own shape and because a cancellation warns about a consequence while
+     * the preview invites a decision — two dialogs that look alike would be two prompts
+     * the owner stops reading.
+     */
+    fun depositoCancelImpact(renterName: String, arrearsAfter: String): String =
+        context.getString(R.string.deposito_cancel_impact, renterName, arrearsAfter)
+
+    /**
+     * The mandatory reason's refusal.
+     *
+     * Says *why* the reason is required — the audit trail — rather than only that a field
+     * is empty, because the acceptance criterion's own rule is that a cancellation is
+     * only meaningful with its explanation.
+     */
+    fun depositoErrorCancelReasonRequired(): String =
+        context.getString(R.string.deposito_error_cancel_reason_required)
+
+    /** A second cancellation of an already-cancelled deposit. */
+    fun depositoErrorAlreadyCanceled(): String =
+        context.getString(R.string.deposito_error_already_canceled)
+
+    /**
+     * `Setoran Rp 250.000 dibatalkan` — the cancellation's confirmation.
+     *
+     * Distinct from [depositoSaved] because the two announce opposite outcomes of the same
+     * gesture, and a snackbar that says "tersimpan" after a cancellation would tell the
+     * owner their money was recorded when it was withdrawn from the bill.
+     */
+    fun depositoCanceled(amount: String): String =
+        context.getString(R.string.deposito_cancel_done, amount)
 }

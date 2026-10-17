@@ -110,7 +110,7 @@ class DatabaseMigrationTest {
      * direct `migrate` call and fail here.
      */
     @Test
-    fun `a v1 database migrates to v6 with every table and index`() {
+    fun `a v1 database migrates to v7 with every table and index`() {
         createV1Database(withVehicle = true)
 
         val migrated = openMigrated()
@@ -200,7 +200,7 @@ class DatabaseMigrationTest {
      * was ever needed, is the failure.
      */
     @Test
-    fun `a fresh install opens at v6 without a migration`() {
+    fun `a fresh install opens at v7 without a migration`() {
         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
             .addMigrations(
                 KlinikDatabase.MIGRATION_1_2,
@@ -208,13 +208,14 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
+                KlinikDatabase.MIGRATION_6_7,
             )
             .build()
         database = fresh
 
         // Touch the database so it is actually created rather than only built.
         val sql = fresh.openHelper.readableDatabase
-        assertEquals(6, sql.version)
+        assertEquals(7, sql.version)
         assertEquals(
             listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
             columnsOf(sql, "renter"),
@@ -289,7 +290,7 @@ class DatabaseMigrationTest {
      * read as coverage of the data-loss question while providing none.
      */
     @Test
-    fun `a v2 database migrates to v6 with the widened contract table`() {
+    fun `a v2 database migrates to v7 with the widened contract table`() {
         createV2Database(withVehicleAndRenter = true)
 
         val migrated = openMigrated()
@@ -383,6 +384,7 @@ class DatabaseMigrationTest {
                     KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
+                KlinikDatabase.MIGRATION_6_7,
             )
                 .build()
                 .openHelper
@@ -515,7 +517,7 @@ class DatabaseMigrationTest {
      * through its own DAO afterwards.
      */
     @Test
-    fun `a v3 database migrates to v6 with the service_exception table`() {
+    fun `a v3 database migrates to v7 with the service_exception table`() {
         createV3Database()
 
         val migrated = openMigrated()
@@ -736,7 +738,7 @@ class DatabaseMigrationTest {
      * migration is reached at all, which is why the version is asserted first.
      */
     @Test
-    fun `a v4 database migrates to v6 with the business_account table`() {
+    fun `a v4 database migrates to v7 with the business_account table`() {
         createV4Database()
 
         val migrated = openMigrated()
@@ -904,17 +906,240 @@ class DatabaseMigrationTest {
         }
     }
 
+    // --------------------------------------------------------------- v6 -> v7
+
     /**
-     * `MIGRATE_5_6` — a v5 database opens at v6 with the three new tables, and every
-     * pre-existing row survives.
+     * Builds a **v6** database: the v5 shape plus a real deposit and its allocations.
      *
-     * ## Why a v5 fixture when the v1 and v4 fixtures already reach v6
-     *
-     * They prove the migration *chain* runs. Neither proves the **5→6 step alone** works:
-     * a chain can be correct while one link is a no-op, and this story's link is the one
-     * that creates two tables referencing each other plus one referencing a table the
-     * *previous* story added. That is the link least likely to be exercised by accident.
+     * The deposit matters more than it looks. `MIGRATION_6_7` adds a `NOT NULL` column to
+     * a table that already holds rows, and the *only* thing standing between a correct
+     * migration and a broken one is whether `DEFAULT 'confirmed'` is present — so the
+     * fixture has to contain a deposit for that default to be exercised at all. An empty
+     * `payment` table would pass a migration that forgot the clause and then fail at the
+     * owner's first read, long after the version had moved.
      */
+    private fun createV6Database() {
+        createV5Database()
+
+        SQLiteDatabase.openOrCreateDatabase(dbFile, null).use { db ->
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `contract` (
+                    `id` TEXT NOT NULL,
+                    `renterId` TEXT NOT NULL,
+                    `vehicleId` TEXT NOT NULL,
+                    `startDate` TEXT NOT NULL,
+                    `dailyRate` INTEGER NOT NULL,
+                    `restDay` INTEGER DEFAULT NULL,
+                    `activeVehicleId` TEXT DEFAULT NULL,
+                    `activeRenterId` TEXT DEFAULT NULL,
+                    `endDate` TEXT DEFAULT NULL,
+                    PRIMARY KEY (`id`),
+                    FOREIGN KEY (`renterId`) REFERENCES `renter` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT,
+                    FOREIGN KEY (`vehicleId`) REFERENCES `vehicle` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `payment` (
+                    `id` TEXT NOT NULL,
+                    `contractId` TEXT NOT NULL,
+                    `accountId` TEXT DEFAULT NULL,
+                    `date` TEXT NOT NULL,
+                    `amount` INTEGER NOT NULL,
+                    `method` TEXT NOT NULL,
+                    `referenceNo` TEXT DEFAULT NULL,
+                    `notes` TEXT DEFAULT NULL,
+                    `createdAt` TEXT NOT NULL,
+                    PRIMARY KEY (`id`),
+                    FOREIGN KEY (`contractId`) REFERENCES `contract` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT,
+                    FOREIGN KEY (`accountId`) REFERENCES `business_account` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_payment_contractId` " +
+                    "ON `payment` (`contractId`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_payment_accountId` " +
+                    "ON `payment` (`accountId`)",
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `allocation` (
+                    `id` TEXT NOT NULL,
+                    `paymentId` TEXT NOT NULL,
+                    `contractId` TEXT NOT NULL,
+                    `chargeDate` TEXT DEFAULT NULL,
+                    `amount` INTEGER NOT NULL,
+                    PRIMARY KEY (`id`),
+                    FOREIGN KEY (`paymentId`) REFERENCES `payment` (`id`)
+                        ON UPDATE CASCADE ON DELETE RESTRICT
+                )
+                """.trimIndent(),
+            )
+            db.execSQL(
+                "CREATE UNIQUE INDEX IF NOT EXISTS `index_allocation_paymentId_chargeDate` " +
+                    "ON `allocation` (`paymentId`, `chargeDate`)",
+            )
+            db.execSQL(
+                "CREATE INDEX IF NOT EXISTS `index_allocation_contractId_chargeDate` " +
+                    "ON `allocation` (`contractId`, `chargeDate`)",
+            )
+            db.execSQL(
+                """
+                CREATE TABLE IF NOT EXISTS `settings` (
+                    `key` TEXT NOT NULL,
+                    `value` TEXT NOT NULL,
+                    PRIMARY KEY (`key`)
+                )
+                """.trimIndent(),
+            )
+
+            // No contract insert: `createV3Database` already left `c-v3` open against
+            // `r-v3`, and a second `c-v3` would fail the primary key rather than
+            // exercise the migration.
+            db.execSQL(
+                """
+                INSERT INTO payment
+                    (id, contractId, accountId, date, amount, method,
+                     referenceNo, notes, createdAt)
+                VALUES
+                    ('p-v6', 'c-v3', 'a-v5', '2026-10-14', 750000, 'TransferBank',
+                     NULL, NULL, '2026-10-14T09:00:00Z')
+                """.trimIndent(),
+            )
+            db.execSQL(
+                """
+                INSERT INTO allocation (id, paymentId, contractId, chargeDate, amount)
+                VALUES ('al-v6', 'p-v6', 'c-v3', '2026-10-14', 750000)
+                """.trimIndent(),
+            )
+
+            db.version = 6
+        }
+    }
+
+    /**
+     * `MIGRATE_6_7` — a v6 database opens at v7, every existing deposit reads back
+     * **confirmed**, and every allocation row is intact.
+     *
+     * ## Why the back-fill assertion is the whole test
+     *
+     * The migration adds `status TEXT NOT NULL DEFAULT 'confirmed'`. SQLite cannot add a
+     * `NOT NULL` column without a default, so the clause is required by the type — and a
+     * deposit that reads back `null` would fail the entity's guard at the first read,
+     * which is the owner losing access to their own history rather than a startup crash.
+     *
+     * The allocation assertion is the second half: `ALTER` must not disturb a table it
+     * does not mention, and an `ADD COLUMN` that rewrote rows would show up here first.
+     */
+    @Test
+    fun `a v6 database migrates to v7 with every deposit back-filled as confirmed`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+
+        val deposits = runBlocking { migrated.paymentDao().forContract("c-v3") }
+        assertEquals("the deposit survives", 1, deposits.size)
+        assertEquals(
+            "and reads back confirmed rather than null — the DEFAULT is load-bearing",
+            net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CONFIRMED,
+            deposits.single().status,
+        )
+        assertNull(
+            "with no cancellation reason, because none was given",
+            deposits.single().cancelReason,
+        )
+        assertEquals(
+            "and its amount, date and method are untouched by the ALTER",
+            750_000L,
+            deposits.single().amount,
+        )
+        assertEquals("2026-10-14", deposits.single().date.toString())
+        assertEquals("TransferBank", deposits.single().method)
+
+        val rows = runBlocking { migrated.allocationDao().forContract("c-v3") }
+        assertEquals("the allocation table is untouched", 1, rows.size)
+        assertEquals("750000", rows.single().amount.toString())
+        assertEquals("2026-10-14", rows.single().chargeDate.toString())
+    }
+
+    /**
+     * The new columns are actually in the migrated file, and `cancelReason` is the only
+     * nullable one.
+     *
+     * Asserted through PRAGMA rather than through the entity, because the entity is what
+     * Room *compiles against* — reading it would prove the compiled schema and not the
+     * file on disk, which is the only thing a migration can get wrong.
+     */
+    @Test
+    fun `the migrated payment table gains both columns`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+        val sql = migrated.openHelper.writableDatabase
+
+        assertEquals(
+            "the columns are appended after createdAt, never interleaved",
+            listOf(
+                "id", "contractId", "accountId", "date", "amount",
+                "method", "referenceNo", "notes", "createdAt",
+                "status", "cancelReason",
+            ),
+            columnsOf(sql, "payment"),
+        )
+        assertEquals(
+            "only the reason is nullable; a confirmed deposit has none",
+            listOf("accountId", "referenceNo", "notes", "cancelReason"),
+            nullableColumnsOf(sql, "payment"),
+        )
+    }
+
+    /**
+     * A deposit can be **cancelled** on the migrated file, and the write survives a
+     * reopen — the migration's real deliverable.
+     *
+     * Asserted through the DAO rather than raw SQL, so it exercises the same path the
+     * app writes on and fails if `status` were not defaulted the way the entity expects.
+     */
+    @Test
+    fun `a deposit can be cancelled after the migration`() {
+        createV6Database()
+
+        val migrated = openMigrated()
+        runBlocking {
+            val stored = migrated.paymentDao().forContract("c-v3").single()
+            migrated.paymentDao().updatePayment(
+                stored.copy(
+                    status = net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CANCELED,
+                    cancelReason = "salah tanggal",
+                )
+            )
+        }
+
+        val after = runBlocking { migrated.paymentDao().findById("p-v6")!! }
+        assertEquals(
+            net.klinik.rental.data.db.entity.PaymentEntity.STATUS_CANCELED,
+            after.status,
+        )
+        assertEquals("salah tanggal", after.cancelReason)
+        // And the row is still returned by the history query — the cancellation marks it,
+        // it does not remove it.
+        assertEquals(
+            1,
+            runBlocking { migrated.paymentDao().forContract("c-v3") }.size,
+        )
+    }
+
+    // ------- the v5 -> v6 tests, below; their fixture is above the 6 -> 7 one
+
     @Test
     fun `a v5 database migrates to v6 with every table and index`() {
         createV5Database()
@@ -923,12 +1148,17 @@ class DatabaseMigrationTest {
         val sql = migrated.openHelper.writableDatabase
 
         assertEquals(
-            "the payment table has exactly these columns, in this order",
+            // `status` and `cancelReason` trail the v6 columns: this test is about what
+            // MIGRATION_5_6 *creates*, and the 6->7 step appends to it afterwards. Asserting
+            // the exact post-7 list here would just duplicate
+            // `the migrated payment table gains both columns`, which fails the moment a
+            // third story widens the table again.
+            "the payment table has these v6 columns, in this order",
             listOf(
                 "id", "contractId", "accountId", "date", "amount",
                 "method", "referenceNo", "notes", "createdAt",
             ),
-            columnsOf(sql, "payment"),
+            columnsOf(sql, "payment").take(9),
         )
         assertEquals(
             "and the allocation table these",
@@ -1378,14 +1608,15 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_3_4,
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
+                KlinikDatabase.MIGRATION_6_7,
             )
             .build()
         database = opened
 
         // Touch it so the migrations actually run before the assertions below.
         assertEquals(
-            "the file must have been migrated to v6",
-            6,
+            "the file must have been migrated to v7",
+            7,
             opened.openHelper.readableDatabase.version,
         )
         return opened

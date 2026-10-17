@@ -186,6 +186,7 @@ data class SetoranUiState(
     val errorMessage: String? = null,
     val successMessage: String? = null,
     val preview: DepositPreviewUi? = null,
+    val cancel: CancelDepositUi? = null,
     val isLoading: Boolean = false,
 ) {
     /** The sheet is up. */
@@ -193,6 +194,9 @@ data class SetoranUiState(
 
     /** The preview dialog is up. Separate from [isOpen]: both windows are open at once. */
     val isPreviewing: Boolean get() = preview != null
+
+    /** The cancellation dialog is up — a third window, and the only one with a field. */
+    val isCanceling: Boolean get() = cancel != null
 }
 
 /**
@@ -224,3 +228,61 @@ data class DepositPreviewUi(
     /** `Kredit: Rp 250.000 — dipakai otomatis untuk periode berikutnya`, or `null`. */
     val creditLine: String?,
 )
+
+/**
+ * The cancellation dialog's state — Story 3.4's.
+ *
+ * ## Why the impact is a **sentence**, not two figures
+ *
+ * The epic's copy is *"Tunggakan Pak Budi akan kembali menjadi Rp 750.000."* — the arrears
+ * returning to a figure, in words, naming the renter. Two numbers with an arrow would be
+ * the *preview*'s shape, and reusing it here would make two dialogs look alike while doing
+ * different things: one says what a deposit will do, the other says what undoing it costs.
+ * The first invites a decision; the second warns of a consequence, and they should read
+ * differently for exactly that reason.
+ *
+ * @property reason the owner's explanation, or `""` untouched. Blank is the AC's refusal
+ *   case, so this is a field the owner must fill rather than an optional note.
+ */
+data class CancelDepositUi(
+    val paymentId: String,
+    val contractId: String,
+    /** `Batalkan setoran Rp 250.000?` — the title, naming what is being undone. */
+    val title: String,
+    /** `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.` */
+    val impactLine: String,
+    /**
+     * The deposit's amount, already formatted.
+     *
+     * Carried **beside** [title] rather than parsed back out of it. The confirmation
+     * needs this figure, and recovering it with `substringAfter("setoran ")` would make
+     * an Indonesian sentence the source of a money value — so a copy edit, a translator,
+     * or a different word order would silently change what the owner is told was
+     * refunded.
+     */
+    val amountLabel: String,
+    val reason: String = "",
+    val reasonError: String? = null,
+)
+
+/**
+ * Applies a reason edit, clearing its own error.
+ *
+ * Cleared because the edit **is** the fix — an error that survived it would accuse the
+ * owner of a field they are in the middle of filling in, which is the rule every other
+ * field in this sheet follows.
+ */
+fun CancelDepositUi.setReason(reason: String): CancelDepositUi = copy(
+    reason = reason,
+    reasonError = null,
+)
+
+/**
+ * Whether the cancellation may proceed.
+ *
+ * **Completeness only.** The rule itself is enforced twice — here for the button, and in
+ * the repository for the data — so this is a reflection of the rule rather than its only
+ * enforcement. A disabled control beside an empty field is the epic's own "wajib diisi";
+ * the refusal then reads as a rule rather than as an app that stopped working.
+ */
+val CancelDepositUi.canCancel: Boolean get() = reason.isNotBlank()

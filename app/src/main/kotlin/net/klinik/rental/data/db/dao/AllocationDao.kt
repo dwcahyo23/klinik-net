@@ -85,4 +85,37 @@ interface AllocationDao {
      */
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertAllocation(allocation: AllocationEntity)
+
+    /**
+     * Releases every row one deposit placed, in Story 3.4's cancellation.
+     *
+     * ## What is deleted here and what is deleted nowhere
+     *
+     * These rows, and **only** these. They encode the deposit's *effect* on arrears —
+     * which days it closed and how much of each — and cancelling reverses exactly that.
+     * The deposit row itself is never deleted: the epic's criterion is *"tidak ada hard
+     * delete"*, because a row that cannot be audited cannot explain why the owner's arrears
+     * jumped on a given day, which is the question a cancellation exists to answer.
+     *
+     * ## Why this is not `onDelete = CASCADE` doing it for us
+     *
+     * Because a cascade would fire the moment the **payment** row went, and this
+     * cancellation does not delete that row. Deleting placements is a deliberate step with
+     * a re-allocation after it — the same transaction, in that order — and a cascade would
+     * do it silently, at a moment the code does not choose.
+     */
+    @Query("DELETE FROM allocation WHERE paymentId = :paymentId")
+    suspend fun deleteForPayment(paymentId: String): Int
+
+    /**
+     * Removes **every** allocation on a contract, for the re-allocation that follows a
+     * cancellation.
+     *
+     * Wholesale rather than row-by-row because the re-allocation rewrites placements for
+     * *all* deposits, not only the cancelled one: releasing Rp 500.000 from a contract with
+     * three later deposits can shift each of them onto an earlier day. `previewAllocation`
+     * returns the survivor's rows and the repository replaces them wholesale.
+     */
+    @Query("DELETE FROM allocation WHERE contractId = :contractId")
+    suspend fun deleteForContract(contractId: String): Int
 }

@@ -4,6 +4,7 @@ import androidx.room.Dao
 import androidx.room.Insert
 import androidx.room.OnConflictStrategy
 import androidx.room.Query
+import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import net.klinik.rental.data.db.entity.PaymentEntity
 
@@ -79,4 +80,32 @@ interface PaymentDao {
      */
     @Insert(onConflict = OnConflictStrategy.ABORT)
     suspend fun insertPayment(payment: PaymentEntity)
+
+    /**
+     * Writes a deposit back in place — Story 3.4's, and the only one.
+     *
+     * ## Why there is **no delete**
+     *
+     * The epic's acceptance criterion is explicit: *"pembatalan dicatat sebagai perubahan
+     * status dengan alasan — tidak ada hard delete."* A deleted deposit cannot be audited,
+     * which is the entire reason the reason is mandatory. What a cancellation *does* delete
+     * is the deposit's allocation rows — see [AllocationDao.deleteForPayment] — because
+     * those encode its effect on arrears rather than the fact that it happened.
+     *
+     * ## Why nothing filters on [PaymentEntity.status]
+     *
+     * Because that filter is the failure the domain's `Payment` KDoc names: a caller who
+     * forgets pays the wrong arrears and nothing notices. So [forContract] and
+     * [observeForContract] return **every** row, cancelled included — the audit trail
+     * depends on it — and a cancelled deposit is excluded by the *allocator* not by a
+     * query. Cancelling deletes its allocation rows and re-allocates the contract from the
+     * survivors, so a cancelled deposit that reached the allocator anyway would break
+     * `Σ allocation == amount` loudly rather than quietly.
+     */
+    @Update
+    suspend fun updatePayment(payment: PaymentEntity)
+
+    /** One deposit by id, for the cancellation's own read. */
+    @Query("SELECT * FROM payment WHERE id = :id")
+    suspend fun findById(id: String): PaymentEntity?
 }

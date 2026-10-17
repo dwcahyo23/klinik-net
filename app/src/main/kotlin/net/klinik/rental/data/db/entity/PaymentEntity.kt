@@ -108,6 +108,38 @@ data class PaymentEntity(
      * them would let a late entry change which billing period the money falls in.
      */
     val createdAt: Instant,
+    /**
+     * `confirmed` or `canceled` — Story 3.4's addition.
+     *
+     * ## Why this exists despite `Payment`'s KDoc saying it should not
+     *
+     * The domain KDoc argues that a status "would invite callers to filter instead, and a
+     * filter somebody forgets to apply is precisely how Rp 13.000.000 disappears at the
+     * month rollover." That reasoning is kept, and this column is the answer rather than
+     * the objection to it:
+     *
+     *  - **nothing filters on it.** `PaymentDao.forContract` and `observeForContract` keep
+     *    returning every row, cancelled ones included — that is what keeps the audit trail
+     *    readable. The *allocator* excludes a cancelled deposit by construction, because
+     *    cancelling deletes its allocation rows and re-allocates from survivors.
+     *  - **so forgetting is now loud.** A caller that wrongly filters pays nothing; a
+     *    caller that wrongly *includes* a cancelled deposit would double-count against a
+     *    contract whose rows were already rewritten, and `Σ allocation == amount` fails.
+     *
+     * The AC requires the row to survive ("tidak ada hard delete"), and a row that can
+     * neither be deleted nor marked is a row nobody can audit.
+     */
+    @ColumnInfo(defaultValue = "confirmed")
+    val status: String = STATUS_CONFIRMED,
+    /**
+     * Why it was cancelled — **mandatory when [status] is `canceled`**, which is the AC's
+     * *"Pembatalan wajib menyertakan alasan."*
+     *
+     * Nullable rather than non-null because a confirmed deposit has no reason, and
+     * `DEFAULT ''` would make "cancelled with no reason" representable.
+     */
+    @ColumnInfo(defaultValue = "NULL")
+    val cancelReason: String? = null,
 ) {
     init {
         require(id.isNotBlank()) { "id must not be blank" }
@@ -117,5 +149,22 @@ data class PaymentEntity(
         // amount` intact while recording that a day was closed for no money.
         InvalidAmountException.requireValid(amount)
         require(method.isNotBlank()) { "method must not be blank" }
+        require(status.isNotBlank()) { "status must not be blank" }
+        // The AC's rule, enforced where the row is built rather than only at the call
+        // site: a cancelled deposit with no reason is an audit trail with a gap in it,
+        // and the whole reason the row survives is so the gap is readable.
+        if (status == STATUS_CANCELED) {
+            require(!cancelReason.isNullOrBlank()) {
+                "a cancelled deposit must carry a reason"
+            }
+        }
+    }
+
+    companion object {
+        /** The deposit counts towards arrears. */
+        const val STATUS_CONFIRMED = "confirmed"
+
+        /** The deposit is kept for its trail and no longer counts. */
+        const val STATUS_CANCELED = "canceled"
     }
 }

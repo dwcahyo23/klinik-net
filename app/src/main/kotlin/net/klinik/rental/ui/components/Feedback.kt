@@ -494,6 +494,11 @@ fun KnScreenError(
  * @param confirmLabel / [dismissLabel] render at most two buttons, right
  *   aligned. Two is a ceiling, not a suggestion: a footer that grows turns a
  *   decision into a menu.
+ * @param confirmEnabled whether the confirm button accepts presses. `true` for
+ *   every dialog whose action needs nothing but the dialog itself, which is all
+ *   of them until Story 3.4's cancellation — a mandatory reason inside the body
+ *   has to be able to hold its own confirm shut, and [KnModal] rather than its
+ *   caller is the only thing that owns that button.
  */
 @Composable
 @OptIn(ExperimentalLayoutApi::class)
@@ -504,6 +509,7 @@ fun KnModal(
     title: String? = null,
     confirmLabel: String? = null,
     onConfirm: (() -> Unit)? = null,
+    confirmEnabled: Boolean = true,
     dismissLabel: String? = null,
     onDismiss: (() -> Unit)? = null,
     content: @Composable () -> Unit,
@@ -624,6 +630,7 @@ fun KnModal(
                                     label = confirmLabel,
                                     onClick = onConfirm,
                                     variant = KnButtonVariant.Primary,
+                                    enabled = confirmEnabled,
                                 )
                             }
                         }

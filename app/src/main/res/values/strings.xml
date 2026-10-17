@@ -731,6 +731,35 @@
     <string name="deposito_preview_dismiss">Cek dulu</string>
     <!-- The preview could not be computed — said plainly, and the save stays blocked. -->
     <string name="deposito_error_preview_failed">Pratinjau tidak bisa dihitung. Coba buka ulang formnya.</string>
+
+    <!--
+      Story 3.4 — Membatalkan setoran (cancelling a deposit).
+
+      The epic prescribes this copy almost verbatim, so the sentences are shaped to its
+      own wording rather than to a shorter house style: `Batalkan setoran Rp 250.000?` and
+      `Tunggakan Pak Budi akan kembali menjadi Rp 750.000.` The renter is named because a
+      cancellation is a warning about a consequence — the first dialog invites a decision
+      and this one reports a cost, and the two should not read alike.
+    -->
+    <!-- `%1$s` is the deposit's amount. -->
+    <string name="deposito_cancel_title">Batalkan setoran %1$s?</string>
+    <!-- `%1$s` renter's name, `%2$s` the arrears the contract returns to. -->
+    <string name="deposito_cancel_impact">Tunggakan %1$s akan kembali menjadi %2$s.</string>
+    <string name="deposito_cancel_reason_label">Alasan pembatalan (wajib)</string>
+    <string name="deposito_cancel_reason_hint">Contoh: salah tanggal, salah norek</string>
+    <string name="deposito_cancel_confirm">Batalkan setoran</string>
+    <string name="deposito_cancel_dismiss">Batal</string>
+    <string name="deposito_cancel_done">Setoran %1$s dibatalkan</string>
+
+    <!--
+      Refusals.
+
+      The blank-reason message names the field and the consequence, because "wajib diisi"
+      alone would read as the app refusing to work rather than as a rule the owner can
+      satisfy by writing one sentence.
+    -->
+    <string name="deposito_error_cancel_reason_required">Tulis alasan pembatalannya. Tanpa alasan, riwayat setteran ini tidak bisa diaudit.</string>
+    <string name="deposito_error_already_canceled">Setoran ini sudah dibatalkan, jadi tidak bisa dibatalkan lagi.</string>
 </resources>
 
 

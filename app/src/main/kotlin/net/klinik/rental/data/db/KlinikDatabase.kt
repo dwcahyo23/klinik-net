@@ -65,7 +65,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
         AllocationEntity::class,
         SettingEntity::class,
     ],
-    version = 6,
+    version = 7,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)
@@ -526,6 +526,43 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v6 -> v7: adds `payment.status` and `payment.cancelReason` — Story 3.4's
+         * cancellation trail.
+         *
+         * ## Why this is the first `ALTER` here, and why the `DEFAULT` matters
+         *
+         * Every migration above *created* a table, so none of them had to reason about
+         * existing rows. These two columns are added to a table that already holds the
+         * owner's deposits, and that is where the default clause stops being decoration:
+         *
+         *  - `status TEXT NOT NULL DEFAULT 'confirmed'` — without the default, every
+         *    existing row reads back `null`, fails the entity's non-null guard, and the
+         *    owner loses access to their own history. **SQLite cannot add a `NOT NULL`
+         *    column without a default**, so the clause is required by the type, not by
+         *    taste.
+         *  - `cancelReason TEXT DEFAULT NULL` — a confirmed deposit has no reason, and
+         *    `DEFAULT ''` would make "cancelled with no reason" representable, which is
+         *    exactly what the epic forbids.
+         *
+         * ## Why no row is rewritten
+         *
+         * `ALTER TABLE … ADD COLUMN` is the whole migration. Back-filling every deposit
+         * would be a second write path for a value the default already supplies, and the
+         * rows it would touch are money records whose `createdAt` and `date` must not move.
+         */
+        val MIGRATION_6_7 = object : Migration(6, 7) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `payment` " +
+                        "ADD COLUMN `status` TEXT NOT NULL DEFAULT 'confirmed'"
+                )
+                db.execSQL(
+                    "ALTER TABLE `payment` ADD COLUMN `cancelReason` TEXT DEFAULT NULL"
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -550,6 +587,7 @@ abstract class KlinikDatabase : RoomDatabase() {
                     MIGRATION_3_4,
                     MIGRATION_4_5,
                     MIGRATION_5_6,
+                MIGRATION_6_7,
                 )
                 .build()
     }

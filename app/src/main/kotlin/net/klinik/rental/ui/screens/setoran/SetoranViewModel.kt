@@ -143,6 +143,17 @@ class SetoranViewModel(
      */
     private val previewState = MutableStateFlow<DepositPreviewUi?>(null)
 
+    /**
+     * The cancellation dialog's state — Story 3.4's.
+     *
+     * A separate flow from [form] and [previewState] so that three windows have three
+     * lifetimes. They are genuinely different decisions: the form is the deposit being
+     * composed, the preview is a question about it, and the cancellation is a question
+     * about something already stored. Collapsing them would mean closing the sheet also
+     * dismissed a dialog, and a reason typed for one would survive into another.
+     */
+    private val cancelState = MutableStateFlow<CancelDepositUi?>(null)
+
 
     private data class OptionsSnapshot(
         val options: Options,
@@ -155,10 +166,11 @@ class SetoranViewModel(
         combine(errorMessage, previewState, message) { error, currentPreview, currentMessage ->
             SheetSnapshot(error, currentPreview, currentMessage)
         },
+        cancelState,
         combine(options, message) { currentOptions, currentMessage ->
             OptionsSnapshot(currentOptions, currentMessage)
         },
-    ) { currentForm, sheetSnapshot, optionsSnapshot ->
+    ) { currentForm, sheetSnapshot, currentCancel, optionsSnapshot ->
         SetoranUiState(
             form = currentForm,
             errorMessage = sheetSnapshot.error,
@@ -166,6 +178,7 @@ class SetoranViewModel(
             accountOptions = optionsSnapshot.options.accounts,
             successMessage = sheetSnapshot.message,
             preview = sheetSnapshot.preview,
+            cancel = currentCancel,
         )
     }
         .distinctUntilChanged()
@@ -403,10 +416,11 @@ class SetoranViewModel(
         }
     }
 
-    /** A closed form takes the dialog with it. See the close in [saveDepositAmount]. */
+    /** A closed form takes every dialog with it. See the close in [saveDepositAmount]. */
     fun closeDeposit() {
         errorMessage.value = null
         previewState.value = null
+        cancelState.value = null
         form.value = null
     }
 
@@ -416,6 +430,151 @@ class SetoranViewModel(
 
     fun consumeError() {
         errorMessage.value = null
+    }
+
+    // --------------------------------------------------------- cancelling one
+
+    /**
+     * Opens the cancellation dialog for [paymentId], with its impact already computed.
+     *
+     * ## Why the figure is computed *before* the dialog opens
+     *
+     * Because a dialog that opens with a blank line and fills it in a moment later is
+     * one the owner can read past. And the figure is `arrearsAfterCanceling` — allocated
+     * **without** the deposit rather than the current arrears minus its amount — so it is
+     * exactly what the write will produce. That is the property Story 3.3 exists to
+     * protect, and `CancelDepositTest` proves it at the data layer with a case where the
+     * two answers differ by a day.
+     */
+    fun requestCancel(paymentId: String) {
+        errorMessage.value = null
+        val contractId = form.value?.contractId ?: return
+        val renterName = form.value?.renterName.orEmpty()
+        viewModelScope.launch {
+            try {
+                val arrearsAfter = payments.arrearsAfterCanceling(
+                    contractId = contractId,
+                    paymentId = paymentId,
+                    asOf = LocalDate.now(clock),
+                )
+                val amount = payments.paymentsFor(contractId)
+                    .firstOrNull { it.id == paymentId }
+                    ?.amount
+                    ?: 0L
+                val amountLabel = formatRupiah(amount)
+                cancelState.value = CancelDepositUi(
+                    paymentId = paymentId,
+                    contractId = contractId,
+                    amountLabel = amountLabel,
+                    title = strings.depositoCancelTitle(amountLabel),
+                    // The renter's own name, from the form the sheet already holds: a
+                    // cancellation is about *this person's* arrears going back up.
+                    impactLine = strings.depositoCancelImpact(
+                        renterName = renterName,
+                        arrearsAfter = formatRupiah(arrearsAfter),
+                    ),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Said plainly rather than opening a dialog that promises a figure this
+                // screen cannot produce — a warning the owner cannot check is worse than
+                // no warning.
+                errorMessage.value = strings.depositoErrorPreviewFailed()
+            }
+        }
+    }
+
+    /**
+     * Carries a reason edit to the dialog.
+     *
+     * Its own handler rather than folded into [onFormChange], because the reason belongs
+     * to the *cancellation* and not to the deposit: a form carrying both would let an
+     * edit to one clear the other's error, and the two are never written together.
+     */
+    fun onCancelChange(transform: (CancelDepositUi) -> CancelDepositUi) {
+        cancelState.value = cancelState.value?.let(transform)
+    }
+
+    /**
+     * The dialog's dismiss.
+     *
+     * Discards the reason rather than keeping it: the deposit is untouched, and a reason
+     * held for a cancellation the owner walked away from would reappear on the next
+     * attempt with no explanation of where it came from.
+     */
+    fun dismissCancel() {
+        cancelState.value = null
+    }
+
+    /**
+     * Cancels the deposit the dialog names.
+     *
+     * ## Why the blank reason is refused here *and* in the repository
+     *
+     * Because the two refusals answer different audiences. The UI's is for the owner, who
+     * needs the field to say why; the repository's is the rule, and it is the one a caller
+     * bypassing the sheet would meet. A check in only one of the two leaves either a
+     * control that does nothing or a hole in the data layer.
+     */
+    fun cancelDeposit() {
+        if (!saving.compareAndSet(false, true)) return
+
+        val current = cancelState.value
+        if (current == null) {
+            saving.set(false)
+            return
+        }
+        if (current.reason.isBlank()) {
+            cancelState.value = current.copy(
+                reasonError = strings.depositoErrorCancelReasonRequired(),
+            )
+            saving.set(false)
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                payments.cancelDeposit(
+                    contractId = current.contractId,
+                    paymentId = current.paymentId,
+                    reason = current.reason,
+                )
+                // The dialog goes, and so does any preview. The **sheet stays**, which is
+                // the one difference from `confirmDeposit`: cancelling undoes one deposit
+                // rather than submitting the form, and the owner who is recording a second
+                // payment this month should not lose the renter and amount they picked for
+                // it. Dismissing the whole sheet on a *cancel* would discard typing nobody
+                // asked to discard.
+                cancelState.value = null
+                previewState.value = null
+                errorMessage.value = null
+                message.value = strings.depositoCanceled(
+                    // The figure the dialog named, carried on the state rather than
+                    // parsed back out of the title — see `CancelDepositUi.amountLabel`.
+                    amount = current.amountLabel,
+                )
+            } catch (e: net.klinik.rental.data.repository.BlankCancelReasonException) {
+                cancelState.value = cancelState.value?.copy(
+                    reasonError = strings.depositoErrorCancelReasonRequired(),
+                )
+            } catch (e: net.klinik.rental.data.repository.DepositAlreadyCanceledException) {
+                cancelState.value = null
+                errorMessage.value = strings.depositoErrorAlreadyCanceled()
+            } catch (e: net.klinik.rental.data.repository.UnknownDepositException) {
+                cancelState.value = null
+                errorMessage.value = strings.depositoErrorPreviewFailed()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Reported, never swallowed. A cancellation the owner believes happened
+                // when it did not leaves arrears understated — the failure that costs them
+                // real money.
+                errorMessage.value = strings.depositoErrorUnexpected()
+            } finally {
+                saving.set(false)
+            }
+        }
     }
 
     /**
