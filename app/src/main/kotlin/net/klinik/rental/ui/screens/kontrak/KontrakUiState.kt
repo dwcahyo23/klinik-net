@@ -40,6 +40,24 @@ import java.time.LocalDate
  *   is drawn on the first frame: the AC wants the owner to see which rentals carry
  *   compensation days *before* opening anything. Zero draws no badge at all — a
  *   "0" on every row would be a claim about data the owner did not ask for.
+ * @param canEnd whether the row offers the end verb. `contract.isOpen`, carried as a
+ *   field rather than read in the composable because *absence* is what the row must
+ *   draw — an ended contract has no end affordance at all, not a disabled one, for the
+ *   reason [ExceptionFormState] gives about its add block.
+ *
+ *   **Defaulted, and that default is a trap in two directions.** It is defaulted so the
+ *   twenty-odd hand-built fixtures in this package's tests do not each have to restate
+ *   it — and `copy()` does *not* re-evaluate a default, so a fixture that copies a row
+ *   and gives the `contract` an `endDate` keeps the original's `canEnd` and draws an end
+ *   verb on a contract that already ended. That is why [toRow] sets it explicitly, and
+ *   why every test fixture that copies a row to make it ended sets it too.
+ * @param endDateText the end date as `14 Okt`, or `null` while the contract runs. The
+ *   row draws it in place of [dateText] once ended, so a finished rental says *when it
+ *   finished* rather than only when it began — the owner reconciling a bill needs the
+ *   end, and `null` is what distinguishes "still running" from "began and ended on the
+ *   same day" without a second boolean.
+ *
+ *   Defaulted for the same reason [canEnd] is, with the same `copy()` caveat.
  */
 data class ContractRow(
     val contract: Contract,
@@ -50,6 +68,8 @@ data class ContractRow(
     /** `formatTanggalBulan(contract.startDate)`, e.g. `23 Okt`. Carries the month. */
     val dateText: String,
     val exceptionCount: Int = 0,
+    val canEnd: Boolean = contract.isOpen,
+    val endDateText: String? = null,
 )
 
 /**
@@ -87,6 +107,10 @@ data class ContractRow(
  *   would make every write have to write it back, which is the manual invalidation
  *   signal `epic-2-context.md:44` forbids. Room's tracker re-emits, so a delete makes
  *   the row disappear on its own.
+ *
+ * @param endSheet the end-contract editor, or `null`. The third sheet, and the same
+ *   rule as [exceptionSheet]: mounted by `KontrakScreen` beside its two siblings,
+ *   never by `KontrakRoute`.
  */
 data class KontrakUiState(
     val rows: List<ContractRow> = emptyList(),
@@ -95,6 +119,7 @@ data class KontrakUiState(
     val isLoading: Boolean = false,
     val exceptionSheet: ExceptionFormState? = null,
     val exceptionRows: List<ServiceExceptionRow> = emptyList(),
+    val endSheet: EndContractFormState? = null,
 ) {
     /**
      * Whether the empty state applies.
@@ -209,6 +234,13 @@ fun Contract.toRow(
     rateText = formatRupiah(dailyRate),
     dateText = formatTanggalBulan(startDate),
     exceptionCount = exceptionCounts[id] ?: 0,
+    // Derived, not passed in: `isOpen` is the one definition of "still running" and
+    // copying it from the caller would let a row disagree with the contract it holds.
+    canEnd = isOpen,
+    // `null` while running, so the row draws the start date alone; once ended, the same
+    // formatter as every other date on this screen — a second spelling here is how a
+    // reconciliation ends up comparing `14 Okt` against `14/10/2026`.
+    endDateText = endDate?.let(::formatTanggalBulan),
 )
 
 /**
@@ -598,3 +630,57 @@ fun ExceptionFormState.toServiceException(id: String): ServiceException? {
         reason = addReason,
     )
 }
+
+// ---------------------------------------------------------- ending a contract
+
+/**
+ * The end-contract sheet's state, held by the ViewModel so a rotation cannot lose a
+ * half-chosen date.
+ *
+ * ## Why this state is much smaller than [ExceptionFormState]
+ *
+ * Because the exception sheet has rows to display and this one has none. That sheet's
+ * state exists only to hold the add form *while the stored rows are derived* in the
+ * ViewModel's `combine`; here there is nothing to derive, so what is left is identity and
+ * one field. An `isReadOnly` flag is absent for the same reason — an ended contract never
+ * gets this far: `KontrakViewModel.openEndContract` is only reachable from a row that
+ * carries the end verb, and the repository refuses a second end anyway.
+ *
+ * @param endDate the day the rental ended, or `null` untouched. A **past** date is
+ *   accepted and is the common case — a contract that ended before this app existed is
+ *   real, and refusing a past date would make the owner's own history unrecordable.
+ * @param dateError the last refusal that landed on this field, or `null`.
+ *   `null` means "validation has not run", which is what `KnField` renders as *no*
+ *   error row rather than an empty one.
+ */
+data class EndContractFormState(
+    val contractId: String,
+    /** `renter · plate`, the same label the exception sheet's title uses. */
+    val contractLabel: String,
+    val endDate: LocalDate? = null,
+    val dateError: String? = null,
+)
+
+/**
+ * Applies an end date to the form, clearing its own error.
+ *
+ * The selection **is** the fix, so an error surviving it would accuse the owner of a
+ * field they have already filled in — the same rule [selectExceptionDate] follows.
+ */
+fun EndContractFormState.selectEndDate(date: LocalDate): EndContractFormState = copy(
+    endDate = date,
+    dateError = null,
+)
+
+/**
+ * Whether the end button is allowed.
+ *
+ * `endDate != null` and nothing else. A before-start date is *not* filtered out here:
+ * the owner may be typing the wrong date into the wrong field, and the sheet cannot
+ * see the contract's start date without carrying it — so the repository refuses it and
+ * the message names the start date, which is the figure the owner needs in order to fix
+ * it. Filtering it at the button would leave the owner with a permanently disabled
+ * control and no explanation.
+ */
+val EndContractFormState.canEndContract: Boolean
+    get() = endDate != null

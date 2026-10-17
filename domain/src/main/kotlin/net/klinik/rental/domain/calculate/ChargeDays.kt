@@ -20,14 +20,30 @@ data class ChargeSchedule(
     val restDay: DayOfWeek? = null,
     /** Dates on which no charge applies, e.g. while the car is in the workshop. */
     val serviceExceptions: Set<LocalDate> = emptySet(),
+    /**
+     * The day the contract ended, or `null` while it is still running.
+     *
+     * **The end date is itself charged** — days *after* it are not. The owner hands the
+     * car back on this day, so this is the last day the rental covered, and the
+     * distinction is money: charging it when it was returned early takes a day the
+     * renter used neither their car nor a charge for.
+     *
+     * `null` means "still running" and is the default, so every schedule built before
+     * a contract could end keeps its meaning untouched. That default is load-bearing
+     * rather than convenient — an ended contract and a running one produce different
+     * bills, and the twenty-odd `ChargeDaysTest` cases that construct this without an
+     * end date are what prove the `null` did not quietly become "ends today".
+     */
+    val contractEnd: LocalDate? = null,
 )
 
 /**
  * The charge days inside [period] for [schedule], capped at [asOf].
  *
- * Four exclusions, ported from the prototype's day loop (`prototype/data.js:338-358`):
- * days before `contractStart`, the contract's rest day, service-exception dates, and
- * days after `asOf`. The prototype's `paidOnDate`/`missedDaysList` branch is *not*
+ * Five exclusions, ported from the prototype's day loop (`prototype/data.js:338-358`):
+ * days before `contractStart`, the contract's rest day, service-exception dates, days
+ * after `contractEnd`, and days after `asOf`. The prototype's
+ * `paidOnDate`/`missedDaysList` branch is *not*
  * ported — that is the FR-10 case-2 defect, where an overpayment on one day hid
  * arrears on another; allocation is Story 1.3's job and works from stored facts.
  *
@@ -47,15 +63,16 @@ data class ChargeSchedule(
  * and justified the sort order by it; that sentence was wrong, and it is the one a
  * maintainer would read before "fixing" the allocator to match.
  *
- * Note the deliberate omission: `contract.endDate` is *not* honoured. No acceptance
- * criterion covers a contract ending mid-period, and the correct rule has at least
- * two defensible readings. Story 2.7 (`mengakhiri kontrak sewa`) settles it; charge
- * days are capped at [asOf] only.
+ * Note that `contractEnd` is honoured but `asOf` is still applied **after** it: a period
+ * computed for an ended contract is capped at whichever comes first, and neither filter
+ * replaces the other. `asOf` answers "how far have we got"; `contractEnd` answers "how long
+ * did this rental last", and a bill needs both.
  */
 fun chargeDaysIn(period: CutoffPeriod, schedule: ChargeSchedule, asOf: LocalDate): List<LocalDate> =
     period.days()
         .filter { it >= schedule.contractStart }
         .filter { it.dayOfWeek != schedule.restDay }
         .filter { it !in schedule.serviceExceptions }
+        .filter { schedule.contractEnd == null || it <= schedule.contractEnd }
         .filter { it <= asOf }
         .toList()

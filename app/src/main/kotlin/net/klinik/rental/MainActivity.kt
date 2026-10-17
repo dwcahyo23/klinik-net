@@ -197,6 +197,8 @@ private fun KlinikNetApp(
     // Story 2.6's sheet has its **own** banner, because it is a separate window and
     // the screen's is behind it — see `Screens.Kontrak.exceptionErrorMessage`.
     val kontrakExceptionError by kontrak.exceptionErrorMessage.collectAsStateWithLifecycle()
+    // And Story 2.7's, on the same argument: three sheets, three windows, three slots.
+    val kontrakEndError by kontrak.endErrorMessage.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
 
@@ -264,6 +266,17 @@ private fun KlinikNetApp(
                     // channel while it stayed on screen.
                     exceptionErrorMessage = kontrakExceptionError,
                     onExceptionErrorDismiss = kontrak::consumeExceptionError,
+                    // Story 2.7's four, plus its own banner pair. `createKontrakViewModel`
+                    // above is **unchanged** by that story: `KontrakViewModel` already
+                    // held `ContractRepository`, and ending a contract is a method on it
+                    // rather than a second repository. This block is the whole of 2.7's
+                    // footprint here, which is the measure of how little it touched.
+                    onOpenEnd = kontrak::openEndContract,
+                    onCloseEnd = kontrak::closeEndContract,
+                    onEndChange = kontrak::onEndChange,
+                    onConfirmEnd = kontrak::endContract,
+                    endErrorMessage = kontrakEndError,
+                    onEndErrorDismiss = kontrak::consumeEndError,
                 ),
             ),
         )

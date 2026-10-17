@@ -150,6 +150,16 @@ class BannerScopeTest {
             onCancelRemove = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // This file exists to prove which window each message is drawn in, and
+            // Story 2.7 added a third sheet and a third pair. Stating them is what lets
+            // a later story's sheet be covered by the same assertions instead of
+            // quietly going unmeasured.
+            onExceptionErrorDismiss = {},
+            onOpenEnd = {},
+            onCloseEnd = {},
+            onEndChange = { it },
+            onConfirmEnd = {},
+            onEndErrorDismiss = {},
         ),
     )
 

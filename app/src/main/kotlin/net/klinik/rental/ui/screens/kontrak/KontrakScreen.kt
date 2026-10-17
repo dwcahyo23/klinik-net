@@ -208,6 +208,20 @@ fun KontrakScreen(
      * that makes the sheet's banner unreachable and nothing at the call site says so.
      */
     onExceptionErrorDismiss: () -> Unit,
+    // Story 2.7's four, required for the same reason the seven above are.
+    onOpenEnd: (ContractRow) -> Unit,
+    onCloseEnd: () -> Unit,
+    onEndChange: ((EndContractFormState) -> EndContractFormState) -> Unit,
+    onConfirmEnd: () -> Unit,
+    /**
+     * The end sheet's own error slot and dismiss, as its own pair.
+     *
+     * Three sheets means three windows means three message slots. Aliasing any of these
+     * to another is how one message is cleared through another's channel while staying
+     * on screen — which is the exact trap [onErrorDismiss]'s KDoc records.
+     */
+    endErrorMessage: String? = null,
+    onEndErrorDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -280,7 +294,27 @@ fun KontrakScreen(
                                 // saved state onto a different rental.
                                 key = { it.contract.id },
                             ) { row ->
-                                KontrakRow(row = row, onClick = { onOpenExceptions(row) })
+                                KontrakRow(
+                                    row = row,
+                                    // The row's own click opens the exceptions, which
+                                    // is what it has done since Story 2.6 gave it a verb.
+                                    // Ending is a **second** verb and gets its own
+                                    // control rather than displacing this one: the
+                                    // exception list is where the owner goes to read
+                                    // what a rental has been excused, and it is also
+                                    // usable on an ended contract, so it cannot be the
+                                    // one that disappears.
+                                    onClick = { onOpenExceptions(row) },
+                                    // `null` on an ended row, so `KontrakRow` draws no
+                                    // end control at all — absent, not disabled, for
+                                    // the reason `ExceptionFormSheet` unmounts its add
+                                    // block rather than greying it out.
+                                    onEndClick = if (row.canEnd) {
+                                        { onOpenEnd(row) }
+                                    } else {
+                                        null
+                                    },
+                                )
                             }
                         }
                     }
@@ -296,12 +330,18 @@ fun KontrakScreen(
             // followed by a failure leaves both non-null, because neither clears the
             // other. So the error wins — it is the one that has to be read.
             //
-            // While **either** sheet is open **both** messages belong *inside* it: this
+            // While **any** sheet is open **both** messages belong *inside* it: this
             // banner is composed in the screen's own window and a sheet is a separate
             // window layered above, so a bar drawn here would be invisible. They are
             // therefore suppressed here and handed down to whichever sheet is up —
             // each is still shown exactly once, in the window that is actually on top.
-            val banner: Pair<String, KnBadgeTone>? = if (state.form != null || state.exceptionSheet != null) {
+            //
+            // Three sheets as of Story 2.7. This was the condition to watch: adding a
+            // sheet and forgetting this line draws a confirmation beneath it, which
+            // reads to the owner as "nothing happened".
+            val banner: Pair<String, KnBadgeTone>? = if (
+                state.form != null || state.exceptionSheet != null || state.endSheet != null
+            ) {
                 // Suppressed entirely, confirmation included: both are handed to
                 // whichever sheet is up, and a bar drawn here would be beneath it.
                 null
@@ -385,6 +425,27 @@ fun KontrakScreen(
                 onDismissError = onExceptionErrorDismiss,
             )
         }
+
+        // And the end sheet — the third, mounted from **this** file for the same reason
+        // the other two are. `state.endSheet` and the two above are mutually exclusive in
+        // practice (the row's verbs open one sheet at a time) but nothing *enforces* it,
+        // so this is the line that would be wrong if two ever overlapped: two
+        // `ModalBottomSheet` windows over one state is the `high` Story 2.8's review found.
+        state.endSheet?.let { sheet ->
+            EndContractSheet(
+                state = sheet,
+                errorMessage = endErrorMessage ?: state.errorMessage,
+                onClose = onCloseEnd,
+                onChange = onEndChange,
+                onConfirmEnd = onConfirmEnd,
+                // Its own dismiss pair, not the exception sheet's: three windows, three
+                // message slots, and sharing a setter is how one message is cleared
+                // through another's channel while staying on screen.
+                successMessage = snackbarMessage,
+                onDismissSuccess = onSnackbarDismiss,
+                onDismissError = onEndErrorDismiss,
+            )
+        }
     }
 }
 
@@ -414,11 +475,26 @@ fun KontrakScreen(
  * opening anything, so the count cannot live only inside the sheet. It is drawn only
  * when it is non-zero: a `0` on every row would be a claim about data nobody asked
  * for, and a badge that is always there stops being read as news.
+ *
+ * ## Why ending gets a second control rather than replacing the row's click
+ *
+ * Two verbs, two affordances. The row itself opens the exceptions — the place the owner
+ * reads what a rental has been excused, which is also usable on an ended contract, so it
+ * is the wrong thing to take away. Ending is the destructive, once-per-rental action and
+ * wants a control that *says* "Akhiri" rather than a gesture nobody can distinguish from
+ * the row's other job.
+ *
+ * @param onEndClick `null` on an ended contract, and the row then draws **no** end
+ *   control at all. Absent rather than disabled, for the reason
+ *   `ExceptionFormSheet` unmounts its add block: a greyed-out "Akhiri" on a contract
+ *   that already ended still claims the action is available, and the repository would
+ *   refuse it anyway.
  */
 @Composable
 private fun KontrakRow(
     row: ContractRow,
     onClick: () -> Unit,
+    onEndClick: (() -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -479,6 +555,42 @@ private fun KontrakRow(
                             row.exceptionCount,
                         ),
                         tone = KnBadgeTone.Neutral,
+                    )
+                }
+                // The end verb, as a *labelled* control rather than an icon.
+                //
+                // Every other control on this row is a badge or the row's own click, so
+                // a bare icon here would be a third gesture shape and — being inside a
+                // row that is itself clickable — a target the owner has to aim at
+                // deliberately. Spelling it `Akhiri` is what makes it distinguishable
+                // from "open this row" without a dialog to explain it.
+                //
+                // `null` on an ended row, so nothing is drawn at all. See the KDoc's
+                // note on absence rather than disabled.
+                onEndClick?.let { end ->
+                    KnButton(
+                        label = stringResource(R.string.kontrak_end_action),
+                        onClick = end,
+                        variant = KnButtonVariant.Ghost,
+                        size = KnButtonSize.Small,
+                        modifier = Modifier.testTag("kontrak-row-end-${row.contract.id}"),
+                    )
+                }
+                // And, on an ended row, *when* it ended — in place of the start date's
+                // subtitle. The owner reconciling a bill needs the end, and a row that
+                // only said when the rental began leaves the question open.
+                row.endDateText?.let { ended ->
+                    Text(
+                        text = stringResource(R.string.kontrak_row_ended, ended),
+                        // `label` and not a dedicated caption style: the design system's scale is
+                        // body / label / figure, and this line is the same class of text as
+                        // the badges above it — so it uses their style rather than
+                        // introducing a fourth size nobody else on this screen draws.
+                        style = MaterialTheme.knTypography.label,
+                        color = MaterialTheme.knColors.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = Modifier.testTag("kontrak-row-ended-${row.contract.id}"),
                     )
                 }
             }
@@ -569,6 +681,13 @@ private fun KontrakScreenPreview() {
             onCancelRemove = {},
             onErrorDismiss = {},
             onExceptionErrorDismiss = {},
+            // And Story 2.7's five, for the same reason: a preview whose rows show an
+            // end control wired to `{}` would look exactly like one that works.
+            onOpenEnd = {},
+            onCloseEnd = {},
+            onEndChange = { it },
+            onConfirmEnd = {},
+            onEndErrorDismiss = {},
         )
     }
 }

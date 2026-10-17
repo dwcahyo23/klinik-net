@@ -161,6 +161,24 @@ internal class Screens(
          */
         val exceptionErrorMessage: String? = null,
         val onExceptionErrorDismiss: () -> Unit = {},
+        // Story 2.7's four, required for the same reason the seven above are: a
+        // defaulted lambda here produces a row whose end control renders and does
+        // nothing, which is the failure mode the whole required-parameter rule exists
+        // to prevent.
+        val onOpenEnd: (net.klinik.rental.ui.screens.kontrak.ContractRow) -> Unit,
+        val onCloseEnd: () -> Unit,
+        val onEndChange:
+            ((net.klinik.rental.ui.screens.kontrak.EndContractFormState) -> net.klinik.rental.ui.screens.kontrak.EndContractFormState) -> Unit,
+        val onConfirmEnd: () -> Unit,
+        /**
+         * The end sheet's own failure message and dismiss, as a third pair.
+         *
+         * Three sheets means three windows means three message slots. This one is not
+         * defaulted to `{}`: a no-op default makes the banner unreachable and nothing at
+         * the call site says so.
+         */
+        val endErrorMessage: String? = null,
+        val onEndErrorDismiss: () -> Unit,
     )
 }
 
@@ -265,6 +283,15 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
         // banner never renders and never clears.
         exceptionErrorMessage = wiring.exceptionErrorMessage,
         onExceptionErrorDismiss = wiring.onExceptionErrorDismiss,
+        // And Story 2.7's five, forwarded for the same reason — and this route still
+        // mounts **no sheet of its own**. The end sheet is drawn by `KontrakScreen`
+        // beside its two siblings, exactly as they are.
+        onOpenEnd = wiring.onOpenEnd,
+        onCloseEnd = wiring.onCloseEnd,
+        onEndChange = wiring.onEndChange,
+        onConfirmEnd = wiring.onConfirmEnd,
+        endErrorMessage = wiring.endErrorMessage,
+        onEndErrorDismiss = wiring.onEndErrorDismiss,
         renterOptions = wiring.renterOptions,
         vehicleOptions = wiring.vehicleOptions,
     )

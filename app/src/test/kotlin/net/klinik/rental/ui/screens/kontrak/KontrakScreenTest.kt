@@ -29,6 +29,7 @@ import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -678,6 +679,246 @@ class KontrakScreenTest {
         )
     }
 
+    // ----------------------------------------------------- the end verb on a row
+
+    /**
+     * The open row carries an end verb, and the tap reaches `onOpenEnd` **with that
+     * row's contract**.
+ *
+     * Both halves for the same reason the exception row's click test gives: a control
+     * wired to `{}` fails the first assertion's *purpose* while passing a bare
+     * `assertExists`, and a sheet for the wrong contract is exactly as broken as no
+     * sheet at all — which only the payload assertion catches.
+     */
+    @Test
+    fun `an open row offers the end verb and the tap carries that row`() {
+        var opened: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onOpenEnd = { opened = it })
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-end-c1")
+            .assertExists()
+            .assertHasClickAction()
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertNotNull("tapping the verb must reach the handler", opened)
+        assertEquals("and it carries the row it was on", "c1", opened!!.contract.id)
+    }
+
+    /**
+     * And the end verb does **not** also fire the row's own click.
+     *
+     * The two verbs are nested — the button sits inside a row that is itself clickable —
+     * and whether the inner control consumes the tap or whether both handlers fire is
+     * decided by Compose's pointer handling, not by anything stated in this codebase.
+     * If both fired, the owner tapping "Akhiri" would get the *exception* sheet as well
+     * as the end sheet: two `ModalBottomSheet` windows over one state, which is the exact
+     * `high` Story 2.8's review found and the reason all three sheets mount from
+     * `KontrakScreen`.
+     *
+     * Asserted negatively on purpose: the tests above pass either way, because a
+     * double-fire still sets `opened` with the right row.
+     */
+    @Test
+    fun `the end verb does not also fire the row's own click`() {
+        var openedExceptions: ContractRow? = null
+        var openedEnd: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState(),
+                    onOpenExceptions = { openedExceptions = it },
+                    onOpenEnd = { openedEnd = it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-end-c1")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertNotNull("the end verb fires", openedEnd)
+        assertNull(
+            "and nothing else does — two sheets over one state is the Story 2.8 defect",
+            openedExceptions,
+        )
+    }
+
+    /**
+     * And the **second** row's verb carries the second row — the pair that makes "its
+     * own contract" a measured claim rather than an assumption.
+     */
+    @Test
+    fun `the second row's end verb carries the second row`() {
+        var opened: ContractRow? = null
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onOpenEnd = { opened = it })
+            }
+        }
+
+        compose.onNodeWithTag("kontrak-row-end-c2")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals("c2", opened!!.contract.id)
+    }
+
+    /**
+     * An **ended** row has no end control at all — absent, not disabled.
+     *
+     * This is the AC's exact wording and the assertion most worth keeping, for the same
+     * reason `an ended contract still shows its rows` keeps its add-block assertion: a
+     * greyed-out "Akhiri" on a contract that already ended still claims the action is
+     * available, and the repository would refuse it anyway — so a disabled control is a
+     * claim the data layer will not honour.
+     */
+    @Test
+    fun `an ended row offers no end verb at all`() {
+        val ended = stateWithOneEndedRow()
+        compose.setContent { theme { Screen(state = ended) } }
+
+        assertTrue(
+            "the ended row must have no end control",
+            compose.onAllNodes(hasTestTag("kontrak-row-end-c1")).fetchSemanticsNodes().isEmpty(),
+        )
+        assertTrue(
+            "while the row that is still running keeps its own",
+            compose.onAllNodes(hasTestTag("kontrak-row-end-c2")).fetchSemanticsNodes().isNotEmpty(),
+        )
+        // And the row is still there — a filtered-out row would pass this vacuously.
+        compose.onNodeWithTag("kontrak-row-c1").assertExists()
+    }
+
+    /**
+     * An ended row says **when** it ended, in place of its start date.
+     *
+     * The owner reconciling a bill needs the end, and a row that only ever named the
+     * start leaves that open.
+     *
+     * Found on the **unmerged** tree: `KontrakRow` sets an explicit
+     * `contentDescription` on the row, which merges its descendants away in the merged
+     * tree — so the text is present in the composition but not addressable there. That
+     * is a property of the row, not a missing node, and the fix is the query rather than
+     * the semantics: the merged description is deliberately about who and which car,
+     * so widening it to swallow the end date would undo the label Story 2.1 pinned.
+     */
+    @Test
+    fun `an ended row shows when it ended`() {
+        compose.setContent { theme { Screen(state = stateWithOneEndedRow()) } }
+
+        compose.onNodeWithTag("kontrak-row-ended-c1", useUnmergedTree = true).assertExists()
+        compose.onNodeWithText("Berakhir 20 Okt", useUnmergedTree = true).assertExists()
+    }
+
+    /**
+     * The end sheet mounts when its state says one is open, and not otherwise — the
+     * same presence-and-absence pair the exception sheet gets, for the same reason: a
+     * screen that invokes the handler and renders nothing would ship a story whose
+     * primary action leads nowhere while every other assertion still passes.
+     */
+    @Test
+    fun `the end sheet mounts when the sheet state is open`() {
+        compose.setContent { theme { Screen(state = stateWithEndSheet()) } }
+
+        compose.onNodeWithTag(TAG_END_SHEET).assertExists()
+    }
+
+    @Test
+    fun `the end sheet is absent when the sheet state is null`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        assertTrue(
+            "a closed sheet must leave nothing over the list",
+            compose.onAllNodes(hasTestTag(TAG_END_SHEET)).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * The screen banner is suppressed while the **end** sheet is up — the third sheet
+     * added to a condition 2.6 left at two.
+     *
+     * This is the line a later story adding a sheet most easily forgets, and forgetting
+     * it draws a confirmation *beneath* the sheet, which reads to the owner as nothing
+     * happening at all. Asserted with both sheets' tags so the exception sheet's own
+     * suppression (asserted above) and this one cannot pass for each other.
+     */
+    @Test
+    fun `the screen banner is suppressed while the end sheet is up`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = stateWithEndSheet().copy(
+                        errorMessage = "Gagal mengakhiri kontrak. Coba lagi.",
+                    ),
+                    snackbarMessage = "Kontrak berakhir 20 Okt",
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_END_SHEET).assertExists()
+        assertTrue(
+            "no banner beneath the sheet",
+            compose.onAllNodes(hasTestTag(TAG_BANNER)).fetchSemanticsNodes().isEmpty(),
+        )
+        compose.onNodeWithTag(TAG_END_ERROR).assertExists()
+        assertTrue(
+            "and the confirmation is handed to the sheet, not lost",
+            compose.onAllNodes(hasTestTag(TAG_END_SUCCESS)).fetchSemanticsNodes().isNotEmpty(),
+        )
+    }
+
+    /**
+     * The row's end button clears the touch floor.
+     *
+     * Measured on the real node rather than composed separately: `KnButton` clears the
+     * floor internally, and this is the test that keeps it from being dropped — the
+     * failure being a `Ghost` variant in a `trailing` slot, which is exactly the shape
+     * that looks small in a screenshot.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the row end verb clears the touch floor`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag("kontrak-row-end-c1").assertAtLeast(MIN_TARGET, "contract end verb")
+    }
+
+    /**
+     * A state whose first contract has ended and whose second is still running.
+     *
+     * Built by copying the contract and then **re-deriving** both projections by hand —
+     * `canEnd` and `endDateText` — rather than leaving the source row's values in place.
+     * That is the trap a `copy()` has here: `ContractRow.canEnd` *defaults* to
+     * `contract.isOpen`, but `copy()` does not re-evaluate a default, so a row whose
+     * contract was just given an `endDate` would carry `canEnd = true` from the original
+     * and draw an end verb on a contract that already ended. Setting both explicitly is
+     * what keeps this fixture from asserting the opposite of the rule it exists to test.
+     */
+    private fun stateWithOneEndedRow(): KontrakUiState {
+        val base = populatedState().rows
+        val endedOn = LocalDate.of(2026, 10, 20)
+        val endedFirst = base[0].copy(
+            contract = base[0].contract.copy(endDate = endedOn),
+            canEnd = false,
+            endDateText = formatTanggalBulan(endedOn),
+        )
+        return KontrakUiState(rows = listOf(endedFirst, base[1]))
+    }
+
+    /** A state with the end sheet open on `c1`. */
+    private fun stateWithEndSheet() = KontrakUiState(
+        rows = populatedState().rows,
+        endSheet = EndContractFormState(
+            contractId = "c1",
+            contractLabel = "Budi Santoso · B 1235 TF",
+        ),
+    )
+
     // ------------------------------------------------------------- the sheet mounts
 
     /**
@@ -840,6 +1081,17 @@ class KontrakScreenTest {
         onErrorDismiss: () -> Unit = {},
         exceptionErrorMessage: String? = null,
         onExceptionErrorDismiss: () -> Unit = {},
+        // Story 2.7's four, and its banner pair — the same required-for-a-reason
+        // argument one layer down. `onOpenEnd` is a per-test parameter rather than `{}`
+        // because the row's end verb is a claim a test makes about the screen: "the open
+        // row has one and the ended row has none" is only meaningful if a test can also
+        // prove the tap reaches a handler it chose.
+        onOpenEnd: (ContractRow) -> Unit = {},
+        onCloseEnd: () -> Unit = {},
+        onEndChange: ((EndContractFormState) -> EndContractFormState) -> Unit = {},
+        onConfirmEnd: () -> Unit = {},
+        endErrorMessage: String? = null,
+        onEndErrorDismiss: () -> Unit = {},
     ) {
         KontrakScreen(
             state = state,
@@ -870,6 +1122,12 @@ class KontrakScreenTest {
             // aliased: it is a different window from the screen's banner.
             exceptionErrorMessage = exceptionErrorMessage,
             onExceptionErrorDismiss = onExceptionErrorDismiss,
+            onOpenEnd = onOpenEnd,
+            onCloseEnd = onCloseEnd,
+            onEndChange = onEndChange,
+            onConfirmEnd = onConfirmEnd,
+            endErrorMessage = endErrorMessage,
+            onEndErrorDismiss = onEndErrorDismiss,
         )
     }
 

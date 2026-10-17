@@ -426,6 +426,14 @@ class FourStatesTest {
             onSnackbarDismiss = {},
             onErrorDismiss = {},
             onExceptionErrorDismiss = {},
+            // Story 2.7's five, stated here for the reason the file's own comment gives:
+            // these state values decide which sheet is mounted, so an unwired sheet is
+            // exactly what would keep these assertions honest.
+            onOpenEnd = {},
+            onCloseEnd = {},
+            onEndChange = { it },
+            onConfirmEnd = {},
+            onEndErrorDismiss = {},
         )
     }
 

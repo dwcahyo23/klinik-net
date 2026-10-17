@@ -306,6 +306,66 @@ class RStrings(private val context: Context) {
     fun kontrakErrorExceptionUnexpected(): String =
         context.getString(R.string.kontrak_error_exception_unexpected)
 
+    // -------------------------------------------------------------- Story 2.7
+
+    /**
+     * A contract that was ended.
+     *
+     * Takes an **already-formatted** date rather than a `LocalDate`, unlike the two
+     * exception refusals above — because this one is built from a value the owner just
+     * chose and which is already in the sheet's field, not read back out of a row that
+     * failed to write. [formatExceptionDate] is still the formatter behind it, called by
+     * the ViewModel, so the date the owner is *told* about and the date they *see* in
+     * the field come from one place.
+     */
+    fun kontrakContractEnded(date: String): String =
+        context.getString(R.string.kontrak_contract_ended, date)
+
+    /**
+     * An end date before the contract began.
+     *
+     * Names the contract's own **start date**, for the same reason
+     * [kontrakErrorExceptionBeforeStart] does: the offending end date is already in the
+     * field the owner typed it into, and the fix is not actionable without knowing which
+     * day the rental started.
+     */
+    fun kontrakErrorContractEndBeforeStart(startDate: java.time.LocalDate): String =
+        context.getString(
+            R.string.kontrak_error_contract_end_before_start,
+            formatExceptionDate(startDate),
+        )
+
+    /**
+     * A date never chosen.
+     *
+     * Says *pick a date and send again* rather than only that something is absent,
+     * because the whole sheet is one field: "required" would name the fault and leave
+     * the owner to work out that the calendar icon is the way to answer it.
+     */
+    fun kontrakErrorContractEndBlankDate(): String =
+        context.getString(R.string.kontrak_error_contract_end_blank_date)
+
+    /**
+     * A contract that has already ended — refused for a second end, and for any edit
+     * of a finished contract.
+     *
+     * One wording for both because they are one fact, and the same
+     * [kontrakErrorExceptionEnded] argument applies in reverse: two messages for one
+     * state is how a screen ends up saying less somewhere.
+     */
+    fun kontrakErrorContractNotOpen(): String =
+        context.getString(R.string.kontrak_error_contract_not_open)
+
+    /**
+     * An end that failed for a reason this screen does not model.
+     *
+     * Reads "mengakhiri kontrak" where [kontrakErrorExceptionUnexpected] reads
+     * "pengecualian" and [kontrakErrorUnexpected] reads "menyimpan", so the owner knows
+     * *which* write failed when three banners exist in three windows.
+     */
+    fun kontrakErrorContractEndUnexpected(): String =
+        context.getString(R.string.kontrak_error_contract_end_unexpected)
+
     // -------------------------------------------------------------- Story 2.8
 
     /**

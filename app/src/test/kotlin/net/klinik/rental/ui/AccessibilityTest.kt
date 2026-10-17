@@ -709,6 +709,15 @@ class AccessibilityTest {
             onCancelRemove = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 2.7's five. This file walks *every* interactive node on the screen
+            // against the 48dp floor, and the row's end button is a new one — so leaving
+            // it out here would silently stop measuring the control a reviewer is most
+            // likely to add and forget.
+            onOpenEnd = {},
+            onCloseEnd = {},
+            onEndChange = { it },
+            onConfirmEnd = {},
+            onEndErrorDismiss = {},
         ),
     )
 

@@ -297,4 +297,139 @@ class ChargeDaysTest {
         assertFalse(LocalDate.of(2026, 3, 1) in days)
         assertTrue(LocalDate.of(2026, 3, 2) in days)
     }
+
+    // --------------------------------------------- the contract end date (Story 2.7)
+
+    /**
+     * The end date is itself **charged**; days after it are not.
+     *
+     * The inclusive half is the money. The owner hands the car back *on* the end date, so
+     * that is the last day the rental covered — an exclusive reading would take a day the
+     * renter was still using the car and not charging them for is not what "kembali" means.
+     * The other half is that the rental genuinely stopped, so a bill must not keep growing
+     * past the day it ended.
+     */
+    @Test
+    fun `an ended contract charges its end date and nothing after it`() {
+        val endDate = LocalDate.of(2026, 3, 10)
+
+        val days = chargeDaysIn(
+            period,
+            ChargeSchedule(contractStart = longAgo, contractEnd = endDate),
+            asOf = periodEnd,
+        )
+
+        assertEquals("the end date is the last day charged", endDate, days.last())
+        assertTrue("nothing after the end date is charged", days.none { it > endDate })
+    }
+
+    /**
+     * And **every earlier day is unchanged** — compared against the same schedule without
+     * an end date, element by element.
+     *
+     * This is the half a "drop everything after the end" implementation gets wrong for
+     * free: a filter that also disturbed a neighbour, or that clamped rather than cut, still
+     * satisfies "the last day is the end date". Comparing the two lists rather than a count
+     * is what makes such a filter fail.
+     */
+    @Test
+    fun `an end date changes nothing before it`() {
+        val running = chargeDaysIn(period, ChargeSchedule(contractStart = longAgo), asOf = periodEnd)
+        val ended = chargeDaysIn(
+            period,
+            ChargeSchedule(contractStart = longAgo, contractEnd = LocalDate.of(2026, 3, 10)),
+            asOf = periodEnd,
+        )
+
+        assertEquals(
+            "the ended schedule is the running one with the tail removed, nothing else",
+            running.filter { it <= LocalDate.of(2026, 3, 10) },
+            ended,
+        )
+        assertEquals(
+            "and the running schedule has no days the ended one lost mid-list",
+            emptyList<LocalDate>(),
+            ended.filterNot { it in running },
+        )
+    }
+
+    /**
+     * A contract that ends on its **start date** still charges that one day.
+     *
+     * A same-day rental is a real rental — the car left in the morning and came back the
+     * same evening — and an exclusive reading here would make it charge nothing at all,
+     * which is the degenerate case that proves the inclusive rule rather than assuming it.
+     */
+    @Test
+    fun `a same-day contract charges exactly one day`() {
+        val day = LocalDate.of(2026, 3, 10)
+
+        val days = chargeDaysIn(
+            period,
+            ChargeSchedule(contractStart = day, contractEnd = day),
+            asOf = periodEnd,
+        )
+
+        assertEquals(listOf(day), days)
+    }
+
+    /**
+     * `contractEnd` and `asOf` compose rather than replace each other: whichever comes
+     * first is the cap.
+     *
+     * The two answer different questions — "how long did this rental last" versus "how far
+     * have we got" — and a bill needs both. A bill computed for a month *after* the contract
+     * ended is empty on the end-date rule, not on the `asOf` one; a bill computed mid-rental
+     * is capped by `asOf`, not by an end date that has not happened.
+     */
+    @Test
+    fun `the end date and asOf each cap the list and the earlier one wins`() {
+        val endDate = LocalDate.of(2026, 3, 10)
+
+        val endedButBillIsLater = chargeDaysIn(
+            period,
+            ChargeSchedule(contractStart = longAgo, contractEnd = endDate),
+            asOf = periodEnd,
+        )
+        val stillRunningButBillIsEarly = chargeDaysIn(
+            period,
+            ChargeSchedule(contractStart = longAgo, contractEnd = endDate),
+            asOf = LocalDate.of(2026, 3, 5),
+        )
+
+        assertEquals("asOf after the end date: the end date wins", endDate, endedButBillIsLater.last())
+        assertEquals("asOf before the end date: asOf wins", LocalDate.of(2026, 3, 5), stillRunningButBillIsEarly.last())
+    }
+
+    /**
+     * An end date **before** the period, or before the start, charges nothing — and does
+     * not throw.
+     *
+     * The second half matters: an ended contract is still a legal object to ask about, so
+     * a period that lies entirely before it yields an empty list rather than an exception.
+     * A throw here would make "what did this contract cost in a month it was not running"
+     * unanswerable, which is exactly the question a reconciliation asks.
+     */
+    @Test
+    fun `an end date outside the period yields nothing rather than failing`() {
+        val endedLongBefore = chargeDaysIn(
+            period,
+            ChargeSchedule(
+                contractStart = LocalDate.of(2026, 1, 1),
+                contractEnd = LocalDate.of(2026, 1, 31),
+            ),
+            asOf = periodEnd,
+        )
+        val endsBeforeItStarts = chargeDaysIn(
+            period,
+            ChargeSchedule(
+                contractStart = LocalDate.of(2026, 3, 20),
+                contractEnd = LocalDate.of(2026, 3, 15),
+            ),
+            asOf = periodEnd,
+        )
+
+        assertTrue("a period entirely after the end is empty", endedLongBefore.isEmpty())
+        assertTrue("and so is one the contract never reached", endsBeforeItStarts.isEmpty())
+    }
 }

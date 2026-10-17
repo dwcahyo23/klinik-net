@@ -348,6 +348,17 @@ class AppShellTest {
             onCancelRemove = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 2.6's and 2.7's message pairs. Stated rather than omitted because
+            // they are **required** on `Screens.Kontrak`: this fixture builds the wiring
+            // container the shell hands to the route, so it is exactly the place a
+            // missing handler would turn into a silent no-op at runtime rather than a
+            // compile error.
+            onExceptionErrorDismiss = {},
+            onOpenEnd = {},
+            onCloseEnd = {},
+            onEndChange = { it },
+            onConfirmEnd = {},
+            onEndErrorDismiss = {},
         ),
     )
 }

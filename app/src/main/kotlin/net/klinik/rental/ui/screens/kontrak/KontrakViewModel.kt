@@ -21,6 +21,7 @@ import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
+import net.klinik.rental.domain.validation.ContractEndBeforeStartException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.InvalidAmountException
@@ -90,6 +91,17 @@ class KontrakViewModel(
     private val exceptionError = MutableStateFlow<String?>(null)
 
     /**
+     * The end-contract sheet, and its own failure banner.
+     *
+     * A third flow rather than a third field on one, for the same window reason as
+     * [exceptionError]: the sheet is a separate window from the screen's banner, and
+     * whichever sheet is up swallows the screen's messages. Sharing one slot would make
+     * the three sheets overwrite each other's refusals.
+     */
+    private val endSheet = MutableStateFlow<EndContractFormState?>(null)
+    private val endError = MutableStateFlow<String?>(null)
+
+    /**
      * Whether a write is in flight, so a double tap on Save cannot enqueue two.
      *
      * An `AtomicBoolean` rather than a `MutableStateFlow<Boolean>`: this is not
@@ -101,8 +113,14 @@ class KontrakViewModel(
     private val saving = AtomicBoolean(false)
 
     /**
-     * The same guard for the exception sheet's writes, kept **separate** from
-     * [saving] — see the class KDoc on why sharing them is the wrong direction.
+     * The guard for **both** sheet writes — the exception editor and the end sheet.
+     *
+     * Separate from [saving] for the reason the class KDoc gives: saving a contract
+     * and saving one of its exceptions are different records, and blocking one on the
+     * other would strand the owner. The same guard *across the two sheets*, though,
+     * is deliberate: they write to the same `contract` row, so an exception write and an
+     * end racing each other is one conflict, and a single flag is the honest scope. A
+     * third flag here would be two writers disagreeing about the same row.
      */
     private val savingException = AtomicBoolean(false)
 
@@ -222,6 +240,17 @@ class KontrakViewModel(
                     .orEmpty(),
             )
         }
+        // The end sheet is its own layer rather than a field folded into the one above.
+        // It has no rows to derive and no dependency on the data layer, but it *must*
+        // be a real source: reading `endSheet.value` from inside another layer's lambda
+        // would emit a `KontrakUiState` carrying a stale value, so the sheet would mount
+        // showing the previously opened contract.
+        //
+        // No carrier, unlike the two layers below it, and no nested `combine`: this is
+        // the two-flow `combine` overload, so a one-field `EndSnapshot` would only be
+        // there to unwrap an array that `combine(vararg)` produces. `ExceptionSnapshot`
+        // earns its existence because it fuses two flows; this fuses none.
+        .combine(endSheet) { state, sheet -> state.copy(endSheet = sheet) }
         .distinctUntilChanged()
         .stateIn(
             scope = viewModelScope,
@@ -298,6 +327,17 @@ class KontrakViewModel(
      * consumer of `uiState` when a message appears.
      */
     val exceptionErrorMessage: StateFlow<String?> = exceptionError
+
+    /**
+     * The end sheet's **own** failure message.
+     *
+     * Separate from `KontrakUiState.errorMessage` and from
+     * [exceptionErrorMessage] for the same reason both of those are: the end sheet is a
+     * different **window**, and the screen's banner is suppressed while it is up. Two
+     * sheets drawing into one slot would overwrite each other's refusals, so each channel
+     * is its own.
+     */
+    val endErrorMessage: StateFlow<String?> = endError
 
     /** The interaction half: the open form and the last refusal's message. */
     private data class FormSnapshot(
@@ -762,6 +802,118 @@ class KontrakViewModel(
      */
     fun consumeExceptionError() {
         exceptionError.value = null
+    }
+
+    // ------------------------------------------------------------------ ending
+
+    /**
+     * Opens the end sheet on [row].
+     *
+     * The end date opens **empty**, not at today. A pre-filled date would be the
+     * prototype's hidden default wearing a label: the owner would confirm an end they
+     * never chose, and ending is the one action that frees a car — so the default would
+     * show up as a vehicle that reads `tersedia` on a day nobody agreed to.
+     */
+    fun openEndContract(row: ContractRow) {
+        endError.value = null
+        endSheet.value = EndContractFormState(
+            contractId = row.contract.id,
+            // The same `renter · plate` label the exception sheet's title uses: it is
+            // how this app names a rental, so the two sheets should not spell it
+            // differently.
+            contractLabel = "${row.renterName} · ${row.vehiclePlate}",
+        )
+    }
+
+    /**
+     * Closes the sheet, and the sheet's failure message goes with it — for the reason
+     * [closeForm] clears `errorMessage`: a refusal raised while the sheet was up must
+     * not survive onto the contract list, where it would read as a current failure with
+     * nothing left to explain it.
+     */
+    fun closeEndContract() {
+        endError.value = null
+        endSheet.value = null
+    }
+
+    /** Applies a form edit. Pure and hoisted, for the reason [onExceptionChange] is. */
+    fun onEndChange(transform: (EndContractFormState) -> EndContractFormState) {
+        endSheet.value = endSheet.value?.let(transform)
+    }
+
+    /**
+     * Ends the contract the sheet is open for.
+     *
+     * Guarded by the **same** flag as the exception writes, deliberately: both write to
+     * the same `contract` row, so a second tap here would either be refused by the
+     * repository as already-ended (a message about the owner's own action) or, worse,
+     * land after a close and report a failure for a sheet that is gone.
+     *
+     * The conditional close follows [saveForm]'s rule exactly — a write is a suspension
+     * point, the owner keeps interacting across it, and a sheet they dismissed and
+     * reopened while it was in flight is a different instance, left alone.
+     *
+     * Closing after a success is what makes the vehicle read `tersedia` with **no sync
+     * action**: `endDate` nulls both active columns, and `VehicleDao.observeRented` asks
+     * only `endDate IS NULL`. There is nothing to push anywhere.
+     */
+    fun endContract() {
+        if (!savingException.compareAndSet(false, true)) return
+
+        val current = endSheet.value
+        val endDate = current?.endDate
+        if (current == null || endDate == null) {
+            // A blank date never reaches the repository — its parameter is non-nullable
+            // — so this is the UI half of the same refusal, and the field it lands on is
+            // the one the owner is looking at.
+            if (current != null) {
+                endSheet.value = current.copy(dateError = strings.kontrakErrorContractEndBlankDate())
+            }
+            savingException.set(false)
+            return
+        }
+
+        val contractId = current.contractId
+
+        viewModelScope.launch {
+            try {
+                contracts.endContract(contractId, endDate)
+                val live = endSheet.value
+                if (live != null && live === current) endSheet.value = null
+                endError.value = null
+                message.value = strings.kontrakContractEnded(
+                    strings.formatExceptionDate(endDate),
+                )
+            } catch (e: ContractEndBeforeStartException) {
+                // Re-read rather than writing `current` back: the owner may have kept
+                // interacting while Room was doing the write, and a stale `copy` would
+                // discard that.
+                val live = endSheet.value
+                if (live != null) {
+                    endSheet.value = live.copy(
+                        dateError = strings.kontrakErrorContractEndBeforeStart(e.startDate),
+                    )
+                } else {
+                    endError.value = strings.kontrakErrorContractEndBeforeStart(e.startDate)
+                }
+            } catch (e: ContractNotOpenException) {
+                // No field of its own: the contract ended, so this whole sheet is about
+                // to be wrong. Close it rather than leaving a form that can only fail.
+                endSheet.value = null
+                endError.value = strings.kontrakErrorContractNotOpen()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                endError.value = strings.kontrakErrorContractEndUnexpected()
+            } finally {
+                savingException.set(false)
+            }
+        }
+    }
+
+    /** The end sheet's own failure message. See [consumeExceptionError] on why its own. */
+    fun consumeEndError() {
+        endError.value = null
     }
 
     /**

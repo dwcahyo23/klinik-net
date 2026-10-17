@@ -12,9 +12,11 @@ import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.parse.requirePositiveRate
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
+import net.klinik.rental.domain.validation.ContractEndBeforeStartException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
+import java.time.LocalDate
 import java.util.UUID
 
 /**
@@ -31,6 +33,12 @@ import java.util.UUID
  *    read-only (add *and* remove; they are the same fact)
  *  - [DuplicateServiceExceptionDateException] — this contract already carries an
  *    exception for that date
+ *  - [ContractEndBeforeStartException] — the end date precedes the contract's own
+ *    start date, which is structurally impossible
+ *
+ * [ContractNotOpenException] is used by two paths for the same reason: an ended
+ * contract refuses *both* exception edits and a second end, because "this contract
+ * has ended" is one fact and two exception types would let one path forget it.
  *
  * The epic context forbids carrying a domain message in a `Result`, because a
  * `String` that has already been rendered into Indonesian cannot be re-checked,
@@ -167,6 +175,92 @@ class ContractRepository(
 
             // 4. Insert, translating the index's refusal.
             insertEntity(contract)
+        }
+    }
+
+    /**
+     * Ends the contract with [contractId] on [endDate], freeing its vehicle and its
+     * renter.
+     *
+     * ## Why this is one row and one statement
+     *
+     * The AC asks that the vehicle "otomatis tampil sebagai tersedia — tidak ada tombol
+     * sinkronisasi manual", and the mechanism is that there is nothing to synchronise.
+     * `ContractEntity.toEntity()` derives `activeVehicleId` and `activeRenterId` from
+     * `isOpen`, and `isOpen` is `endDate == null` — so nulling both *is* setting the end
+     * date. There is no second writer that could set the date and forget a slot, and no
+     * status column that could disagree with the date, so "the contract ended but the car
+     * still reads as rented" is a state this code cannot produce rather than one a test
+     * has to catch.
+     *
+     * Releasing the slots is also what lets the same vehicle and the same renter be
+     * rented again: the two `UNIQUE` active indexes answer on the column, and SQLite
+     * treats `NULL`s as distinct, so a cleared slot is a free slot.
+     *
+     * ## Why surplus needs nothing from this method
+     *
+     * The AC says a surplus "tidak hilang — menjadi Kredit pada Kontrak tersebut". Credit
+     * is **not** a column and **not** computed here: it is the `chargeDate = null`
+     * allocation row (AD-3, `Allocation`'s KDoc), re-derived every period from stored
+     * rows. This method writes exactly one row and touches no other table, and no
+     * `ON DELETE CASCADE` on `contract` reaches a money record — so there is no code
+     * here that could drop the surplus. A credit column would be a second source of
+     * truth for a fact the engine already derives, and the PRD forbids it twice.
+     *
+     * The same single-row fact discharges "kontrak yang sudah berakhir tetap dihitung
+     * tunggakannya": the row is neither deleted nor filtered out, so whatever reads
+     * arrears later still sees every day up to [endDate].
+     *
+     * ## Why [endDate] is not nullable
+     *
+     * `Contract.endDate` is `null` while a contract is running, so a `LocalDate?`
+     * parameter would make "no date given" indistinguishable from "running" on the one
+     * method whose entire job is to stop it running. Non-null here makes a blank field
+     * a compile error for every other caller, and the sheet's own refusal stays in the
+     * UI where the blank field is.
+     *
+     * ## Why the row is re-read rather than taken from the caller
+     *
+     * The stored `startDate` is what the before-start refusal names, and the frozen
+     * rate and schedule come from storage rather than from a `Contract` a caller may
+     * have been holding for an hour. The only field this method takes from the caller
+     * is the date they chose.
+     *
+     * @throws ContractNotOpenException when the contract has already ended, or when
+     *   nobody holds that id. Nothing is written.
+     * @throws ContractEndBeforeStartException when [endDate] precedes the contract's
+     *   own stored start date. Nothing is written.
+     */
+    suspend fun endContract(contractId: String, endDate: LocalDate) {
+        inTransaction {
+            // 1. The same read-only guard the exception writes use, so "this contract
+            // has ended" is one question asked in one place.
+            val stored = requireOpenContract(contractId)
+
+            // 2. Before any write. Clamping forward would end the contract on a day the
+            // owner never chose, and ending a contract is what frees the car — so the
+            // error would surface as a vehicle that reads `tersedia` on the wrong day.
+            if (endDate.isBefore(stored.startDate)) {
+                throw ContractEndBeforeStartException(
+                    contractId = contractId,
+                    startDate = stored.startDate,
+                )
+            }
+
+            // 3. Build the domain model so `Contract`'s own `require` is the second
+            // guard rather than a copy of it, then project it. `toEntity()` nulls both
+            // active columns here, which is what frees the vehicle and the renter.
+            dao.update(
+                Contract(
+                    id = stored.id,
+                    renterId = stored.renterId,
+                    vehicleId = stored.vehicleId,
+                    startDate = stored.startDate,
+                    dailyRate = stored.dailyRate,
+                    restDay = stored.restDay,
+                    endDate = endDate,
+                ).toEntity(),
+            )
         }
     }
 

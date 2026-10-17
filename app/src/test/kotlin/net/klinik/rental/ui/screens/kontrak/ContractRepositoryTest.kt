@@ -15,12 +15,14 @@ import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
+import net.klinik.rental.domain.validation.ContractEndBeforeStartException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
 import org.junit.After
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotNull
 import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
@@ -998,6 +1000,336 @@ class ContractRepositoryTest {
         )
     }
 
+    // --------------------------------------------------- the END_* matrix rows
+
+    /**
+     * `END_ATOMIC` — the AC's AD-4 clause, and the test that carries the story.
+     *
+     * "Status Kontrak, Tunggakan, dan status Kendaraan tidak boleh separuh berubah" is
+     * enforced here by observing the row **once** and asserting all three facts in that
+     * single read. A separate observation per fact would pass an implementation that
+     * wrote them in two statements — which is precisely the half-change AD-4 forbids,
+     * and precisely the state a reader cannot detect afterwards.
+     */
+    @Test
+    fun `ending sets the end date and frees both slots in one observation`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        // ONE read, three assertions. This is the whole claim.
+        val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
+        assertEquals("the end date is stored verbatim", END_DAY, row.endDate)
+        assertNull(
+            "the vehicle's active slot is freed",
+            row.activeVehicleId,
+        )
+        assertNull(
+            "and the renter's, in the same write — not a second statement",
+            row.activeRenterId,
+        )
+        assertFalse("and the row now reads as ended", row.endDate == null)
+    }
+
+    /**
+     * And the vehicle reads `tersedia` with **no** sync action — asserted through the
+     * same derived query every other screen uses, not through a status column.
+     *
+     * There is no refresh method anywhere in this test, and none to call, because
+     * `VehicleDao.hasOpenContract` and `observeRented` both ask `endDate IS NULL`. The
+     * AC's "tidak ada tombol sinkronisasi manual" is satisfied by *not having* a second
+     * status that could need synchronising.
+     */
+    @Test
+    fun `the vehicle reads available after the contract ends, with no sync call`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        assertTrue(
+            "precondition: an open contract means a rented vehicle",
+            database.vehicleDao().hasOpenContract(VEHICLE_ID),
+        )
+
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        assertFalse(
+            "the same derived query now answers no",
+            database.vehicleDao().hasOpenContract(VEHICLE_ID),
+        )
+        assertTrue(
+            "and the rented list is empty — re-emitted by Room, not pushed",
+            database.vehicleDao().observeRented().first().isEmpty(),
+        )
+        // And the fleet list still holds the vehicle: it became *available*, not absent.
+        assertEquals(1, database.vehicleDao().observeAll().first().size)
+    }
+
+    /**
+     * `END_BEFORE_START` — refused, the message names the contract's own start date,
+     * and **the row is still open**.
+     *
+     * The last clause is the one that matters: a refusal that wrote `endDate` anyway, or
+     * that freed the slots before checking, would leave the owner's car available because
+     * of a rejected action.
+     */
+    @Test
+    fun `an end date before the contract start is refused and the row stays open`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2026, 10, 1)))
+        val endDate = LocalDate.of(2026, 9, 30)
+
+        val error = assertThrows(ContractEndBeforeStartException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, endDate) }
+        }
+
+        assertEquals("names the contract's own start date", LocalDate.of(2026, 10, 1), error.startDate)
+        val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
+        assertNull("nothing was written", row.endDate)
+        assertEquals("and the vehicle is still held", VEHICLE_ID, row.activeVehicleId)
+    }
+
+    /**
+     * `END_ALREADY_ENDED` — a second end is refused and the **first** end date stands.
+     *
+     * The "unchanged" half matters: an implementation that assigned the new date before
+     * checking would report a refusal and still overwrite the owner's figure.
+     */
+    @Test
+    fun `an already-ended contract refuses a second end and keeps its first date`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        assertThrows(ContractNotOpenException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 25)) }
+        }
+
+        assertEquals(
+            "the original end date is untouched",
+            END_DAY,
+            database.contractDao().findById(CONTRACT_ID)!!.endDate,
+        )
+    }
+
+    /**
+     * `END_ON_END` — ending on the start date is a real rental, so it is accepted.
+     *
+     * The degenerate case, and the one that settles the inclusive rule from the other
+     * direction: a same-day rental charged for exactly one day is a coherent thing, and
+     * an implementation that clamped `endDate` to "at least the start" would pass this
+     * while still refusing the day *before*, which the next test covers.
+     */
+    @Test
+    fun `a contract can end on its start date`() = runBlocking {
+        val start = LocalDate.of(2026, 10, 1)
+        seed()
+        repository.open(contract(id = CONTRACT_ID, startDate = start))
+
+        repository.endContract(CONTRACT_ID, start)
+
+        assertEquals(start, database.contractDao().findById(CONTRACT_ID)!!.endDate)
+    }
+
+    /**
+     * `END_OK_BEFORE_TODAY` — an end date in the **past** is stored verbatim.
+     *
+     * A contract that ended before this app existed is real, and refusing a past date
+     * would make the owner's own history unrecordable — which is the same reasoning
+     * `open` accepts a start date in the past for (FR-7).
+     */
+    @Test
+    fun `an end date in the past is stored verbatim`() = runBlocking {
+        val past = LocalDate.of(2025, 3, 15)
+        seed()
+        repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2025, 3, 1)))
+
+        repository.endContract(CONTRACT_ID, past)
+
+        assertEquals(past, database.contractDao().findById(CONTRACT_ID)!!.endDate)
+    }
+
+    /**
+     * `END_FREES_SLOTS` — the same vehicle **and** the same renter can be rented again.
+     *
+     * Both halves in one test, because they are released by the same write and an
+     * implementation that cleared only one would still pass a test of either alone. This
+     * is what SQLite treating `NULL`s as distinct in a unique index buys, and it is why
+     * no `DROP INDEX` or rebalancing step exists anywhere in this story.
+     */
+    @Test
+    fun `ending frees both the vehicle and the renter for a new contract`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        // Same vehicle, same renter, both formerly held. Neither index may refuse.
+        repository.open(contract(id = CONTRACT_ID_2, startDate = LocalDate.of(2026, 11, 1)))
+
+        val second = requireNotNull(database.contractDao().findById(CONTRACT_ID_2))
+        assertNull("the new contract starts open", second.endDate)
+        assertEquals("and holds the vehicle slot", VEHICLE_ID, second.activeVehicleId)
+        assertEquals(2, repository.observeContracts().first().size)
+    }
+
+    /**
+     * `END_PRESERVES_EXCEPTIONS` — the compensation history survives, and stays read-only.
+     *
+     * Both halves: the rows are still there *and* the write that would change them is
+     * refused. An ended contract whose exceptions quietly became editable, or quietly
+     * disappeared, would corrupt the record of what was not billed — and the FK is
+     * `RESTRICT`, so ending itself cannot have taken them.
+     */
+    @Test
+    fun `ending preserves the exceptions and they stay read-only`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
+        repository.addServiceException(exception(id = "e2", date = LocalDate.of(2026, 10, 16)))
+
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        val stored = repository.observeServiceExceptions().first()
+        assertEquals("every exception row survives", 2, stored.size)
+        assertEquals(
+            "with its reasons intact",
+            setOf("Ganti ban, mobil di bengkel", "Ganti ban, mobil di bengkel"),
+            stored.map { it.reason }.toSet(),
+        )
+        assertThrows(ContractNotOpenException::class.java) {
+            runBlocking {
+                repository.addServiceException(
+                    exception(id = "e3", date = LocalDate.of(2026, 10, 21))
+                )
+            }
+        }
+        assertThrows(ContractNotOpenException::class.java) {
+            runBlocking { repository.removeServiceException(EXCEPTION_ID, CONTRACT_ID) }
+        }
+        assertEquals("and neither refusal removed anything", 2, repository.observeServiceExceptions().first().size)
+    }
+
+    /**
+     * `END_LIST_ORDER` — an ended contract stays in the observed list, in its place.
+     *
+     * The row is neither deleted nor filtered out. This is the storage half of "kontrak
+     * yang sudah berakhir tetap dihitung tunggakannya": whatever reads arrears later has
+     * to find the row, and a list that dropped it would make that impossible while every
+     * screen here still looked correct.
+     */
+    @Test
+    fun `an ended contract stays in the observed list`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2026, 9, 1)))
+        repository.endContract(CONTRACT_ID, LocalDate.of(2026, 9, 20))
+        repository.open(contract(id = CONTRACT_ID_2, startDate = LocalDate.of(2026, 10, 1)))
+
+        val observed = repository.observeContracts().first()
+        assertEquals("both contracts are still observed", 2, observed.size)
+        // Named by contract id rather than by sort order: `observeContracts` orders
+        // descending by start date, and a test that hard-codes "first is the ended one"
+        // would break the moment the order changed without anything about the story
+        // having changed.
+        assertEquals(
+            "the ended one is marked as ended rather than absent",
+            true,
+            observed.single { it.id == CONTRACT_ID }.endDate != null,
+        )
+        assertEquals(
+            "and the new one is still open",
+            null,
+            observed.single { it.id == CONTRACT_ID_2 }.endDate,
+        )
+    }
+
+    /**
+     * `END_PRESERVES_SURPLUS` — ending touches **exactly one row**.
+     *
+     * There is no `ALLOCATION` table yet, so the strong version of this claim — counting
+     * allocation rows before and after — is not writable today. What *is* testable, and
+     * what actually makes the surplus safe, is asserted here: the write is a single row
+     * update on `contract`, and no `ON DELETE CASCADE` on that table could reach a money
+     * record even if a delete were tried.
+     *
+     * The row count is read back through the DAO rather than asserted from the returned
+     * value, so a future implementation that also wrote an allocation or credit row
+     * would be caught here rather than discovered as a wrong bill.
+     *
+     * Story 3.6 owns the stronger version — it is where the allocation table arrives.
+     */
+    @Test
+    fun `ending writes one row and nothing else`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+
+        repository.endContract(CONTRACT_ID, END_DAY)
+
+        // Every other table this story could plausibly have written to.
+        assertEquals("the vehicle is untouched", 1, database.vehicleDao().observeAll().first().size)
+        assertEquals("the renter is untouched", 1, database.renterDao().observeAll().first().size)
+        assertEquals("the exceptions are untouched", 0, repository.observeServiceExceptions().first().size)
+        assertEquals(
+            "the contract row is the only one that changed, and it is still one row",
+            1,
+            database.contractDao().allContracts().first().size,
+        )
+        // And the contract table has no cascade that could reach another table. The
+        // direction matters and is the whole point: `PRAGMA foreign_key_list(contract)`
+        // lists the tables `contract` *points at* (`renter`, `vehicle`), which constrains
+        // what it may reference. What a write to `contract` could cascade into is the
+        // tables that point *at* it — and `service_exception` is the only one, declaring
+        // `onDelete = RESTRICT`, so even a delete could not take the history.
+        val cascadesOut = database.openHelper.writableDatabase
+            .query("PRAGMA foreign_key_list(`service_exception`)").use { cursor ->
+                generateSequence { if (cursor.moveToNext()) cursor else null }
+                    .mapNotNull { row ->
+                        val onDelete = row.getString(row.getColumnIndexOrThrow("on_delete"))
+                        if (onDelete == "CASCADE") row.getString(row.getColumnIndexOrThrow("table")) else null
+                    }
+                    .toList()
+            }
+        assertTrue(
+            "nothing cascades out of service_exception either, so an end cannot reach a money row: $cascadesOut",
+            cascadesOut.isEmpty(),
+        )
+    }
+
+    /**
+     * A future end date ends the contract **immediately** — recorded as the known
+     * consequence, not endorsed.
+     *
+     * `Contract.isOpen` is `endDate == null`, so writing a date six weeks out flips the
+     * contract to ended today: the vehicle reads `tersedia` and the charge days stop,
+     * for a rental that continues. It is asserted here rather than left as a prose note
+     * because it is invisible to every other test in this file, and because the fix is a
+     * UX decision (reject a future date with a sentence, or make the intent explicit)
+     * rather than a local correction.
+     *
+     * Story 2.7's own KDoc argues that clamping or normalising a date the owner chose is
+     * worse than refusing — and this is that same failure reached by a different road,
+     * which is why it belongs next to `END_BEFORE_START` in the matrix rather than in a
+     * review log someone reads once.
+     */
+    @Test
+    fun `a future end date ends the contract immediately, which is the known consequence`() =
+        runBlocking {
+            seed()
+            repository.open(contract(id = CONTRACT_ID))
+            val future = LocalDate.of(2027, 6, 1)
+
+            repository.endContract(CONTRACT_ID, future)
+
+            val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
+            assertEquals("the future date is stored verbatim", future, row.endDate)
+            assertFalse(
+                "and the contract reads ended TODAY — the car is free while it is still rented",
+                row.endDate == null,
+            )
+            assertFalse(
+                "so the derived vehicle query already answers available",
+                database.vehicleDao().hasOpenContract(VEHICLE_ID),
+            )
+        }
+
     // ------------------------------------------------------------------ helpers
 
     /** The vehicle and the renter every fixture contract names. */
@@ -1208,6 +1540,9 @@ class ContractRepositoryTest {
 
         /** A Wednesday inside the fixture contract's October period. */
         val EXCEPTION_DAY: LocalDate = LocalDate.of(2026, 10, 14)
+
+        /** Inside the fixture contract's period, and a Wednesday. */
+        val END_DAY: LocalDate = LocalDate.of(2026, 10, 20)
 
         /** A canonical UUID string — 8-4-4-4-12 hex digits. */
         val UUID_PATTERN =

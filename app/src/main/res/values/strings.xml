@@ -443,6 +443,14 @@
     <string name="kontrak_exception_add_label">Tandai hari tanpa tagihan</string>
     <string name="kontrak_exception_field_date">Tanggal pengecualian</string>
     <!--
+      The date field's own hint, and deliberately *not* the reason hint below. The two
+      fields are the same shape — a disabled `KnField` filled from a picker — so when
+      Story 2.7 gave the shared date field a placeholder parameter, the exception sheet
+      passed what was to hand and put "Contoh: ganti ban, mobil di bengkel" under a field
+      asking for a *date*. This is the string that should have been there.
+    -->
+    <string name="kontrak_exception_date_hint">Pilih hari yang tidak ditagihkan</string>
+    <!--
       The reason field's label and hint. The field is free text, so the hint has to
       say what a reason *is* — an enum here would make the common reasons selectable
       and the next one need a schema change.
@@ -507,6 +515,63 @@
     <!-- Confirmations. A snackbar, not a screen state change. -->
     <string name="kontrak_exception_added">%1$s ditandai tanpa tagihan</string>
     <string name="kontrak_exception_removed">Pengecualian %1$s dihapus</string>
+
+    <!--
+      Story 2.7 — Mengakhiri kontrak (ending a contract).
+
+      Deliberately the smallest copy set this file has for a write. There is no
+      impact dialog, because ending changes no number the owner did not just type —
+      the charge days after the end date simply stop being owed — so UX-DR11's middle
+      tier has nothing to disclose. A dialog here would ask the owner to acknowledge a
+      consequence they are the one entering.
+
+      The date field and the confirm button, and that is the whole sheet.
+    -->
+    <!-- The row's verb. Present only on a contract that is still running. -->
+    <string name="kontrak_end_action">Akhiri</string>
+    <!--
+      The sheet's title, same `renter · plate` shape as `kontrak_exception_title`: it
+      is how this app names a rental, so the two sheets must not spell it differently.
+    -->
+    <string name="kontrak_end_title">Akhiri kontrak — %1$s</string>
+    <string name="kontrak_end_field_date">Tanggal berakhir</string>
+    <!--
+      The field's hint. It says the end date itself is still charged, because that is
+      the rule the owner most often has to think about and the one the button cannot
+      express — an empty date field with no hint invites picking the day the car came
+      back and expecting that day not to be billed.
+    -->
+    <string name="kontrak_end_date_hint">Tanggal penyewa mengembalikan mobil</string>
+    <string name="kontrak_end_confirm">Akhiri kontrak</string>
+
+    <!--
+      The row's end-date line, drawn in place of the start date once a contract has
+      ended. `%1$s` is the end date, `14 Okt`.
+    -->
+    <string name="kontrak_row_ended">Berakhir %1$s</string>
+
+    <!--
+      Refusals.
+
+      The before-start message names the contract's own start date rather than the
+      offending one, for the same reason `kontrak_error_exception_before_start` does:
+      the day they typed is already in the field they typed it into, and the fix —
+      "pick a day on or after the contract began" — is not actionable without knowing
+      which day that was.
+
+      The already-ended message is one wording for both the second end and any edit of
+      a finished contract, because they are one fact: this contract is finished. Note
+      what it does *not* say: nothing about being irreversible, and nothing that reads
+      as an accusation. The owner ended it a moment ago; the message's job is to explain
+      why the second attempt did nothing.
+    -->
+    <string name="kontrak_error_contract_end_before_start">Kontrak dimulai %1$s, jadi tidak bisa berakhir sebelum tanggal itu.</string>
+    <string name="kontrak_error_contract_end_blank_date">Pilih tanggal berakhirnya kontrak sebelum kirim.</string>
+    <string name="kontrak_error_contract_not_open">Kontrak ini sudah berakhir, jadi tidak bisa diubah lagi.</string>
+    <string name="kontrak_error_contract_end_unexpected">Gagal mengakhiri kontrak. Coba lagi.</string>
+
+    <!-- Confirmations. A snackbar, not a screen state change. -->
+    <string name="kontrak_contract_ended">Kontrak berakhir %1$s</string>
 
     <!--
       Story 2.8 — Empat state & kerangka.

@@ -28,6 +28,7 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.CalendarDays
+import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Wrench
 import net.klinik.rental.R
@@ -432,23 +433,94 @@ private fun ExceptionDateField(
     onPick: (LocalDate) -> Unit,
     modifier: Modifier = Modifier,
 ) {
+    ContractDateField(
+        date = date,
+        label = stringResource(R.string.kontrak_exception_field_date),
+        error = error,
+        onPick = onPick,
+        placeholder = stringResource(R.string.kontrak_exception_date_hint),
+        modifier = modifier.testTag(TAG_EXCEPTION_DATE),
+    )
+}
+
+/**
+ * The shared date field behind **both** contract sheets, and the Material3 dialog it
+ * opens.
+ *
+ * ## Why this is one function and not two
+ *
+ * It was `private` here as `ExceptionDateField` until Story 2.7 needed the same shape
+ * for an end date — and that is exactly the moment the UTC round-trip below became a
+ * problem rather than a detail. `ContractFormSheet`'s `StartDateField` holds the third
+ * copy of it, `private` to that file, so this app has three implementations of "a
+ * `LocalDate` through a Material3 picker" and two of them are invisible from here. The
+ * conversion is documented as a trap at each site because each was written as if it were
+ * the only one; a fourth copy would be the first one written with that knowledge and
+ * still not sharing it.
+ *
+ * The honest fix is to make it shared, and the smallest shared version is this: both
+ * sheets are the same question — *pick one day* — differing only in label, error and
+ * tag. `StartDateField` joins on a later story that needs to touch it, or earlier if a
+ * third caller appears; for now two call sites in one file is not the moment to widen the
+ * surface, but it *is* the moment to stop copying.
+ *
+ * ## Why Material3's `DatePickerDialog` and not a hand-built one
+ *
+ * The same reasoning `ContractFormSheet`'s `StartDateField` gives: the date is the one
+ * input where a wrong value is invisible — `3` and `30` look alike in a field, and a
+ * month is off by one in every hand-rolled calendar. AR-16 bans Material *Icons*, not
+ * Material components; this renders through the app's own `MaterialTheme`.
+ *
+ * ## Why no `SelectableDates` is bound
+ *
+ * Bounding the picker needs a `LocalDate`↔epoch-millis bridge — which is the very
+ * conversion below — so a bound here would be a third copy of the code it is trying to
+ * avoid. Instead the picker offers every day and the **repository** refuses an impossible
+ * one with a sentence naming the contract's own start date. The owner learns the rule from
+ * a message rather than from an option that silently vanished, and the guarantee still
+ * holds for a caller that never came through the UI.
+ *
+ * ## Why the field is disabled
+ *
+ * The date arrives from the dialog, never from typing, and a disabled `KnField` with
+ * a trailing affordance is the shape the contract pickers already use — a value the
+ * owner chooses rather than types.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+internal fun ContractDateField(
+    date: LocalDate?,
+    label: String,
+    error: String?,
+    onPick: (LocalDate) -> Unit,
+    /**
+     * What the field says while it is empty.
+     *
+     * Not optional in practice: both callers pass one, because a disabled field showing
+     * nothing at all is indistinguishable from a broken one — and because the *point* of
+     * leaving the end date empty is that the owner must choose it, so the field has to
+     * say what is being chosen.
+     */
+    placeholder: String,
+    modifier: Modifier = Modifier,
+) {
     var open by remember { mutableStateOf(false) }
-    val hint = stringResource(R.string.kontrak_exception_field_date)
 
     KnField(
-        label = hint,
+        label = label,
         // `""` rather than a default date, for the reason the contract form's start
         // date is: an untouched field has to be refusable on its own field, and a
         // pre-filled value the owner never looked at is the prototype's hidden default
         // wearing a label.
         value = date?.let { it.toString() }.orEmpty(),
         onValueChange = {},
+        placeholder = placeholder,
         error = error,
         enabled = false,
         trailingIcon = Lucide.CalendarDays,
-        trailingContentDescription = hint,
+        trailingContentDescription = label,
         onTrailingIconClick = { open = true },
-        modifier = modifier.testTag(TAG_EXCEPTION_DATE),
+        modifier = modifier,
     )
 
     if (open) {
@@ -465,10 +537,7 @@ private fun ExceptionDateField(
                         // `selectedDateMillis` is UTC midnight for the picked calendar
                         // day, so it is read back through the same UTC offset it was
                         // written with. Converting through the device zone here would
-                        // move the date by a day for anyone west of Greenwich — and
-                        // this is the one place that conversion is duplicated rather
-                        // than shared, because `StartDateField` is `private` to the
-                        // contract form. See `ContractFormSheet`'s KDoc.
+                        // move the date by a day for anyone west of Greenwich.
                         pickerState.selectedDateMillis?.let { millis ->
                             onPick(
                                 Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate(),
@@ -476,7 +545,7 @@ private fun ExceptionDateField(
                         }
                         open = false
                     },
-                    modifier = Modifier.testTag(TAG_EXCEPTION_DATE_CONFIRM),
+                    modifier = Modifier.testTag(TAG_CONTRACT_DATE_CONFIRM),
                 ) {
                     Text(stringResource(R.string.kontrak_date_confirm))
                 }
@@ -484,12 +553,12 @@ private fun ExceptionDateField(
             dismissButton = {
                 TextButton(
                     onClick = { open = false },
-                    modifier = Modifier.testTag(TAG_EXCEPTION_DATE_DISMISS),
+                    modifier = Modifier.testTag(TAG_CONTRACT_DATE_DISMISS),
                 ) {
                     Text(stringResource(R.string.kontrak_date_dismiss))
                 }
             },
-            modifier = Modifier.testTag(TAG_EXCEPTION_DATE_DIALOG),
+            modifier = Modifier.testTag(TAG_CONTRACT_DATE_DIALOG),
         ) {
             DatePicker(state = pickerState)
         }
@@ -499,10 +568,165 @@ private fun ExceptionDateField(
 /**
  * A `LocalDate` as UTC midnight in epoch millis.
  *
- * The inverse of the read-back in [ExceptionDateField], and deliberately both in UTC,
+ * The inverse of the read-back in [ContractDateField], and deliberately both in UTC,
  * for the reason that read-back's comment gives.
  */
 private fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+
+// ------------------------------------------------------------ ending a contract
+
+/**
+ * The end-contract sheet: one date and one button.
+ *
+ * ## Why this sheet is so much smaller than [ExceptionFormSheet]
+ *
+ * Because the exception sheet carries stored rows and this one carries none. Its whole
+ * surface is "the day the car came back", and everything else either belongs to the
+ * repository or does not exist yet.
+ *
+ * ## Why there is no impact dialog
+ *
+ * UX-DR11's middle tier — a dialog naming the impact — is for actions that *change
+ * numbers*, and ending a contract changes none: the end date is the owner's own figure,
+ * and the charge days after it simply stop being owed. The third tier, a mandatory
+ * reason, is for deleting data, and this deletes nothing — the row stays, its exceptions
+ * stay, and its history stays readable.
+ *
+ * So a dialog here would ask the owner to acknowledge a consequence they are in the
+ * middle of typing. The one thing they *could* be wrong about is the date, and the date
+ * is the only field.
+ *
+ * ## Why its own banners rather than the screen's
+ *
+ * The same window reason [ExceptionFormSheet] gives: this is a separate window layered
+ * over the screen, so a snackbar rendered in the screen's composition is invisible while
+ * it is up. Both the confirmation and the failure are drawn **here**, where the owner can
+ * read them.
+ *
+ * @param state the sheet's own state, held by the ViewModel so a rotation cannot lose a
+ *   half-chosen date.
+ * @param errorMessage the last failure with no field of its own — an already-ended
+ *   contract, or a write this screen does not model.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+fun EndContractSheet(
+    state: EndContractFormState,
+    onClose: () -> Unit,
+    onChange: ((EndContractFormState) -> EndContractFormState) -> Unit,
+    onConfirmEnd: () -> Unit,
+    modifier: Modifier = Modifier,
+    errorMessage: String? = null,
+    onDismissError: () -> Unit = {},
+    successMessage: String? = null,
+    onDismissSuccess: () -> Unit = {},
+) {
+    val spacing = MaterialTheme.knSpacing
+
+    // `skipPartiallyExpanded` and the fixed content bound, both for the reasons
+    // `ExceptionFormSheet` and `ContractFormSheet` give. This sheet has less content
+    // than either, so the bound is not load-bearing here — it is kept so a future field
+    // cannot silently push the button off a short landscape tablet.
+    val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)
+
+    ModalBottomSheet(
+        onDismissRequest = onClose,
+        sheetState = sheetState,
+        modifier = modifier.testTag(TAG_END_SHEET),
+    ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .verticalScroll(rememberScrollState())
+                .padding(horizontal = spacing.lg)
+                .heightIn(max = EndSheetMaxHeight),
+            verticalArrangement = Arrangement.spacedBy(spacing.md),
+        ) {
+            Text(
+                text = stringResource(R.string.kontrak_end_title, state.contractLabel),
+                style = MaterialTheme.knTypography.title,
+                color = MaterialTheme.knColors.textPrimary,
+                modifier = Modifier.testTag(TAG_END_TITLE),
+            )
+
+            ContractDateField(
+                date = state.endDate,
+                label = stringResource(R.string.kontrak_end_field_date),
+                error = state.dateError,
+                onPick = { date -> onChange { it.selectEndDate(date) } },
+                // Says the field is waiting on a choice, and — the reason this hint
+                // exists at all — that the end date itself is still charged. An empty
+                // date field with no hint invites picking the day the car came back and
+                // expecting that day not to be billed.
+                placeholder = stringResource(R.string.kontrak_end_date_hint),
+                modifier = Modifier.testTag(TAG_END_DATE),
+            )
+
+            // The confirmation, inside this window for the same reason the failure
+            // below is — and above it, so a message and a failure are never on the same
+            // pixels. `KontrakScreen` gives the error precedence on the screen; the same
+            // rule holds here.
+            successMessage?.let { message ->
+                KnSnackbar(
+                    message = message,
+                    tone = KnBadgeTone.Success,
+                    onDismiss = onDismissSuccess,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(TAG_END_SUCCESS),
+                )
+            }
+
+            errorMessage?.let { message ->
+                KnSnackbar(
+                    message = message,
+                    tone = KnBadgeTone.Danger,
+                    onDismiss = onDismissError,
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(TAG_END_ERROR),
+                )
+            }
+
+            KnButton(
+                label = stringResource(R.string.kontrak_end_confirm),
+                onClick = onConfirmEnd,
+                icon = Lucide.CircleCheck,
+                variant = KnButtonVariant.Primary,
+                // `canEndContract` and nothing more: a date before the contract's start
+                // is *not* filtered out here, because the sheet cannot see the start
+                // date without carrying it, and a permanently disabled button with no
+                // explanation is worse than a refusal that names the start date.
+                enabled = state.canEndContract,
+                modifier = Modifier.testTag(TAG_END_CONFIRM),
+            )
+
+            KnButton(
+                label = stringResource(R.string.kontrak_cancel),
+                onClick = onClose,
+                variant = KnButtonVariant.Ghost,
+                modifier = Modifier.testTag(TAG_END_CLOSE),
+            )
+        }
+    }
+}
+
+/**
+ * A bound on the end sheet's content.
+ *
+ * The same figure as the exception sheet's, for the same reason — and it is *not*
+ * load-bearing for one field plus two buttons, which is said here rather than left
+ * implied so nobody copies it as a precedent for a sheet that really needs it.
+ */
+private val EndSheetMaxHeight = 900.dp
+
+internal const val TAG_END_SHEET = "kontrak-end-sheet"
+internal const val TAG_END_TITLE = "kontrak-end-title"
+internal const val TAG_END_DATE = "kontrak-end-date"
+internal const val TAG_END_CONFIRM = "kontrak-end-confirm"
+internal const val TAG_END_CLOSE = "kontrak-end-close"
+internal const val TAG_END_ERROR = "kontrak-end-error"
+internal const val TAG_END_SUCCESS = "kontrak-end-success"
 
 /**
  * A bound on the sheet's content, and the row/remove tags keyed on the exception id.
@@ -544,7 +768,8 @@ internal const val TAG_EXCEPTION_CLOSE = "kontrak-exception-close"
 internal const val TAG_EXCEPTION_EMPTY = "kontrak-exception-empty"
 internal const val TAG_EXCEPTION_ERROR = "kontrak-exception-error"
 internal const val TAG_EXCEPTION_SUCCESS = "kontrak-exception-success"
-internal const val TAG_EXCEPTION_DATE_DIALOG = "kontrak-exception-date-dialog"
-internal const val TAG_EXCEPTION_DATE_CONFIRM = "kontrak-exception-date-confirm"
-internal const val TAG_EXCEPTION_DATE_DISMISS = "kontrak-exception-date-dismiss"
+internal const val TAG_CONTRACT_DATE_DIALOG = "kontrak-date-dialog"
+internal const val TAG_CONTRACT_DATE_CONFIRM = "kontrak-date-confirm"
+internal const val TAG_CONTRACT_DATE_DISMISS = "kontrak-date-dismiss"
 internal const val TAG_EXCEPTION_REMOVE_DIALOG = "kontrak-exception-remove-dialog"
+
