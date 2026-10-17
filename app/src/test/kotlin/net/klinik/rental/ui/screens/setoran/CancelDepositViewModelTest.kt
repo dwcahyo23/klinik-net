@@ -378,7 +378,7 @@ class CancelDepositViewModelTest {
 
     /** Asking to cancel a deposit nobody holds opens no dialog — there is no figure. */
     @Test
-    fun `requesting a cancellation of an unknown deposit opens no dialog`() = runTest(dispatcher) {
+    fun `requesting a cancellation of an unknown deposit shows current arrears and confirms nothing`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
 

@@ -208,6 +208,14 @@ class PaymentRepository(
         contractId: String,
         payment: Payment,
         asOf: LocalDate,
+        /**
+         * A stored deposit to leave out entirely, or `""` for none.
+         *
+         * Applied **before** the allocator, not by dropping rows afterwards — see
+         * [arrearsExcluding] for why. Kept as a parameter rather than a second read chain
+         * so the status filter below stays in exactly one place.
+         */
+        excludePaymentId: String = "",
     ): ComputedAllocation {
         // 1. The stored contract, for its frozen rate, its period and its schedule.
         //    Read rather than taken from the caller: a `Contract` handed in may be
@@ -236,15 +244,17 @@ class PaymentRepository(
 
         // 4. The payment and everything already recorded, allocated **together**.
         //
-        //    `forContract` returns **every** deposit, cancelled ones included, so the
-        //    exclusion happens here and in one place. That is the whole answer to the
+        //    `forContract` returns **every** deposit, cancelled ones included, so both
+        //    exclusions happen here and in one place. That is the whole answer to the
         //    `Payment` KDoc's warning that a status "would invite callers to filter
         //    instead": a filter in the query would put the rule in every reader of this
         //    table, while here it sits in the only place that computes anything. A
         //    cancelled deposit reaching the allocator by mistake would fail
         //    `Σ allocation == amount` loudly, not quietly.
         val existing = paymentDao.forContract(contract.id)
-            .filter { it.status == PaymentEntity.STATUS_CONFIRMED }
+            .filter {
+                it.status == PaymentEntity.STATUS_CONFIRMED && it.id != excludePaymentId
+            }
             .map { it.toDomain() }
         val allRows = allocatePayments(
             payments = existing + payment,
@@ -312,7 +322,12 @@ class PaymentRepository(
      * @throws DepositAlreadyCanceledException when the deposit is already cancelled.
      * @throws UnknownDepositException when [paymentId] names no stored deposit.
      */
-    suspend fun cancelDeposit(contractId: String, paymentId: String, reason: String) {
+    suspend fun cancelDeposit(
+        contractId: String,
+        paymentId: String,
+        reason: String,
+        asOf: LocalDate = asOf(),
+    ) {
         // The AC's rule, refused before anything is written, so a refused cancellation
         // leaves the deposit exactly as it was.
         if (reason.isBlank()) throw BlankCancelReasonException(paymentId)
@@ -322,6 +337,9 @@ class PaymentRepository(
             //    handed in may be stale, and this decides whether it is still cancellable.
             val stored = paymentDao.findById(paymentId)
                 ?: throw UnknownDepositException(paymentId)
+            if (stored.contractId != contractId) {
+                throw UnknownDepositException(paymentId)
+            }
             if (stored.status == PaymentEntity.STATUS_CANCELED) {
                 // The original reason stands: a second cancellation must not overwrite the
                 // audit trail with a newer, less accurate explanation.
@@ -350,10 +368,10 @@ class PaymentRepository(
                 // what comes back and the placeholder's own row is discarded.
                 payment = Payment(
                     id = RECOMPUTE_ID,
-                    date = asOf(),
+                    date = asOf,
                     amount = 1,
                 ),
-                asOf = asOf(),
+                asOf = asOf,
             )
 
             // Wholesale, because step 4 can move the survivors as well as the cancelled
@@ -397,43 +415,38 @@ class PaymentRepository(
     /**
      * The contract's arrears with one deposit left out, allocated honestly.
      *
-     * The allocator is fed the survivors plus a Rp 1 placeholder whose rows are then
-     * discarded. One rupiah rather than a second "allocate nothing" path, because two
-     * paths is exactly what this story's Design Notes refuse — and because the same
-     * function answers both "what is owed now" and "what would cancelling change".
+     * ## Why it goes through [previewAllocation] rather than deriving its own answer
+     *
+     * Because the alternative is a **second** copy of the read chain and the second copy
+     * of the status filter — and the two would drift, which is the exact shape this
+     * story's design notes refuse.
+     *
+     * ## Why the exclusion cannot be a placeholder
+     *
+     * Because a placeholder takes days **after** the survivors, so dropping its rows
+     * afterwards leaves every deposit placed as if the excluded money were still there —
+     * and the figure would then be the one that deposit would produce if it had not been
+     * cancelled. Excluding it **before** the allocation is what makes this the honest
+     * answer, and is the whole difference between allocating and subtracting.
      */
     private suspend fun arrearsExcluding(
         contractId: String,
         paymentId: String,
         asOf: LocalDate,
     ): Long {
-        val contract = contractDao.findById(contractId)
-            ?: throw UnknownContractException(contractId)
-        val cutoffDay = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
-        val chargeDays = chargeDaysIn(
-            period = CutoffPeriod.containing(cutoffDay, asOf),
-            schedule = ChargeSchedule(
-                contractStart = contract.startDate,
-                restDay = contract.restDay,
-                serviceExceptions = storedExceptions(contract.id),
-                contractEnd = contract.endDate,
-            ),
+        val computed = previewAllocation(
+            contractId = contractId,
+            payment = Payment(id = RECOMPUTE_ID, date = asOf, amount = 1),
+            // Dropped before the allocator sees it. `currentArrears` passes `""`, which
+            // no stored deposit carries, so nothing is excluded there.
+            excludePaymentId = paymentId,
             asOf = asOf,
         )
-        val survivors = paymentDao.forContract(contract.id)
-            .filter { it.id != paymentId && it.status == PaymentEntity.STATUS_CONFIRMED }
-            .map { it.toDomain() }
-        val rows = allocatePayments(
-            payments = survivors + Payment(id = RECOMPUTE_ID, date = asOf, amount = 1),
-            chargeDays = chargeDays,
-            dailyRate = contract.dailyRate,
-            asOf = asOf,
-        ).filter { it.paymentId != RECOMPUTE_ID }
         return arrearsOf(
             contractId = contractId,
-            chargeDays = chargeDays,
-            allocations = rows,
-            dailyRate = contract.dailyRate,
+            chargeDays = computed.chargeDays,
+            allocations = computed.existingRows,
+            dailyRate = computed.contract.dailyRate,
         ).amount
     }
 

@@ -59,7 +59,7 @@ development_status:
   3-1-daftar-rekening-usaha-yang-dipakai-saat-mencatat-setoran: done
   3-2-mencatat-setoran-dengan-numpad: done
   3-3-melihat-pratinjau-sebelum-menyimpan: done
-  3-4-membatalkan-setoran-dengan-alasan: backlog
+  3-4-membatalkan-setoran-dengan-alasan: done
   3-5-mengoreksi-setoran-yang-salah-input: backlog
   3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: backlog
   epic-3-retrospective: optional

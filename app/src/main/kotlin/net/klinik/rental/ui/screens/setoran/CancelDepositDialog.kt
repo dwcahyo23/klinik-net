@@ -11,10 +11,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.unit.dp
 import net.klinik.rental.R
-import net.klinik.rental.ui.components.KnButton
-import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnModal
 import net.klinik.rental.ui.theme.knColors

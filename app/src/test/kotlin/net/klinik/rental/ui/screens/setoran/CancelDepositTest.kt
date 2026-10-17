@@ -155,6 +155,18 @@ class CancelDepositTest {
         assertEquals(3, database.allocationDao().forContract(CONTRACT_ID).size)
     }
 
+    /** Refuses when the deposit exists but belongs to a different contract. */
+    @Test
+    fun `cancelling a deposit on a different contract is refused`() = runBlocking {
+        saveDeposit("p1", 750_000)
+
+        assertThrows(UnknownDepositException::class.java) {
+            runBlocking { repository.cancelDeposit("other-contract", "p1", "salah tanggal") }
+        }
+        assertEquals(PaymentEntity.STATUS_CONFIRMED, database.paymentDao().findById("p1")!!.status)
+        assertEquals(3, database.allocationDao().forContract(CONTRACT_ID).size)
+    }
+
     /**
      * `CANCEL_ROW_STAYS` — **the row is still there**, with its reason.
      *
@@ -166,6 +178,11 @@ class CancelDepositTest {
     fun `a cancelled deposit is still readable`() = runBlocking {
         saveDeposit("p1", 750_000)
         repository.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
+
+        val stored = database.paymentDao().findById("p1")
+        assertNotNull(stored)
+        assertEquals(PaymentEntity.STATUS_CANCELED, stored!!.status)
+        assertEquals("salah tanggal", stored.cancelReason)
 
         val observed = repository.paymentsFor(CONTRACT_ID)
         assertEquals("the row survives cancellation", 1, observed.size)

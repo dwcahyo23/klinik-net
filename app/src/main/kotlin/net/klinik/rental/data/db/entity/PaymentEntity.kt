@@ -21,16 +21,11 @@ import java.time.LocalDate
  * the domain model with extra fields, and it is why `method` here is a string while
  * `ChargeSchedule.restDay` is a converted enum.
  *
- * ## Why there is no `status` column
+ * ## Status and cancellation
  *
- * Cancellation is Story 3.4's, and the domain KDoc settles the shape before it arrives:
- * *"AD-3 handles a cancellation by deleting that Setoran's allocation rows and recomputing the
- * whole contract from what is left, so a cancelled payment never reaches an allocator — carrying
- * the flag here would invite callers to filter instead."* A filter somebody forgets to apply is
- * precisely how Rp 13.000.000 disappears at the month rollover.
- *
- * A `cancelReason` therefore does not belong here either: it is 3.4's column, written when that
- * story writes its delete.
+ * Story 3.4 added [status] and [cancelReason]. A cancelled payment keeps its row for audit
+ * purposes ("tidak ada hard delete") while its allocations are deleted and the contract is
+ * reallocated from surviving deposits. See the [status] property KDoc for the rationale.
  *
  * ## Why `accountId` is nullable, and why that is not a shortcut
  *
