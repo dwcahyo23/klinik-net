@@ -34,6 +34,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 import java.time.LocalDate
+import java.util.TimeZone
 
 /**
  * Robolectric render of the **real** deposit sheet.
@@ -539,6 +540,55 @@ class DepositSheetTest {
             seedDate,
             latest?.date,
         )
+    }
+
+    /**
+     * The same round-trip under a zone **west of Greenwich** — the test that can
+     * actually fail.
+     *
+     * The test above runs in Robolectric's default zone, which is UTC, where
+     * `ZoneOffset.UTC` and `ZoneId.systemDefault()` are the *same* value — so a handler
+     * written with `systemDefault()` would pass it. Moving the default zone to
+     * `America/New_York` separates them: Oct 5 at UTC midnight is Oct 4 at 20:00 in New
+     * York, so a `systemDefault()` read-back returns **Oct 4** and the assertion fails.
+     *
+     * Restored in a `finally` because the default zone is JVM-wide and a leaked
+     * `America/New_York` would silently weaken every date assertion that runs after it.
+     */
+    @Test
+    fun `confirming the date dialog survives a zone west of Greenwich`() {
+        val previous = TimeZone.getDefault()
+        TimeZone.setDefault(TimeZone.getTimeZone("America/New_York"))
+        try {
+            var latest: DepositFormState? = null
+            val seedDate = LocalDate.of(2026, 10, 5)
+            val state = openState().copy(
+                form = openState().form!!.copy(date = seedDate),
+            )
+            compose.setContent {
+                theme {
+                    Sheet(
+                        state = state,
+                        onChange = { transform -> latest = transform(latest ?: state.form!!) },
+                    )
+                }
+            }
+
+            compose.onNodeWithContentDescription("Pilih tanggal setteran masuk")
+                .performSemanticsAction(SemanticsActions.OnClick)
+            compose.waitForIdle()
+            compose.onNodeWithTag(TAG_DEPOSIT_DATE_CONFIRM)
+                .performSemanticsAction(SemanticsActions.OnClick)
+            compose.waitForIdle()
+
+            assertEquals(
+                "reading UTC midnight through the device zone would return Oct 4 here",
+                seedDate,
+                latest?.date,
+            )
+        } finally {
+            TimeZone.setDefault(previous)
+        }
     }
 
     /** Dismissing the calendar closes it and leaves the stored date alone. */
