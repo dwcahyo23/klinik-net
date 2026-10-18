@@ -133,6 +133,29 @@ reason to.
 
 ## Implementation Notes
 
+**The required-callback rule paid for itself before the tests were written.** Making the four
+identity callbacks required — rather than defaulted like several of their siblings — produced
+eleven compile errors across five test files at the first `:app:compileDebugKotlin`. Every one
+of them was a call site that would have rendered the identity block's control and reached
+nothing, which is the defect this repo has shipped twice. The compiler found them; a rendering
+test would not have.
+
+**`SettingDao` needed one new method, and the absence was worth noticing.** Nothing in this app
+could delete a settings row before this story, because every key written so far was permanent.
+The business address and phone are the fields that change when a business moves, so a setting
+that can be set once and never cleared is a constant wearing a settings screen's name. `null`
+and `""` are now kept distinct — a field the owner cleared is *absent*, which a future message
+can tell from one they never filled in.
+
+**Two test failures were the harness's fault, not the code's, and both were worth the detour.**
+A `PAYMENT` row needs its vehicle, renter and contract to satisfy the `RESTRICT` foreign keys,
+so the "editing the identity leaves a deposit untouched" case failed on its own fixture. And
+`performTextInput` **appends** — typing over a field that already holds the default name
+produced "Rental SAYAPT Klinik Net Rent Car", so the assertion was measuring the harness. The
+repo's own `RenterFormTest` uses `hasSetTextAction() and hasAnyAncestor(hasTestTag(...))`
+rather than the tag alone, because `KnField` puts the tag on the field while the *input* is a
+descendant; reading the existing pattern beat guessing twice.
+
 ## Spec Change Log
 
 ## Review Triage Log
