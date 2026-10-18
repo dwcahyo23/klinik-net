@@ -1,6 +1,7 @@
 package net.klinik.rental.ui.shell
 
 import android.content.res.Configuration
+import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -18,6 +19,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import net.klinik.rental.ui.components.KnBottomNav
 import net.klinik.rental.ui.components.KnNavRail
+import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knSpacing
 
@@ -76,6 +78,21 @@ internal fun AppShell(
     val items = destinationNavItems()
     val spacing = MaterialTheme.knSpacing
 
+    /**
+     * Closes the results overlay whenever the destination changes under it.
+     *
+     * Without this, choosing a rail or bottom-nav item while results are open leaves the
+     * overlay pinned over a different screen — a result list belonging to the last screen,
+     * drawn on top of this one. The overlay is a view of *where the owner was*; when that
+     * changes it has nothing to say.
+     *
+     * Declared before [navigateTo] because that lambda calls it: a local declared after its
+     * use reads as though the two were unrelated.
+     */
+    fun dismissOverlayOnNavigate() {
+        if (screens.search.state.isActive) screens.search.onClear()
+    }
+
     val navigateTo: (Int) -> Unit = { index ->
         // A null route is ignored rather than clamped. Clamping would turn a
         // programming error into silent navigation to the wrong screen, and the
@@ -88,15 +105,15 @@ internal fun AppShell(
                 launchSingleTop = true
                 restoreState = true
             }
+            // The results overlay is a view of *this* screen, so it does not travel
+            // to the next one — see `dismissOverlayOnNavigate`.
+            dismissOverlayOnNavigate()
         }
     }
 
     // Whether Beranda is the screen showing — read from the back stack, the one
     // place that knows. The FAB's visibility follows it, and follows nothing else.
     val isOnBeranda = backStackEntry?.destination?.route == Destination.Beranda.route
-
-    // The destination the owner is on.
-    val currentRoute = backStackEntry?.destination?.route
 
     /**
      * Narrows the screen a result belongs to, so choosing a hit opens that screen **on that
@@ -112,12 +129,40 @@ internal fun AppShell(
      * So the shell's field searches **across** the app and hands its finding to the screen that
      * owns it; the screen's own bar then shows that query and can clear it. The two controls
      * have different jobs rather than being duplicates.
+     *
+     * ## Why the fleet's status filter is cleared with its query
+     *
+     * Because the fleet screen applies **two** narrowing layers — the query and a status chip —
+     * and a search that cleared only one of them can produce a list with nothing in it and no
+     * visible reason. Choosing a car that is currently `Servis` while the `Tersedia` chip is
+     * active opens an empty fleet, and the owner has no way to tell that from "the search is
+     * broken". So the search resets **both** narrowers: a search says where the thing *is*, not
+     * which slice of the list it should appear in.
      */
     fun narrowTo(hit: SearchResult) {
         when (hit) {
             is SearchResult.RenterHit -> screens.penyewa.onQueryChange(hit.renter.name)
-            is SearchResult.VehicleHit -> screens.kendaraan.onQueryChange(hit.vehicle.plate)
+            is SearchResult.VehicleHit -> {
+                screens.kendaraan.onQueryChange(hit.vehicle.plate)
+                screens.kendaraan.onFilterChange(VehicleFilter.Semua)
+            }
         }
+    }
+
+    /**
+     * Back closes the results overlay **before** it leaves the screen.
+     *
+     * An owner who typed a query and pressed Back has lost their place if the first Back
+     * navigates: the thing they were doing was dismissible, and Back skipped past it to the
+     * screen behind. So the overlay takes the first press and the destination keeps the
+     * second — the same one-step-at-a-time rule the app applies to its sheets.
+     *
+     * Registered **only** while the overlay is active, so with nothing typed Back behaves
+     * exactly as it did before this story. A handler left installed would silently eat the
+     * first Back on every destination for the rest of the session.
+     */
+    BackHandler(enabled = screens.search.state.isActive) {
+        screens.search.onClear()
     }
 
     // The deposit FAB, mounted by the **shell** rather than by any destination.

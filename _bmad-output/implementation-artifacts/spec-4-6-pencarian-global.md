@@ -2,7 +2,7 @@
 title: 'Story 4.6 — Pencarian global'
 type: 'feature'
 created: '2026-10-18'
-status: 'done'
+status: 'in-review'
 baseline_revision: 'b9483e04ad121cf5abc872b3f20bb8241ef0d86b'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
@@ -191,6 +191,28 @@ left a list the owner can filter but never unfilter. The task is amended above; 
 in Implementation Notes.
 
 ## Review Triage Log
+
+### 2026-10-18 — Review pass 1
+- verdicts: 22 findings — high 1, medium 7, low 11, false 0, maybe-false 3
+- findings:
+  - `[high]` `[patch]` **`AppShell.kt`'s own comment claims the two screen bars were removed, and they were not** (blind-hunter B1; edge-case E5; intent-alignment I3 — three layers independently). It reads *"the two screens that used to draw their own bars stopped, so the app has one search control rather than three"*, sitting directly above code where `PenyewaScreen.kt:102` and `KendaraanScreen.kt:116` still call `KnSearchBar`. A reader of this file would conclude the opposite of what ships — and this story's whole design rests on "one rule", so a comment claiming one control where three ship is the wrong kind of lie. This is the same class as Story 4.1's `asOf` KDoc and Story 4.4's "pre-filled on both halves": a confident sentence about code that was never re-read after it changed.
+  - `[medium]` `[patch]` **a vehicle hit is narrowed but the fleet's status filter is not cleared**, so selecting a car whose status the current filter hides opens a list with nothing in it (edge-case E1). The fleet screen applies query *and* filter; only the query is written.
+  - `[medium]` `[patch]` **the results overlay survives a navigation** — tapping a rail or bottom-nav item while results are open leaves them pinned over a different destination (edge-case E2). `currentRoute` is declared beside `isOnBeranda` and never read (blind-hunter B2, edge-case E3), which is exactly the "a fact encoded twice" defect the line below it warns against.
+  - `[medium]` `[patch]` **Back does not dismiss the overlay** — it leaves the screen instead, so the owner who opens search and presses Back loses their place instead of their query (edge-case E4).
+  - `[medium]` `[patch]` **`GlobalSearchBarTest`'s `Bar` helper defaults `onQueryChange` and `onClear` to no-ops** (blind-hunter B10; edge-case E6), so a future test can assert a rendered field wired to nothing — the trap `Screens.Search`'s own KDoc forbids.
+  - `[medium]` `[patch]` **`SEARCH_EVERY_SCREEN` is not actually covered** (blind-hunter B11; intent-alignment I4): no test drives the real `AppShell` through all seven destinations, so "the field is on every screen" is proven by rendering `GlobalSearchBar` in isolation — which proves the composable exists, not that the shell mounts it.
+  - `[medium]` `[patch]` **selecting a result is never observed to narrow the destination** (intent-alignment I4). The row tap asserts only that the handler received the hit; each half is tested alone and their composition is not exercised at all.
+  - `[medium]` `[patch]` `GlobalSearchUiState.of` re-filters and re-maps every row on **every keystroke**, and `distinctUntilChanged()` runs *after* it — the dedup sits downstream of the work it should prevent (blind-hunter B5).
+  - `[low]` `[patch]` the group headings carry no `testTag`, so `SEARCH_GROUPED`'s rendering claim is only covered on the pure state (blind-hunter B8; intent-alignment I5).
+  - `[low]` `[patch]` `searchResultTag` keys on the label, and a renter named exactly like a plate would collide across kinds (blind-hunter B9).
+  - `[low]` `[patch]` the overlay scrolls but the shell's outer `Column` does not, so a long overlay plus a tall destination can push the bottom nav off-screen (blind-hunter B7).
+  - `[low]` `[patch]` the two `return@Column` sites sit in different nested scopes, so the second returns from the inner column and the overlay's padding still renders (blind-hunter B6).
+  - `[low]` `[patch]` `narrowTo` is a local `fun` inside a `@Composable`, re-allocated per recomposition and capturing the parameter (blind-hunter B3).
+  - `[low]` `[patch]` `search_empty_body` embeds curly quotes that no other string in the file uses; a stray blank line follows the new block (blind-hunter B13).
+  - `[low]` `[patch]` trailing newlines missing on the spec, `PenyewaUiState.kt` and `SearchMatch.kt` (blind-hunter B12).
+  - `[low]` `[defer]` the two bars can legitimately disagree about scope — the shell searches both kinds, a screen's bar searches one — because they filter different collections by design (intent-alignment I7). Their placeholders differ too, and that observable consequence of the reversal is recorded in Design Notes rather than left unstated.
+  - `[maybe-false]` `[reject]` selecting a result races the destination's composition (blind-hunter B4). The writes go to a ViewModel that outlives the back stack entry, so the query is held whether or not the screen has composed — which is the same reason `Screens` carries collected state rather than composables.
+  - `[maybe-false]` `[reject]` 2 further low findings about KDoc phrasing in `GlobalSearchBar` and `SearchMatch`, each cosmetic by reading the cited line.
 
 ## Design Notes
 

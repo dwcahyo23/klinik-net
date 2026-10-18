@@ -2,6 +2,8 @@ package net.klinik.rental.ui.shell
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import androidx.compose.ui.test.assertCountEquals
@@ -18,8 +20,13 @@ import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
+import android.content.Context
+import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
+import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
@@ -211,6 +218,172 @@ class AppShellTest {
         compose.waitForIdle()
 
         compose.onNodeWithText("Belum ada Kontrak").assertExists()
+    }
+
+    // ------------------------------------------------- Story 4.6: search results
+
+    /**
+     * Choosing a search result opens **the screen that owns it**, narrowed to that item.
+     *
+     * ## Why this drives the real shell
+     *
+     * `GlobalSearchBarTest` renders the bar with its own `onSelect`, so it proves the component
+     * *emits* a hit and stops there. Everything after the emit — the navigation, the query
+     * handed to the destination, the overlay clearing — happens in `AppShell`, so a test of the
+     * bar alone cannot reach any of it.
+     *
+     * And every shell fixture builds the search state from an empty query, which makes the bar
+     * return before drawing results. So this supplies a **typed** query and real rows; without
+     * them the results panel never composes and the whole select path is unreachable.
+     *
+     * The failure this guards is inert rather than loud: dropping the `narrowTo` call, or
+     * swapping its two branches so a renter writes to the fleet, would land the owner on the
+     * right screen with the wrong list and nothing to say why.
+     */
+    @Test
+    fun `choosing a result opens its screen narrowed to that result`() {
+        val wiring = ShellWiring().apply {
+            searchQuery = "siti"
+            searchRenters = listOf(sitiRenter(), budiRenter())
+        }
+        compose.setContent {
+            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+        }
+
+        compose.onNodeWithTag(searchResultTag("Siti Aminah")).performClick()
+        compose.waitForIdle()
+
+        // The destination moved…
+        compose.onNodeWithText("Belum ada Penyewa").assertExists()
+        // …and it moved carrying the query the hit names.
+        assertEquals(
+            "the renters screen is narrowed to the tapped renter",
+            "Siti Aminah",
+            wiring.penyewaQuery,
+        )
+    }
+
+    /**
+     * The second jump is the one that fails, and this is the case that says so.
+     *
+     * `restoreState` re-asserts a destination's saved state, so searching A, tapping, leaving,
+     * then tapping B can land on A again — the story's central claim holding on the first
+     * navigation and failing silently on every later one. It says which of the two candidate
+     * fixes is right: dropping `restoreState` from this navigation, or ordering the writes so
+     * the query wins. Both make this pass; only one is correct, and this is what decides.
+     */
+    @Test
+    fun `a second result selection wins over the destination's restored state`() {
+        val wiring = ShellWiring().apply {
+            searchQuery = "siti"
+            searchRenters = listOf(sitiRenter())
+        }
+        compose.setContent {
+            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+        }
+
+        // First search: land on the renters screen narrowed to Siti.
+        compose.onNodeWithTag(searchResultTag("Siti Aminah")).performClick()
+        compose.waitForIdle()
+        assertEquals("first jump narrowed to Siti", "Siti Aminah", wiring.penyewaQuery)
+
+        // Leave, then search for someone else and take that one instead.
+        compose.onNodeWithText("Kendaraan").performClick()
+        compose.waitForIdle()
+        wiring.searchQuery = "budi"
+        wiring.searchRenters = listOf(sitiRenter(), budiRenter())
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(searchResultTag("Budi Santoso")).performClick()
+        compose.waitForIdle()
+
+        assertEquals(
+            "the second jump narrows to Budi, not back to the restored Siti",
+            "Budi Santoso",
+            wiring.penyewaQuery,
+        )
+    }
+
+    /**
+     * Choosing a **vehicle** clears the fleet's status filter as well as its query.
+     *
+     * The fleet applies two narrowing layers, so a search that resets only one of them can
+     * open a list with nothing in it: picking a car that is currently `Servis` while the
+     * `Tersedia` chip is active lands the owner on an empty fleet with no visible reason.
+     * A search says where the thing *is*, not which slice of the list it belongs in.
+     */
+    @Test
+    fun `choosing a vehicle clears the fleet's status filter too`() {
+        // The filter is passed to the **constructor**, not set in an `apply` block: the
+        // fixture's callbacks write back into these properties on every click, so a value
+        // assigned by a block after construction would be indistinguishable from one the
+        // shell never touched.
+        val wiring = ShellWiring(
+            searchQuery = "1235",
+            searchVehicles = listOf(avanzaVehicle()),
+            // The fleet starts filtered to the cars that are *available*.
+            kendaraanFilter = VehicleFilter.Tersedia,
+        )
+        compose.setContent {
+            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+        }
+
+        compose.onNodeWithTag(searchResultTag("B 1235 TF")).performClick()
+        compose.waitForIdle()
+
+        assertEquals(
+            "the filter resets alongside the query",
+            VehicleFilter.Semua,
+            wiring.kendaraanFilter,
+        )
+        assertEquals(
+            "and the fleet is narrowed to the car that was tapped — the full plate, " +
+                "not the fragment the owner typed, so the screen's own bar shows what it can clear",
+            "B 1235 TF",
+            wiring.kendaraanQuery,
+        )
+    }
+
+    /**
+     * `SEARCH_EVERY_SCREEN`: the field is mounted by the shell, so it rides on every destination.
+     *
+     * Driven through the real shell and the real rail rather than by rendering the bar in
+     * isolation — the earlier version of this test proved the composable exists, which is not
+     * the claim.
+     */
+    @Test
+    fun `the search field is present on every destination`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        Destination.entries.forEach { destination ->
+            compose.onNodeWithText(destinationLabel(destination)).performClick()
+            compose.waitForIdle()
+            compose.onNodeWithTag(TAG_GLOBAL_SEARCH_FIELD).assertExists()
+        }
+    }
+
+    /**
+     * Navigating away closes the overlay.
+     *
+     * The results are a view of *this* screen, so they must not travel to the next one and
+     * stay pinned over it.
+     */
+    @Test
+    fun `navigating away closes the results overlay`() {
+        val wiring = ShellWiring().apply {
+            searchQuery = "siti"
+            searchRenters = listOf(sitiRenter())
+        }
+        compose.setContent {
+            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+        }
+
+        compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertExists()
+
+        compose.onNodeWithText("Kontrak").performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertDoesNotExist()
     }
 
     @Test
@@ -464,16 +637,116 @@ class AppShellTest {
         val MIN_TARGET: Dp = 48.dp
     }
 
+    /**
+     * Two renters for the search tests.
+     *
+     * `Siti Aminah` is declared before `Budi Santoso` **on purpose**. A fixture sorted the same
+     * way as the results would let a query that wrongly returned the wrong renter still pass,
+     * because the assertion would hold either way.
+     */
+    private fun sitiRenter() = Renter(
+        id = "r1",
+        name = "Siti Aminah",
+        phone = "081234567891",
+        bankAccount = "9087654321",
+        emergencyContact = "081200000001",
+    )
+
+    private fun budiRenter() = Renter(
+        id = "r2",
+        name = "Budi Santoso",
+        phone = "081298765432",
+        bankAccount = null,
+        emergencyContact = "081200000002",
+    )
+
+    /** One car, so the fleet half of the search has something to select. */
+    private fun avanzaVehicle() = Vehicle(
+        id = "v1",
+        plate = "B 1235 TF",
+        brand = "Toyota",
+        model = "Avanza",
+        year = 2023,
+        color = "Putih",
+        dailyRate = 250_000,
+        notes = null,
+        isServis = false,
+    )
+
+    /**
+     * A destination's visible label, resolved from the resource rather than typed out, so this
+     * test cannot fall behind a rename the way a literal would.
+     */
+    private fun destinationLabel(destination: Destination): String =
+        ApplicationProvider.getApplicationContext<Context>().getString(destination.labelRes)
+
+    /**
+     * The wiring a test can **read back**.
+     *
+     * ## Why this exists
+     *
+     * Because `AppShell` takes state by value. A `Screens` of no-op lambdas can prove the shell
+     * renders a search field, and it can prove the bar *emits* a hit — but nothing can prove the
+     * shell **wrote** that hit to a destination, because the value it was handed never changes.
+     *
+     * So the three narrowable values live here behind `mutableStateOf` and the callbacks the
+     * shell calls write to them. `Screens` itself is derived from them on every composition, so
+     * the shell sees the same recomposing state production does.
+     *
+     * This is the difference between testing a wiring and testing that a wiring exists — and it
+     * is what makes `choosing a result opens its screen narrowed to that result` able to fail.
+     */
+    private class ShellWiring(
+        /** The renters screen's narrowing. */
+        penyewaQuery: String = "",
+        /** The fleet's two narrowers — the shell must write **both**. */
+        kendaraanQuery: String = "",
+        kendaraanFilter: VehicleFilter = VehicleFilter.Semua,
+        /** The shell field's own query, so a test can type into it. */
+        searchQuery: String = "",
+        /** The rows the field searches, so results exist to tap. */
+        searchRenters: List<Renter> = emptyList(),
+        searchVehicles: List<Vehicle> = emptyList(),
+        /** Incremented by `onClear`, so a test can assert the overlay was dismissed. */
+        searchClearCount: Int = 0,
+    ) {
+        var penyewaQuery by mutableStateOf(penyewaQuery)
+        var kendaraanQuery by mutableStateOf(kendaraanQuery)
+        var kendaraanFilter by mutableStateOf(kendaraanFilter)
+        var searchQuery by mutableStateOf(searchQuery)
+        var searchRenters by mutableStateOf(searchRenters)
+        var searchVehicles by mutableStateOf(searchVehicles)
+        var searchClearCount by mutableStateOf(searchClearCount)
+
+        /**
+         * Records a clear **and** empties the query the field's state is derived from.
+         *
+         * Both halves, because the production handler is handed an immutable snapshot: the
+         * real `onClear` tells the ViewModel, and the next composition re-derives
+         * `GlobalSearchUiState` from an empty query. A fixture that only counted the call
+         * would leave the overlay drawn, because `isActive` still reads the old query — so the
+         * test would fail for a reason in the fixture rather than in the shell.
+         */
+        fun searchCleared() {
+            searchClearCount += 1
+            searchQuery = ""
+        }
+    }
+
     private fun testScreens(
         depositoState: net.klinik.rental.ui.screens.setoran.SetoranUiState =
             net.klinik.rental.ui.screens.setoran.SetoranUiState(),
-    ) = Screens(
+        wiring: ShellWiring? = null,
+    ): Screens = Screens(
         kendaraan = Screens.Kendaraan(
-            state = KendaraanUiState(),
+            state = KendaraanUiState(
+                query = wiring?.kendaraanQuery.orEmpty(),
+                filter = wiring?.kendaraanFilter ?: VehicleFilter.Semua,
+            ),
             snackbarMessage = null,
-            onQueryChange = {},
-            onFilterChange = {},
-            onClearQuery = {},
+            onQueryChange = { wiring?.kendaraanQuery = it },
+            onFilterChange = { wiring?.kendaraanFilter = it },
+            onClearQuery = { wiring?.kendaraanQuery = "" },
             onAdd = {},
             onEdit = {},
             onCloseForm = {},
@@ -483,10 +756,10 @@ class AppShellTest {
             onErrorDismiss = {},
         ),
         penyewa = Screens.Penyewa(
-            state = PenyewaUiState(),
+            state = PenyewaUiState(query = wiring?.penyewaQuery.orEmpty()),
             snackbarMessage = null,
-            onQueryChange = {},
-            onClearQuery = {},
+            onQueryChange = { wiring?.penyewaQuery = it },
+            onClearQuery = { wiring?.penyewaQuery = "" },
             onAdd = {},
             onEdit = {},
             onCloseForm = {},
@@ -594,13 +867,20 @@ class AppShellTest {
             periodOptions = listOf("25 Sep - 24 Okt 2026"),
             onSelectPeriod = {},
         ),
-        // Story 4.6's field, idle. Required for the same reason every other parameter here
-        // is: the compiler found this call site rather than a test discovering at runtime that
-        // the shell renders a search box wired to nothing.
+        // Story 4.6's field. Required for the same reason every other parameter here is: the
+        // compiler found this call site rather than a test discovering at runtime that the
+        // shell renders a search box wired to nothing.
+        //
+        // The state is **derived** from the wiring rather than handed over, so it recomposes as
+        // the test types — the same `stateIn` shape production has.
         search = Screens.Search(
-            state = GlobalSearchUiState(),
-            onQueryChange = {},
-            onClear = {},
+            state = GlobalSearchUiState.of(
+                query = wiring?.searchQuery.orEmpty(),
+                renters = wiring?.searchRenters.orEmpty(),
+                vehicles = wiring?.searchVehicles.orEmpty(),
+            ),
+            onQueryChange = { wiring?.searchQuery = it },
+            onClear = { wiring?.searchCleared() },
         ),
     )
 }
