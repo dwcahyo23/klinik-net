@@ -210,6 +210,13 @@ class BannerScopeTest {
             state = net.klinik.rental.ui.screens.tunggakan.TunggakanUiState(),
             onSelect = {},
             onErrorDismiss = {},
+            onRemind = {},
+            onReminderChange = {},
+            onReminderSend = {},
+            onReminderCopy = {},
+            onReminderDismiss = {},
+            onReminderLinkOpened = {},
+            pendingReminderLink = null,
         ),
     )
 

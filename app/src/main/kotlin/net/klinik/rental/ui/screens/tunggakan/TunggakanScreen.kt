@@ -16,7 +16,11 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import android.content.Intent
+import androidx.core.net.toUri
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -97,6 +101,13 @@ import net.klinik.rental.ui.theme.knTypography
  * Landscape is where comparison happens (UX-DR13), and landscape is the only orientation
  * where the tap means something.
  *
+ * ## Why the reminder verb is on every row, in both orientations
+ *
+ * Because it is an action on *that* row and needs no pane to land in — unlike selection, which
+ * only means something beside a detail view. Story 4.2's criterion opens with the owner pressing
+ * the verb on a row, so hiding it in portrait would make the story unreachable on the phone
+ * layout.
+ *
  * ## Why the subtitle is absent rather than zero
  *
  * Because "0 penyewa" on every load states a conclusion the app has not reached. While
@@ -111,12 +122,22 @@ import net.klinik.rental.ui.theme.knTypography
  *   nothing at the call site says so. The banner's **tone** is not a parameter: it is
  *   derived from [TunggakanUiState.isFailed], so severity cannot disagree with the state
  *   that produced it.
+ * @param onRemind opens the reminder dialog for one row. Required for the same reason.
+ * @param pendingLink the link the owner asked to open, or `null`. Consumed by [onReminderLinkOpened]
+ *   as soon as it is launched, so one send cannot open twice.
  */
 @Composable
 fun TunggakanScreen(
     state: TunggakanUiState,
     onSelect: (String) -> Unit,
     onErrorDismiss: () -> Unit,
+    onRemind: (String) -> Unit,
+    onReminderChange: (String) -> Unit,
+    onReminderSend: () -> Unit,
+    onReminderCopy: () -> Unit,
+    onReminderDismiss: () -> Unit,
+    onReminderLinkOpened: () -> Unit,
+    pendingLink: String? = null,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -150,6 +171,7 @@ fun TunggakanScreen(
                     ArrearsList(
                         state = state,
                         onSelect = onSelect,
+                        onRemind = onRemind,
                         modifier = Modifier
                             .fillMaxHeight()
                             .weight(LIST_WEIGHT_LANDSCAPE),
@@ -178,7 +200,7 @@ fun TunggakanScreen(
                 // Portrait collapses to list → detail. There is no detail pane beside it, and
                 // this story builds no detail *destination*, so the row is handed `null` for
                 // its click rather than a handler whose selection nothing would draw.
-                ArrearsList(state = state, onSelect = null)
+                ArrearsList(state = state, onSelect = null, onRemind = onRemind)
             }
 
             // The banner is drawn over unchanged content, per the four-state rule. It sits
@@ -202,6 +224,44 @@ fun TunggakanScreen(
             }
         }
     }
+
+    // The reminder dialog, mounted **outside** the screen's own column so it composes in its
+    // own window above rather than inside the layout. `state.reminder` being non-null is what
+    // makes it visible, so the window cannot be up with nothing in it.
+    state.reminder?.let { reminder ->
+        val copy = rememberClipboardCopy()
+        ReminderDialog(
+            state = reminder,
+            onChange = onReminderChange,
+            onSend = onReminderSend,
+            onCopy = {
+                // Copy what is in the field **now**, then tell the ViewModel so the
+                // confirmation reaches the state like every other message.
+                copy(reminder.text)
+                onReminderCopy()
+            },
+            onDismiss = onReminderDismiss,
+        )
+    }
+
+    // Opening the link is a side effect, so it happens here rather than in the ViewModel: the
+    // state carries *what* to open, and this is where an `Intent` can be built. `pendingLink`
+    // is consumed immediately so one send cannot launch twice across a recomposition.
+    val context = LocalContext.current
+    LaunchedEffect(pendingLink) {
+        pendingLink?.let { link ->
+            runCatching {
+                context.startActivity(
+                    Intent(Intent.ACTION_VIEW, link.toUri()).apply {
+                        // A new task, because this app has one Activity: without the flag the
+                        // intent would try to launch *this* app's task and fail.
+                        addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
+                    },
+                )
+            }
+            onReminderLinkOpened()
+        }
+    }
 }
 
 /**
@@ -215,6 +275,7 @@ fun TunggakanScreen(
 private fun ArrearsList(
     state: TunggakanUiState,
     onSelect: ((String) -> Unit)?,
+    onRemind: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -273,6 +334,7 @@ private fun ArrearsList(
                         // `null` in portrait, which `KnListRow` draws as an explicit
                         // non-clickable row rather than as a live target that goes nowhere.
                         onClick = onSelect?.let { handler -> { handler(row.contractId) } },
+                        onRemind = { onRemind(row.contractId) },
                     )
                 }
             }
@@ -295,6 +357,7 @@ private fun ArrearsRowItem(
     row: ArrearsRow,
     selected: Boolean,
     onClick: (() -> Unit)?,
+    onRemind: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
     // Spoken as one sentence rather than as separate figures, so a screen reader announces
@@ -349,6 +412,22 @@ private fun ArrearsRowItem(
                         modifier = Modifier.testTag(TAG_RISK_PREFIX + row.contractId),
                     )
                 }
+                // Story 4.2's verb. Its own button rather than the row's tap: the row selects
+                // for the detail pane (landscape only), and sending a reminder is a different
+                // decision with money consequences. Two actions on one row must be two
+                // targets — a row that both selected and messaged would make one of them
+                // unreachable without the other.
+                //
+                // It is a `KnButton` inside `KnListRow`'s trailing slot, which is a clickable
+                // region in landscape. The button consumes its own tap, so the row's selection
+                // does not also fire; `TunggakanScreenTest` pins that with a row that would
+                // report both.
+                ReminderAction(
+                    onClick = onRemind,
+                    modifier = Modifier.testTag(
+                        TAG_REMINDER_ACTION_PREFIX + row.contractId,
+                    ),
+                )
             }
         },
     )
@@ -490,6 +569,7 @@ private fun LandscapePreview() {
                         contractId = "c1",
                         renterName = "Budi Santoso",
                         vehiclePlate = "B 1235 TF",
+                        renterPhone = "0812-8899-7722",
                         figureText = "Rp 750.000 · 3 hari",
                         daysLabel = "3 hari",
                         riskLabel = "Perhatian",
@@ -502,6 +582,7 @@ private fun LandscapePreview() {
                         contractId = "c2",
                         renterName = "Siti Aminah",
                         vehiclePlate = "B 9876 AB",
+                        renterPhone = "0812-8899-7722",
                         figureText = "Rp 3.500.000 · 14 hari",
                         daysLabel = "14 hari",
                         riskLabel = "Kritis",
@@ -515,6 +596,12 @@ private fun LandscapePreview() {
             ),
             onSelect = {},
             onErrorDismiss = {},
+            onRemind = {},
+            onReminderChange = {},
+            onReminderSend = {},
+            onReminderCopy = {},
+            onReminderDismiss = {},
+            onReminderLinkOpened = {},
         )
     }
 }
@@ -530,6 +617,7 @@ private fun PortraitPreview() {
                         contractId = "c1",
                         renterName = "Budi Santoso",
                         vehiclePlate = "B 1235 TF",
+                        renterPhone = "0812-8899-7722",
                         figureText = "Rp 750.000 · 3 hari",
                         daysLabel = "3 hari",
                         riskLabel = "Perhatian",
@@ -542,6 +630,12 @@ private fun PortraitPreview() {
             ),
             onSelect = {},
             onErrorDismiss = {},
+            onRemind = {},
+            onReminderChange = {},
+            onReminderSend = {},
+            onReminderCopy = {},
+            onReminderDismiss = {},
+            onReminderLinkOpened = {},
         )
     }
 }
@@ -554,6 +648,12 @@ private fun EmptyPreview() {
             state = TunggakanUiState(isLoading = false),
             onSelect = {},
             onErrorDismiss = {},
+            onRemind = {},
+            onReminderChange = {},
+            onReminderSend = {},
+            onReminderCopy = {},
+            onReminderDismiss = {},
+            onReminderLinkOpened = {},
         )
     }
 }

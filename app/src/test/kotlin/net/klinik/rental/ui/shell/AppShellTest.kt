@@ -485,6 +485,13 @@ class AppShellTest {
             state = TunggakanUiState(),
             onSelect = {},
             onErrorDismiss = {},
+            onRemind = {},
+            onReminderChange = {},
+            onReminderSend = {},
+            onReminderCopy = {},
+            onReminderDismiss = {},
+            onReminderLinkOpened = {},
+            pendingReminderLink = null,
         ),
     )
 }

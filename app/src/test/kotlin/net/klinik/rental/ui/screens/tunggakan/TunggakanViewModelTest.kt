@@ -581,6 +581,172 @@ class TunggakanViewModelTest {
         }
     }
 
+    // ------------------------------------------------------------------ the reminder
+
+    /**
+     * `MSG_COMPOSE` — the message is composed from **the row's own** figures.
+     *
+     * The criterion's strongest clause is that a cancellation landing between the list and the
+     * message must not produce a number from two states. The row carries amount, days and names
+     * from one emission, and `openReminder` reads nothing again — this asserts the result carries
+     * the same figure the row shows, not a re-derived one.
+     */
+    @Test
+    fun `opening a reminder composes it from the row's own figure`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+
+        val row = viewModel.uiState.value.rows.first { it.contractId == OWING_CONTRACT_ID }
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val reminder = viewModel.uiState.value.reminder
+        assertNotNull("the dialog opened", reminder)
+        assertTrue(
+            "the message quotes the row's figure verbatim",
+            reminder!!.text.contains(row.figureText),
+        )
+        assertTrue("and the renter's name", reminder.text.contains(row.renterName))
+        assertTrue("and the plate", reminder.text.contains(row.vehiclePlate))
+    }
+
+    /** The row carries the renter's phone, so the link can address them. */
+    @Test
+    fun `the row carries the renter's phone`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+
+        val row = viewModel.uiState.value.rows.first { it.contractId == OWING_CONTRACT_ID }
+
+        assertEquals("08123456789", row.renterPhone)
+    }
+
+    /**
+     * `MSG_EDIT_REBUILDS` — an edit rebuilds the link.
+     *
+     * The dialog's whole point: the link is a function of the text, so the owner cannot send the
+     * pre-edit figure.
+     */
+    @Test
+    fun `editing the message rebuilds the link`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val before = viewModel.uiState.value.reminder!!.link
+        viewModel.onReminderChange("Tunggakan Rp 500.000 · 3 hari")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val after = viewModel.uiState.value.reminder!!
+        assertTrue("the link changed with the text", before != after.link)
+        assertTrue("and carries the edited figure", after.link.contains("500.000"))
+        assertFalse("not the original", after.link.contains("750.000"))
+    }
+
+    /**
+     * `MSG_EMPTY_EDIT` — an emptied message is refused and **nothing is sent**.
+     *
+     * The refusal lands on the dialog rather than being thrown, because it is a field the owner
+     * can fix; and no link is handed to the screen, so nothing opens.
+     */
+    @Test
+    fun `an emptied message is refused and sends nothing`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onReminderChange("   ")
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val reminder = viewModel.uiState.value.reminder
+        assertNotNull("the dialog stays up so the owner can fix it", reminder)
+        assertNotNull("with the refusal on its field", reminder!!.errorMessage)
+        assertNull("and no link was handed out", viewModel.pendingLink.value)
+    }
+
+    /** A valid message hands its link to the screen, once. */
+    @Test
+    fun `sending a message hands its link to the screen`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val link = viewModel.pendingLink.value
+        assertNotNull("a link is waiting", link)
+        assertTrue("addressed to the renter", link!!.startsWith("https://wa.me/628123456789"))
+
+        viewModel.onReminderLinkOpened()
+        assertNull("and consumed, so it cannot open twice", viewModel.pendingLink.value)
+    }
+
+    /**
+     * `MSG_NO_STATE_CHANGE` — sending changes **nothing**.
+     *
+     * A reminder is not a payment. The figure, the day count and the risk tier are identical
+     * afterwards, and no row was written to any table — asserted on the state and on the
+     * deposits, because a "mark as contacted" column would show up as a changed deposit count
+     * only if someone looked.
+     */
+    @Test
+    fun `sending a reminder changes no figure`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        val before = viewModel.uiState.value.rows.first { it.contractId == OWING_CONTRACT_ID }
+        val depositsBefore = payments.paymentsFor(OWING_CONTRACT_ID).size
+
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.dismissReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val after = viewModel.uiState.value.rows.first { it.contractId == OWING_CONTRACT_ID }
+        assertEquals("the amount", before.figureText, after.figureText)
+        assertEquals("the day count", before.daysLabel, after.daysLabel)
+        assertEquals("the risk tier", before.risk, after.risk)
+        assertEquals(
+            "and no deposit row was written",
+            depositsBefore,
+            payments.paymentsFor(OWING_CONTRACT_ID).size,
+        )
+    }
+
+    /** Dismissing closes the dialog and its pending link. */
+    @Test
+    fun `dismissing closes the dialog and its link`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.dismissReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.reminder)
+        assertNull("and nothing is left waiting to open", viewModel.pendingLink.value)
+    }
+
+    /** Opening a reminder for a row that is not listed does nothing. */
+    @Test
+    fun `opening a reminder for an unknown row opens nothing`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+
+        viewModel.openReminder("no-such-contract")
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertNull(viewModel.uiState.value.reminder)
+    }
     private companion object {
         const val OWING_CONTRACT_ID = "c-owing"
         const val PAID_CONTRACT_ID = "c-paid"

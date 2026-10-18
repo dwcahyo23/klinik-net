@@ -295,6 +295,24 @@ class TunggakanScreenTest {
         compose.onNodeWithTag(TAG_ROW_PREFIX + "c2").assertAtLeast(MIN_TARGET, "arrears row")
     }
 
+    /**
+     * The reminder verb clears the same floor, and is measured rather than assumed.
+     *
+     * `KnButtonSize.Small` pads its hit area back out to 48dp through `minTouchTarget`, so this
+     * *should* pass — and that is exactly why it is asserted. Story 4.1 shipped an identical
+     * 38dp failure on this floor, and `AccessibilityTest`'s fixture has no rows, so nothing else
+     * measures this button.
+     */
+    @Test
+    fun `the reminder verb clears the touch target floor`() {
+        compose.setContent { theme { Screen(state = arrearsState()) } }
+
+        compose.onNodeWithTag(TAG_REMINDER_ACTION_PREFIX + "c1")
+            .assertAtLeast(MIN_TARGET, "reminder verb")
+        compose.onNodeWithTag(TAG_REMINDER_ACTION_PREFIX + "c2")
+            .assertAtLeast(MIN_TARGET, "reminder verb")
+    }
+
     // ------------------------------------------------------------------ the banner
 
     /**
@@ -404,11 +422,25 @@ class TunggakanScreenTest {
         state: TunggakanUiState,
         onSelect: (String) -> Unit = {},
         onErrorDismiss: () -> Unit = {},
+        onRemind: (String) -> Unit = {},
+        onReminderChange: (String) -> Unit = {},
+        onReminderSend: () -> Unit = {},
+        onReminderCopy: () -> Unit = {},
+        onReminderDismiss: () -> Unit = {},
+        onReminderLinkOpened: () -> Unit = {},
+        pendingLink: String? = null,
     ) {
         TunggakanScreen(
             state = state,
             onSelect = onSelect,
             onErrorDismiss = onErrorDismiss,
+            onRemind = onRemind,
+            onReminderChange = onReminderChange,
+            onReminderSend = onReminderSend,
+            onReminderCopy = onReminderCopy,
+            onReminderDismiss = onReminderDismiss,
+            onReminderLinkOpened = onReminderLinkOpened,
+            pendingLink = pendingLink,
         )
     }
 
@@ -426,6 +458,7 @@ class TunggakanScreenTest {
                 contractId = "c1",
                 renterName = "Budi Santoso",
                 vehiclePlate = "B 1235 TF",
+                renterPhone = "0812-8899-7722",
                 figureText = "Rp 750.000 · 3 hari",
                 daysLabel = "3 hari",
                 riskLabel = "Perhatian",
@@ -438,6 +471,7 @@ class TunggakanScreenTest {
                 contractId = "c2",
                 renterName = "Siti Aminah",
                 vehiclePlate = "B 9876 AB",
+                renterPhone = "0813-1122-3344",
                 figureText = "Rp 250.000 · 1 hari",
                 daysLabel = "1 hari",
                 riskLabel = "Ringan",

@@ -99,6 +99,13 @@ private fun TunggakanRoute(wiring: Screens.Tunggakan) {
         // Required on the screen and forwarded here as given. The banner's *text* lives on
         // the state, so there is no second message channel to keep in step with the first.
         onErrorDismiss = wiring.onErrorDismiss,
+        onRemind = wiring.onRemind,
+        onReminderChange = wiring.onReminderChange,
+        onReminderSend = wiring.onReminderSend,
+        onReminderCopy = wiring.onReminderCopy,
+        onReminderDismiss = wiring.onReminderDismiss,
+        onReminderLinkOpened = wiring.onReminderLinkOpened,
+        pendingLink = wiring.pendingReminderLink,
     )
 }
 
@@ -178,6 +185,18 @@ internal class Screens(
         val state: net.klinik.rental.ui.screens.tunggakan.TunggakanUiState,
         val onSelect: (String) -> Unit,
         val onErrorDismiss: () -> Unit,
+        /**
+         * Story 4.2's five. Required, not defaulted, for the reason every callback in this
+         * class is: a defaulted lambda produces a row whose reminder button renders, is
+         * tappable, and opens nothing.
+         */
+        val onRemind: (String) -> Unit,
+        val onReminderChange: (String) -> Unit,
+        val onReminderSend: () -> Unit,
+        val onReminderCopy: () -> Unit,
+        val onReminderDismiss: () -> Unit,
+        val onReminderLinkOpened: () -> Unit,
+        val pendingReminderLink: String?,
     )
     /** The fleet destination's wiring. */
     class Kendaraan(

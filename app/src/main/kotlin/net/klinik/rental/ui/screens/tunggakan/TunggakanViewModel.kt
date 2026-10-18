@@ -13,6 +13,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
+import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.ContractArrears
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
@@ -57,6 +58,14 @@ class TunggakanViewModel(
     vehicleRepository: VehicleRepository,
     private val strings: RStrings,
     private val clock: Clock,
+    /**
+     * The business name a reminder quotes — Story 4.4's single source.
+     *
+     * Injected as a suspending read rather than a `BusinessIdentityRepository`, so this class
+     * depends on the one value it needs instead of on a storage layer, and so a test can supply
+     * a name without a database. `null` in a test that never opens the reminder dialog.
+     */
+    private val businessName: (suspend () -> String)? = null,
     /**
      * Overrides the arrears source. **For tests only.**
      *
@@ -124,6 +133,15 @@ class TunggakanViewModel(
     private val arrearsRetry = MutableStateFlow(0)
 
     /**
+     * The reminder dialog, or `null` when it is closed — Story 4.2.
+     *
+     * Its own flow beside the rows, not a field on them: a message is about one row and has its
+     * own lifetime, and closing it must not disturb the list or the selection. The same argument
+     * `KontrakViewModel` gives for keeping each of its sheets as a real source.
+     */
+    private val reminder = MutableStateFlow<ReminderUi?>(null)
+
+    /**
      * The arrears source, tagged and with its failures carried as a **value**.
      *
      * ## Why the failure is a `Source` and not a side channel
@@ -185,7 +203,8 @@ class TunggakanViewModel(
         renterRepository.observeRenters(),
         vehicleRepository.observeVehicles(),
         selectedId,
-    ) { source, renters, vehicles, selection ->
+        reminder,
+    ) { source, renters, vehicles, selection, currentReminder ->
         TunggakanUiState(
             rows = when (source) {
                 // Nothing rendered while loading, and **nothing rendered on failure**: the
@@ -194,6 +213,10 @@ class TunggakanViewModel(
                 Source.Loading, is Source.Failed -> emptyList()
                 is Source.Loaded -> source.entries.toRows(
                     renterNames = renters.associate { it.id to it.name },
+                    // The phone joins the **same** lookup the name does, so the recipient
+                    // arrives with the figures rather than from a second read — the rule the
+                    // reminder's own KDoc gives.
+                    renterPhones = renters.associate { it.id to it.phone },
                     vehiclePlates = vehicles.associate { it.id to it.plate },
                     strings = strings,
                 )
@@ -211,6 +234,7 @@ class TunggakanViewModel(
             // nobody. A dismissal does not set this to null — it re-emits `Loaded`, which
             // drops the banner because the read no longer says it failed.
             errorMessage = source.bannerOrNull(strings),
+            reminder = currentReminder,
         )
     }
         // After the projection, so a Room emission that produces an identical list does not
@@ -249,5 +273,123 @@ class TunggakanViewModel(
      */
     fun consumeError() {
         arrearsRetry.value = arrearsRetry.value + 1
+    }
+
+    // --------------------------------------------------------------- the reminder
+
+    /**
+     * Opens the reminder dialog for [contractId], with the message already composed.
+     *
+     * ## Why the figures come from the row and not from the repository
+     *
+     * Because the acceptance criterion's strongest clause is that a cancellation landing
+     * between the list and the message must not produce a number from two different states. The
+     * row already carries amount, days, names and phone from **one** emission, so the way to
+     * guarantee that is to read nothing again. Re-querying here would reintroduce exactly the
+     * window the clause forbids.
+     *
+     * ## Why the business name is read here, and why that is not the same problem
+     *
+     * Because it is not a figure. A business name changing mid-session cannot make the amount
+     * wrong, and reading it at compose time means a name corrected in Settings appears in the
+     * very next message without a restart. It is the one field that is allowed to be fresh.
+     */
+    fun openReminder(contractId: String) {
+        val row = uiState.value.rows.firstOrNull { it.contractId == contractId } ?: return
+
+        viewModelScope.launch {
+            // A null seam means no identity is wired — a test that never opens this dialog. The
+            // message still composes, with an empty business name, rather than throwing.
+            val business = businessName?.invoke().orEmpty()
+            val text = ReminderMessage.build(
+                renter = row.renterName,
+                businessName = business,
+                plate = row.vehiclePlate,
+                figureText = row.figureText,
+                template = { renter, business, plate, figure ->
+                    strings.tunggakanReminderMessage(renter, business, plate, figure)
+                },
+            )
+            reminder.value = ReminderUi(
+                contractId = contractId,
+                phone = row.renterPhone,
+                text = text,
+                // Built from the same text the field shows, so the link and the field cannot
+                // start out disagreeing either.
+                link = ReminderMessage.whatsappLink(row.renterPhone, text),
+            )
+        }
+    }
+
+    /**
+     * Carries an edit to the dialog, rebuilding the link with it.
+     *
+     * The rebuild happens in `ReminderUi.withText`, so there is no path by which the text
+     * changes and the link does not — which is the criterion's whole requirement.
+     */
+    fun onReminderChange(text: String) {
+        reminder.value = reminder.value?.withText(text)
+    }
+
+    /**
+     * Refuses an empty message rather than copying or sending nothing.
+     *
+     * Returns whether there was anything to act on, so the caller can decide between opening
+     * the link and leaving the dialog up with its refusal.
+     */
+    fun confirmReminderText(): Boolean {
+        val current = reminder.value ?: return false
+        if (!current.canSend) {
+            reminder.value = current.copy(errorMessage = strings.tunggakanReminderEmpty())
+            return false
+        }
+        return true
+    }
+
+    /**
+     * Records that the text was copied.
+     *
+     * The copy itself is the composable's — it needs a `Context` — and this only carries the
+     * confirmation into the state, so the snackbar is drawn by the same `combine` everything
+     * else is.
+     */
+    fun onReminderCopied() {
+        reminder.value = reminder.value?.copy(
+            copiedMessage = strings.tunggakanReminderCopied(),
+        )
+    }
+
+    /**
+     * The link the owner asked to open, or `null` when there is nothing to send.
+     *
+     * A one-shot value rather than a callback, because opening a URL needs an `Intent` and a
+     * `Context` — both composition-side. The screen observes this, launches, and calls
+     * [onReminderLinkOpened] so the same link cannot be opened twice on one recomposition.
+     *
+     * Refuses an emptied message: the refusal lands on the dialog's field, and nothing opens.
+     */
+    private val _pendingLink = MutableStateFlow<String?>(null)
+    val pendingLink: StateFlow<String?> = _pendingLink
+
+    /**
+     * Validates the message and hands its link to the screen.
+     *
+     * The refusal path is `confirmReminderText`, which writes the message onto the dialog rather
+     * than throwing — a failure the owner can act on belongs on the field they can fix.
+     */
+    fun sendReminder() {
+        if (!confirmReminderText()) return
+        _pendingLink.value = reminder.value?.link
+    }
+
+    /** The screen consumed [pendingLink] and launched it. */
+    fun onReminderLinkOpened() {
+        _pendingLink.value = null
+    }
+
+    /** Closes the dialog and its message with it. */
+    fun dismissReminder() {
+        reminder.value = null
+        _pendingLink.value = null
     }
 }

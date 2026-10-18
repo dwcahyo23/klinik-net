@@ -851,4 +851,56 @@ class RStrings(private val context: Context) {
     /** The detail pane's "nothing open" line. */
     fun tunggakanDetailOldestNone(): String =
         context.getString(R.string.tunggakan_detail_oldest_none)
+
+    // -------------------------------------------------------------- Story 4.2
+
+    /**
+     * The reminder message itself, from four **already-resolved** pieces.
+     *
+     * A function parameter rather than a `Context` in `ReminderMessage`, so the composition rule
+     * stays pure and testable while the wording stays in the string table. The figure is the
+     * row's own `figureText`, so the number the owner reads and the number the tenant receives
+     * are one rendering.
+     */
+    fun tunggakanReminderMessage(
+        renter: String,
+        business: String,
+        plate: String,
+        figure: String,
+    ): String = context.getString(
+        R.string.tunggakan_reminder_message,
+        renter,
+        business,
+        plate,
+        figure,
+    )
+
+    fun tunggakanReminderTitle(): String =
+        context.getString(R.string.tunggakan_reminder_title)
+
+    /** The row's verb — a word, not an icon, for the same reason `Akhiri` is spelled out. */
+    fun tunggakanReminderAction(): String =
+        context.getString(R.string.tunggakan_reminder_action)
+
+    fun tunggakanReminderFieldLabel(): String =
+        context.getString(R.string.tunggakan_reminder_field_label)
+
+    fun tunggakanReminderHint(): String =
+        context.getString(R.string.tunggakan_reminder_hint)
+
+    fun tunggakanReminderSend(): String =
+        context.getString(R.string.tunggakan_reminder_send)
+
+    fun tunggakanReminderCopy(): String =
+        context.getString(R.string.tunggakan_reminder_copy)
+
+    fun tunggakanReminderCopied(): String =
+        context.getString(R.string.tunggakan_reminder_copied)
+
+    fun tunggakanReminderClose(): String =
+        context.getString(R.string.tunggakan_reminder_close)
+
+    /** The empty-text refusal. Says what to do, not only that something is missing. */
+    fun tunggakanReminderEmpty(): String =
+        context.getString(R.string.tunggakan_reminder_empty)
 }

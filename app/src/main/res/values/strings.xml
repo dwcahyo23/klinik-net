@@ -955,6 +955,34 @@
       never show the owner a wrong number with confidence.
     -->
     <string name="tunggakan_error">Gagal menghitung tunggakan. Coba lagi.</string>
+
+    <!--
+      Story 4.2 — the WhatsApp reminder.
+
+      The message is ONE string with four parameters, not a template assembled in Kotlin:
+      the wording is copy, and copy belongs in the string table. `%1$s` renter, `%2$s`
+      business, `%3$s` plate, `%4$s` the row's own figure line ("Rp 750.000 · 3 hari").
+
+      It carries **no per-day dates**: the message is for a tenant, not an audit. And it
+      quotes the figure string the row already shows, so the number the owner reads and the
+      number the tenant receives cannot be two different renderings of one value.
+    -->
+    <string name="tunggakan_reminder_message">Halo %1$s, ini pengingat dari %2$s. Tunggakan %3$s saat ini %4$s. Mohon segera diselesaikan, terima kasih.</string>
+    <string name="tunggakan_reminder_title">Kirim pengingat</string>
+    <!-- The row's verb. A labelled button, not an icon: the same reason `Akhiri` is spelled out. -->
+    <string name="tunggakan_reminder_action">Ingatkan</string>
+    <string name="tunggakan_reminder_field_label">Isi pesan</string>
+    <string name="tunggakan_reminder_hint">Boleh disunting sebelum dikirim. Tautan WhatsApp mengikuti teks ini.</string>
+    <string name="tunggakan_reminder_send">Kirim lewat WhatsApp</string>
+    <string name="tunggakan_reminder_copy">Salin</string>
+    <string name="tunggakan_reminder_copied">Pesan disalin</string>
+    <string name="tunggakan_reminder_close">Tutup</string>
+    <!--
+      The empty-text refusal. Not a required-field message: the field is never empty when
+      the dialog opens, so reaching this means the owner deleted everything — and the fix is
+      to type something, which the sentence says.
+    -->
+    <string name="tunggakan_reminder_empty">Tulis dulu isi pesannya sebelum dikirim.</string>
 </resources>
 
 

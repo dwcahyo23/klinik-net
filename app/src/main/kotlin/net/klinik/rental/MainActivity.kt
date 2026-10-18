@@ -313,6 +313,10 @@ internal fun createTunggakanViewModel(context: Context): TunggakanViewModel {
         vehicleRepository = VehicleRepository(database.vehicleDao()),
         strings = RStrings(context),
         clock = Clock.systemDefaultZone(),
+        // Story 4.4's single source for the name a reminder quotes. Passed as the one
+        // suspending read the ViewModel needs, not as the repository, so the ViewModel
+        // depends on a value rather than on a storage layer.
+        businessName = { BusinessIdentityRepository(database.settingDao()).businessName() },
     )
 }
 
@@ -365,6 +369,9 @@ private fun KlinikNetApp(
     // And Story 4.1's, which is a whole screen rather than a sheet — so its banner lives on
     // the screen's own state and needs no separate slot here.
     val tunggakanState by tunggakan.uiState.collectAsStateWithLifecycle()
+    // The reminder link is a one-shot: the screen launches it and reports back, so the same
+    // message cannot open twice on a recomposition.
+    val tunggakanPendingLink by tunggakan.pendingLink.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
     // Story 3.1's screen. It has no second window of its own beyond its form sheet, so one
@@ -500,6 +507,15 @@ private fun KlinikNetApp(
                     state = tunggakanState,
                     onSelect = tunggakan::onSelect,
                     onErrorDismiss = tunggakan::consumeError,
+                    // Story 4.2's five. The reminder's text lives on the state, so only the
+                    // intents are passed — the same shape as onSelect.
+                    onRemind = tunggakan::openReminder,
+                    onReminderChange = tunggakan::onReminderChange,
+                    onReminderSend = tunggakan::sendReminder,
+                    onReminderCopy = tunggakan::onReminderCopied,
+                    onReminderDismiss = tunggakan::dismissReminder,
+                    onReminderLinkOpened = tunggakan::onReminderLinkOpened,
+                    pendingReminderLink = tunggakanPendingLink,
                 ),
             ),
         )

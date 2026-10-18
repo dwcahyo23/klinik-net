@@ -44,6 +44,14 @@ data class ArrearsRow(
     val contractId: String,
     val renterName: String,
     val vehiclePlate: String,
+    /**
+     * The renter's phone, as stored.
+     *
+     * Carried on the row rather than read when the reminder opens, for the reason the figures
+     * are: a second read is a second snapshot, and this one decides **who receives** a message
+     * about money. `Renter.phone` is required by the domain model, so it is never absent.
+     */
+    val renterPhone: String,
     /** `Rp 750.000 · 3 hari` — the AC's format, built once. */
     val figureText: String,
     /** `3 hari`, for the badge and the detail's own labelled row. */
@@ -56,6 +64,57 @@ data class ArrearsRow(
     /** `14 Okt`, or `null` when nothing is open. */
     val oldestDayText: String?,
     val isEnded: Boolean,
+)
+
+/**
+ * The reminder dialog's own state — Story 4.2.
+ *
+ * ## Why the text is held here rather than derived from the row
+ *
+ * Because the owner may edit it. The composed sentence is the **starting** value, not the
+ * current one, so the state carries what is in the field and [link] is rebuilt from that on
+ * every edit — the acceptance criterion's *"tautan dibangun ulang dari teks hasil suntingan"*.
+ * A link computed once when the dialog opened would send the pre-edit figure, which is the
+ * failure the criterion names.
+ *
+ * ## Why the recipient is carried rather than looked up
+ *
+ * Because it belongs to the same snapshot as the figures. The row that opened this dialog
+ * carried the phone, and a lookup here would be the second read the criterion forbids.
+ *
+ * @property contractId the row this message is about, so a dismissal can tell whether the row
+ *   still exists.
+ * @property phone the renter's stored number, already on the row.
+ * @property text what is in the field right now — the composed message, possibly edited.
+ * @property link the `wa.me` URL for [text], rebuilt whenever [text] changes.
+ * @property errorMessage a refusal that has no field of its own — an emptied message.
+ */
+data class ReminderUi(
+    val contractId: String,
+    val phone: String,
+    val text: String,
+    val link: String,
+    val errorMessage: String? = null,
+    /** The copy confirmation, cleared when the dialog closes or the text changes. */
+    val copiedMessage: String? = null,
+) {
+    /** Whether there is anything to send or copy. */
+    val canSend: Boolean get() = text.isNotBlank()
+}
+
+/**
+ * Applies an edit to the reminder text, rebuilding the link with it.
+ *
+ * The rebuild is the whole point: the link is a function of the text, so the two cannot drift.
+ * The refusal clears on the edit, because the edit **is** the fix — the same rule every field
+ * in this app follows.
+ */
+fun ReminderUi.withText(text: String): ReminderUi = copy(
+    text = text,
+    link = ReminderMessage.whatsappLink(phone, text),
+    errorMessage = null,
+    // The confirmation belongs to the text that was copied; an edit makes it stale.
+    copiedMessage = null,
 )
 
 /**
@@ -82,6 +141,8 @@ data class TunggakanUiState(
     val isLoading: Boolean = false,
     val isFailed: Boolean = false,
     val errorMessage: String? = null,
+    /** The reminder dialog, or `null` when it is closed. Story 4.2. */
+    val reminder: ReminderUi? = null,
 ) {
     /**
      * Whether the empty state applies.
@@ -162,6 +223,7 @@ data class TunggakanUiState(
  */
 internal fun List<ContractArrears>.toRows(
     renterNames: Map<String, String>,
+    renterPhones: Map<String, String>,
     vehiclePlates: Map<String, String>,
     strings: RStrings,
 ): List<ArrearsRow> {
@@ -188,6 +250,10 @@ internal fun List<ContractArrears>.toRows(
                 contractId = entry.contractId,
                 renterName = renterNames[contract.renterId] ?: contract.renterId,
                 vehiclePlate = vehiclePlates[contract.vehicleId] ?: contract.vehicleId,
+                // Empty rather than a made-up number when the lookup misses: the foreign key
+                // makes that unreachable, and an empty phone refuses the link instead of
+                // addressing a stranger. See `ReminderMessage.international`.
+                renterPhone = renterPhones[contract.renterId].orEmpty(),
                 figureText = strings.tunggakanRowFigure(
                     amount = formatRupiah(entry.amount),
                     days = strings.tunggakanRowDays(entry.days),
