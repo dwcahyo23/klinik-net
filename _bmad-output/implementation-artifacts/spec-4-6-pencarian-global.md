@@ -73,10 +73,16 @@ through.
 ## Decisions taken at the gate
 
 - **The field is hoisted into `AppShell`, above the destination graph, not into each screen.**
-  Every screen therefore has it for free, and a screen added later cannot forget it. The two
-  screens that already have one of their own keep their behaviour but stop drawing their own,
-  so there is one search control in the app rather than three.
-- **Selecting a result navigates to the owning screen with that item selected**, reusing the
+  Every screen therefore has it for free, and a screen added later cannot forget it.
+- **The two screens keep their own bars, and this reverses what the task list first said.** The
+  plan was for them to stop drawing their own, on the theory that three search controls is worse
+  than one. That reasoning was wrong, and the implementation found why: a screen's own bar is the
+  only control that can **widen** a list the shell narrowed. Removing it would leave a list the
+  owner can filter but never unfilter, and would strand the screen's `query` state with no writer.
+  So selecting a result writes that destination's own query through `onQueryChange`, the screen's
+  bar shows it, and the owner can clear it there. The two are different jobs — one searches the
+  whole app, one filters the list you are looking at — rather than duplicates.
+- **Selecting a result navigates to the owning screen and narrows it to that hit**, reusing the
   routes `Destination` already carries rather than adding a search-results destination.
 
 ## Code Map
@@ -154,27 +160,35 @@ and the two lists match by **one** implementation. The vehicle rule keeps plate,
 colour — narrowing it to the AC's "plate" would have been a silent regression on a screen that
 ships today.
 
-**The task list's "stop drawing their own bars" was wrong, and I reversed it.** A screen's own
-bar is the only control that **widens** a list the shell narrowed. Removing it leaves a list the
-owner can filter but never unfilter, and strands the screen's `query` with no writer. The two
-controls have different jobs — the shell's searches across the app, the screen's narrows its own
-list — so selecting a result writes the destination's query through `onQueryChange` and the
-screen's own bar remains the way back. The spec's task list was amended rather than followed.
+**The task list's "stop drawing their own bars" was wrong, and the implementation reversed it.**
+A screen's own bar is the only control that **widens** a list the shell narrowed. Removing it
+leaves a list the owner can filter but never unfilter, and strands the screen's `query` with no
+writer. The two controls have different jobs — the shell's searches across the app, the screen's
+narrows its own list — so selecting a result writes the destination's query through
+`onQueryChange` and the screen's own bar remains the way back. The spec's task list was amended
+rather than followed, which is the right order: the plan was written before the code, and the
+code found the flaw.
 
-**The required-parameter rule caught three call sites at compile time.** Adding `search` to
-`Screens` broke `AppShellTest`, `BannerScopeTest` and `AccessibilityTest` immediately — each one a
-shell fixture that would otherwise have rendered a search field wired to nothing.
+**The required-parameter rule caught three fixtures at compile time.** Adding `search` to
+`Screens` broke `AppShellTest`, `BannerScopeTest` and `AccessibilityTest` — each one a place that
+would otherwise have rendered a search field wired to nothing. The compiler found them; no test
+would have.
 
 **`onSelect` deliberately does not live in `Screens.Search`.** Choosing a result is a navigation,
 and the nav controller lives in `AppShell`; deriving the route there keeps one back-stack owner,
-the same rule `BerandaRoute` follows for its three quick actions. `SearchResult` therefore carries
-its `route`, so the shell never maps a kind to a destination itself.
+the same rule `BerandaRoute` follows. `SearchResult` carries its own `route`, so the shell never
+maps a kind to a destination itself and cannot get that mapping wrong twice.
 
 **The shell became a `Column` above the existing `Box`.** The field sits above the graph rather
 than floating over it, so it never covers a screen's own top bar; the FAB still aligns to the
 content area's bottom-end and its Beranda rule is unchanged.
 
 ## Spec Change Log
+
+**The task list's "stop drawing their own bars" was reversed during implementation.** A screen's
+own bar is the only control that can *widen* a list the shell narrowed, so removing it would have
+left a list the owner can filter but never unfilter. The task is amended above; the reasoning is
+in Implementation Notes.
 
 ## Review Triage Log
 
