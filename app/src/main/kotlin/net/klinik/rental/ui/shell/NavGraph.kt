@@ -96,7 +96,8 @@ private fun TunggakanRoute(wiring: Screens.Tunggakan) {
     TunggakanScreen(
         state = wiring.state,
         onSelect = wiring.onSelect,
-        errorMessage = wiring.errorMessage,
+        // Required on the screen and forwarded here as given. The banner's *text* lives on
+        // the state, so there is no second message channel to keep in step with the first.
         onErrorDismiss = wiring.onErrorDismiss,
     )
 }
@@ -154,11 +155,28 @@ internal class Screens(
      */
     val tunggakan: Tunggakan,
 ) {
-    /** The arrears destination's wiring. */
+    /**
+     * The arrears destination's wiring.
+     *
+     * Three parameters, and the smallest bundle in this type, because the list is the only
+     * screen so far with **no** sheets: its one action is selecting a row for the landscape
+     * detail pane, which the screen draws itself.
+     *
+     * There is deliberately **no** `errorMessage` here, though three of its siblings carry
+     * one. Those carry it because their banner lives in a *separate window* — a sheet over
+     * this screen — and the screen's own banner would be invisible behind it. This screen's
+     * banner is its own, so the message rides on [state] and there is no second copy to
+     * keep in step: a state whose message disagrees with a separately-passed one is a
+     * severity inferred from the wrong place.
+     *
+     * [onSelect] and [onErrorDismiss] are **required, not defaulted**, for the same reason
+     * every other required callback here is: a defaulted lambda produces a list whose rows
+     * select nothing, or a banner that cannot be closed, and neither reads as a missing
+     * handler from the call site.
+     */
     class Tunggakan(
         val state: net.klinik.rental.ui.screens.tunggakan.TunggakanUiState,
         val onSelect: (String) -> Unit,
-        val errorMessage: String? = null,
         val onErrorDismiss: () -> Unit,
     )
     /** The fleet destination's wiring. */

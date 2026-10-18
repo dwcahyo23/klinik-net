@@ -201,12 +201,12 @@ class BannerScopeTest {
         tunggakan = Screens.Tunggakan(
             state = net.klinik.rental.ui.screens.tunggakan.TunggakanUiState(),
             onSelect = {},
-            errorMessage = null,
             onErrorDismiss = {},
         ),
     )
 
 }
+
 
 
 

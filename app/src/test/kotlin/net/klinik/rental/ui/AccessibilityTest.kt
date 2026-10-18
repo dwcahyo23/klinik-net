@@ -766,7 +766,6 @@ class AccessibilityTest {
         tunggakan = Screens.Tunggakan(
             state = TunggakanUiState(),
             onSelect = {},
-            errorMessage = null,
             onErrorDismiss = {},
         ),
     )
@@ -862,4 +861,5 @@ class AccessibilityTest {
 
     }
 }
+
 

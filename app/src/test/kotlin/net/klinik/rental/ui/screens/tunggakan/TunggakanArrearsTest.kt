@@ -25,7 +25,11 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.Clock
+import java.time.Instant
 import java.time.LocalDate
+import java.time.ZoneId
+import java.time.ZoneOffset
 
 /**
  * Story 4.1's `LIST_*` rows, against a real Room database.
@@ -102,7 +106,7 @@ class TunggakanArrearsTest {
         saveDeposit(CONTRACT_ID, 750_000)
         saveDeposit(OTHER_CONTRACT_ID, 250_000)
 
-        val entries = payments.observeArrearsForAllContracts(asOf).first()
+        val entries = payments.observeArrearsForAllContracts(CLOCK).first()
             .sortedBy { it.contractId }
 
         assertEquals("both contracts are present", 2, entries.size)
@@ -121,7 +125,7 @@ class TunggakanArrearsTest {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
         saveDeposit(CONTRACT_ID, 750_000)
 
-        val entry = payments.observeArrearsForAllContracts(asOf).first().single()
+        val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
         // Three days are closed from 1 Oct, so 4 Oct is the oldest day still owed.
         assertEquals(LocalDate.of(2026, 10, 4), entry.oldestOpenDay)
@@ -142,7 +146,7 @@ class TunggakanArrearsTest {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
         saveDeposit(CONTRACT_ID, 4_250_000)
 
-        val entries = payments.observeArrearsForAllContracts(asOf).first()
+        val entries = payments.observeArrearsForAllContracts(CLOCK).first()
             .filter { it.amount > 0L }
 
         assertTrue("a paid contract is not listed as owing", entries.isEmpty())
@@ -162,7 +166,7 @@ class TunggakanArrearsTest {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
         contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 17))
 
-        val entry = payments.observeArrearsForAllContracts(asOf).first().single()
+        val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
         assertTrue("and it is marked as finished", entry.isEnded)
         assertEquals("still owing the whole period", 4_250_000, entry.amount)
@@ -225,7 +229,7 @@ class TunggakanArrearsTest {
         // Siti is excused on the 1st, so hers moves to the 2nd and she waits less.
         excuse(OTHER_CONTRACT_ID, "exc-siti", LocalDate.of(2026, 10, 1))
 
-        val entries = payments.observeArrearsForAllContracts(asOf).first()
+        val entries = payments.observeArrearsForAllContracts(CLOCK).first()
             .map { it.toEntry() }
             .inArrearsOrder()
 
@@ -277,7 +281,7 @@ class TunggakanArrearsTest {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
         contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 17))
 
-        val entry = payments.observeArrearsForAllContracts(asOf).first().single()
+        val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
         assertEquals("every day is closed", 0, entry.amount)
         assertEquals("and no day is open", 0, entry.days)
@@ -294,7 +298,7 @@ class TunggakanArrearsTest {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
         contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
 
-        val entry = payments.observeArrearsForAllContracts(asOf).first().single()
+        val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
         // 1 Oct to 10 Oct settled: 11 Oct to 17 Oct remain — seven days at Rp 250.000.
         assertEquals("seven days stay open", 7, entry.days)
@@ -304,28 +308,37 @@ class TunggakanArrearsTest {
     // ------------------------------------------------------------- LIST_MIDNIGHT
 
     /**
-     * `LIST_MIDNIGHT` — a day already past is counted, which is what "as of" means.
+ * `LIST_MIDNIGHT` — the clock is read **per emission**, so an app left open across midnight
+ * moves without being re-opened.
+ *
+ * ## Why this test changed shape
      *
-     * Read on 18 Oct rather than 17, so the last day of the previous `asOf` is now behind
-     * the owner. The figure must have **grown**, not stayed: a read that pinned "today" to
-     * the period's end would show the same number the owner saw yesterday, and it is exactly
-     * that staleness the criterion names when it says the figure must match online banking.
+     * It used to read twice with two different `asOf` arguments, which proved the *arithmetic*
+     * but not the fix: an implementation that froze `asOf` when the flow was **built** would
+     * pass every one of those, because each test built a fresh flow with the date it wanted.
+     *
+     * So the clock is now a **mutable** one, and the same flow is read twice across a
+     * simulated midnight. That is the shape the defect had: one flow, observed over time.
      */
     @Test
-    fun `a day that has passed is counted`() = runBlocking {
+    fun `an app left open across midnight sees the day that fell behind`() = runBlocking {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
+        val clock = MutableClock(LocalDate.of(2026, 10, 17))
 
-        val onTheSeventeenth = payments
-            .observeArrearsForAllContracts(LocalDate.of(2026, 10, 17))
-            .first()
-            .single()
-        val onTheEighteenth = payments
-            .observeArrearsForAllContracts(LocalDate.of(2026, 10, 18))
-            .first()
-            .single()
+        val flow = payments.observeArrearsForAllContracts(clock)
+        val onTheSeventeenth = flow.first().single()
+
+        // Midnight passes. The flow is **not** rebuilt — a single subscription is what an
+        // app left open actually holds — so only a per-emission clock read can notice.
+        clock.today = LocalDate.of(2026, 10, 18)
+        val onTheEighteenth = flow.first().single()
 
         assertEquals("17 days were open on the 17th", 17, onTheSeventeenth.days)
-        assertEquals("and the 18th adds the day that fell behind", 18, onTheEighteenth.days)
+        assertEquals(
+            "and the 18th adds the day that fell behind, on the same subscription",
+            18,
+            onTheEighteenth.days,
+        )
         assertTrue(
             "so the figure grew rather than standing still",
             onTheEighteenth.amount > onTheSeventeenth.amount,
@@ -345,7 +358,7 @@ class TunggakanArrearsTest {
     fun `the arrears list re-emits when a deposit lands`() = runBlocking {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
 
-        val flow = payments.observeArrearsForAllContracts(asOf)
+        val flow = payments.observeArrearsForAllContracts(CLOCK)
         assertEquals("the whole period is owed before any deposit", 17, flow.first().single().days)
 
         saveDeposit(CONTRACT_ID, 750_000)
@@ -357,7 +370,58 @@ class TunggakanArrearsTest {
         )
     }
 
+    /**
+     * The list re-emits on a **service exception**, which writes the one table the other
+     * two cases never touch.
+     *
+     * This is the test that catches the hole this story first shipped with. A deposit writes
+     * `payment` and `allocation`; an exception writes `service_exception` and **nothing
+     * else**. A flow whose combine named only the first two re-emits on a save and stays
+     * silent on an excuse — so the owner marks a day unbilled and the row keeps the old day
+     * count and the old rupiah until they leave and come back.
+     *
+     * Deliberately a *second* write type rather than another deposit: one test for "writes
+     * re-emit" would pass with either table in the combine and fail only here.
+     */
+    @Test
+    fun `the arrears list re-emits when a day is excused`() = runBlocking {
+        seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
+        val flow = payments.observeArrearsForAllContracts(CLOCK)
+        assertEquals("17 days open before any excuse", 17, flow.first().single().days)
+
+        database.serviceExceptionDao().insertServiceException(
+            ServiceExceptionEntity(
+                id = "exc-1",
+                contractId = CONTRACT_ID,
+                date = LocalDate.of(2026, 10, 1),
+                reason = "ganti ban",
+            )
+        )
+
+        val after = flow.first().single()
+        assertEquals(
+            "the excused day leaves the count, on its own",
+            16,
+            after.days,
+        )
+        assertEquals("and takes its rupiah with it", 4_000_000, after.amount)
+    }
+
     // ------------------------------------------------------------------ fixtures
+
+    /**
+     * A clock whose "today" can be moved, for the midnight case.
+     *
+     * `MutableClock` rather than two fixed clocks: the defect being pinned is a **frozen**
+     * read, so the test must hold **one** flow and move the day underneath it. Two fixed
+     * clocks would each build their own flow and prove nothing about freezing.
+     */
+    private class MutableClock(var today: LocalDate) : Clock() {
+        override fun getZone(): ZoneId = ZoneOffset.UTC
+        override fun withZone(zone: ZoneId?): Clock = this
+        override fun instant(): Instant =
+            Instant.parse("${today}T09:00:00Z")
+    }
 
     private suspend fun saveDeposit(
         contractId: String,
@@ -423,5 +487,17 @@ class TunggakanArrearsTest {
         const val CONTRACT_ID = "c1"
         const val OTHER_CONTRACT_ID = "c2"
         const val RATE = 250_000L
+
+        /**
+         * "Today" for every test in this file, pinned.
+         *
+         * A fixed clock rather than `LocalDate.now()`, because the whole file states what
+         * each figure *should* be for a named day: a test that ran in November would read a
+         * different period and quietly stop proving what its comment claims.
+         */
+        val CLOCK: Clock = Clock.fixed(
+            Instant.parse("2026-10-17T09:00:00Z"),
+            ZoneOffset.UTC,
+        )
     }
 }

@@ -86,17 +86,38 @@ import net.klinik.rental.ui.theme.knTypography
  * whichever story builds the deposit history. A row whose verbs are stubs would be a control
  * that renders and does nothing — the defect this repo has already shipped twice.
  *
- * @param onSelect selects one row for the detail pane. Required, not defaulted: a pane wired
- *   to `{}` renders a list of rows that select nothing, which looks like a broken screen
+ * ## Why a portrait row is **not** a tap target
+ *
+ * Because there is no pane beside it to receive the selection. A row wired to `onSelect` in
+ * portrait would store a selection nothing draws — the control-that-renders-and-does-nothing
+ * defect `Screens.Kontrak`'s KDoc records as having shipped twice in this repo. So the row's
+ * `onClick` is `null` in portrait, which `KnListRow` draws as an explicit non-clickable row
+ * with unchanged padding and type rather than as a dead target.
+ *
+ * Landscape is where comparison happens (UX-DR13), and landscape is the only orientation
+ * where the tap means something.
+ *
+ * ## Why the subtitle is absent rather than zero
+ *
+ * Because "0 penyewa" on every load states a conclusion the app has not reached. While
+ * loading, and while a read has failed, there is no count to report — and a bar reading zero
+ * is the empty-looks-real failure on the one line that names the screen's subject.
+ *
+ * @param onSelect selects one row for the landscape detail pane. Required, not defaulted:
+ *   a pane wired to `{}` renders rows that select nothing, which looks like a broken screen
  *   rather than a missing handler.
+ * @param onErrorDismiss clears [TunggakanUiState.errorMessage]. Required for the same
+ *   reason as [onSelect] — a defaulted dismiss leaves a banner that cannot be closed, and
+ *   nothing at the call site says so. The banner's **tone** is not a parameter: it is
+ *   derived from [TunggakanUiState.isFailed], so severity cannot disagree with the state
+ *   that produced it.
  */
 @Composable
 fun TunggakanScreen(
     state: TunggakanUiState,
     onSelect: (String) -> Unit,
+    onErrorDismiss: () -> Unit,
     modifier: Modifier = Modifier,
-    errorMessage: String? = null,
-    onErrorDismiss: () -> Unit = {},
 ) {
     val spacing = MaterialTheme.knSpacing
     val isLandscape =
@@ -112,8 +133,13 @@ fun TunggakanScreen(
                 title = stringResource(R.string.tunggakan_title),
                 // The count on the bar rather than a KPI tile, for the reason
                 // `KontrakScreen` gives: the screen says how much it is showing without
-                // spending a card on it, and this list has no KPI row to put one in.
-                subtitle = stringResource(R.string.tunggakan_count, state.renterCount),
+                // spending a card on it, and this list has no KPI row to put one in. Absent
+                // rather than "0 penyewa" while loading or failed — see the class KDoc.
+                subtitle = if (state.isLoading || state.isFailed) {
+                    null
+                } else {
+                    stringResource(R.string.tunggakan_count, state.renterCount)
+                },
             )
 
             if (isLandscape) {
@@ -150,20 +176,24 @@ fun TunggakanScreen(
                 }
             } else {
                 // Portrait collapses to list → detail. There is no detail pane beside it, and
-                // this story builds no detail *destination*, so a selection on a small screen
-                // simply is not drawn rather than leading somewhere that does not exist yet.
-                ArrearsList(state = state, onSelect = onSelect)
+                // this story builds no detail *destination*, so the row is handed `null` for
+                // its click rather than a handler whose selection nothing would draw.
+                ArrearsList(state = state, onSelect = null)
             }
 
             // The banner is drawn over unchanged content, per the four-state rule. It sits
             // here rather than inside the list because a failure to compute is not a fact
             // about any one row.
+            //
+            // The tone comes from `isFailed`, **not** from comparing the text against a
+            // second copy of the same message: severity inferred by string equality is a
+            // claim two channels have to agree on, and `MainActivity` passed the same value
+            // on both — so the two could differ and nothing would say which was right.
             state.errorMessage?.let { message ->
-                val tone = if (message == errorMessage) KnBadgeTone.Danger else KnBadgeTone.Success
                 KnSnackbar(
                     message = message,
-                    tone = tone,
-                    onDismiss = { if (tone == KnBadgeTone.Danger) onErrorDismiss() },
+                    tone = if (state.isFailed) KnBadgeTone.Danger else KnBadgeTone.Success,
+                    onDismiss = onErrorDismiss,
                     modifier = Modifier
                         .fillMaxWidth()
                         .padding(horizontal = spacing.lg, vertical = spacing.sm)
@@ -177,13 +207,14 @@ fun TunggakanScreen(
 /**
  * The list half, loading and empty states included.
  *
- * Mutually exclusive with the detail pane's own states: a skeleton beside an empty-state
- * message would draw two different claims about the same data at once.
+ * @param onSelect the row's click handler, or **`null` in portrait** — see the class KDoc.
+ *   A nullable `onClick` is exactly what `KnListRow` already declares a null case for, so
+ *   "not a tap target" is an expressible state rather than a live handler pointed at nothing.
  */
 @Composable
 private fun ArrearsList(
     state: TunggakanUiState,
-    onSelect: (String) -> Unit,
+    onSelect: ((String) -> Unit)?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -203,12 +234,14 @@ private fun ArrearsList(
                 ),
             )
 
-            // A failed calculation draws **nothing at all**, not even the empty state. The
-            // empty state says "semua sewa sudah lunas" — that nobody owes anything — and
-            // pairing it with a failure banner states a confident wrong number and then
-            // apologises for it. The banner alone is the honest output: it says the question
-            // is unanswered, which is exactly what happened.
-            state.errorMessage != null -> Unit
+            // A failed calculation draws **nothing at all**, not even the empty
+            // state. The empty state says "semua sewa sudah lunas" — that nobody owes
+            // anything — and pairing it with a failure banner states a confident wrong
+            // number and then apologises for it. The banner alone is the honest output: it
+            // says the question is unanswered, which is exactly what happened. Keyed on
+            // `isFailed` rather than on a banner being present, because a banner a caller
+            // sets by hand is not the same claim as a read that failed.
+            state.isFailed -> Unit
 
             state.isEmpty -> KnEmptyState(
                 title = stringResource(R.string.tunggakan_empty_title),
@@ -237,7 +270,9 @@ private fun ArrearsList(
                     ArrearsRowItem(
                         row = row,
                         selected = row.contractId == state.selectedContractId,
-                        onClick = { onSelect(row.contractId) },
+                        // `null` in portrait, which `KnListRow` draws as an explicit
+                        // non-clickable row rather than as a live target that goes nowhere.
+                        onClick = onSelect?.let { handler -> { handler(row.contractId) } },
                     )
                 }
             }
@@ -251,12 +286,15 @@ private fun ArrearsList(
  * @param selected drawn in landscape, where the pane beside the list is what the
  *   selection means. `KnListRow` draws the active edge itself, so this passes the flag
  *   rather than composing a selection treatment of its own.
+ * @param onClick `null` in portrait, where a selection has no pane to land in. See the
+ *   class KDoc — a row that stores a selection nothing draws is the defect this repo has
+ *   already shipped twice.
  */
 @Composable
 private fun ArrearsRowItem(
     row: ArrearsRow,
     selected: Boolean,
-    onClick: () -> Unit,
+    onClick: (() -> Unit)?,
 ) {
     val spacing = MaterialTheme.knSpacing
     // Spoken as one sentence rather than as separate figures, so a screen reader announces
@@ -476,6 +514,7 @@ private fun LandscapePreview() {
                 selectedContractId = "c2",
             ),
             onSelect = {},
+            onErrorDismiss = {},
         )
     }
 }
@@ -502,6 +541,7 @@ private fun PortraitPreview() {
                 ),
             ),
             onSelect = {},
+            onErrorDismiss = {},
         )
     }
 }
@@ -510,6 +550,10 @@ private fun PortraitPreview() {
 @Composable
 private fun EmptyPreview() {
     KlinikNetTheme(darkTheme = false) {
-        TunggakanScreen(state = TunggakanUiState(isLoading = false), onSelect = {})
+        TunggakanScreen(
+            state = TunggakanUiState(isLoading = false),
+            onSelect = {},
+            onErrorDismiss = {},
+        )
     }
 }

@@ -6,6 +6,7 @@ import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.ExperimentalCoroutinesApi
 import kotlinx.coroutines.asExecutor
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.test.StandardTestDispatcher
 import kotlinx.coroutines.test.TestScope
@@ -38,6 +39,7 @@ import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneOffset
+import java.util.concurrent.atomic.AtomicInteger
 
 /**
  * Story 4.1's ViewModel: the list's ordering, its selection, and its loading gate.
@@ -328,6 +330,173 @@ class TunggakanViewModelTest {
             viewModel.uiState.value.rows
                 .first { it.contractId == OWING_CONTRACT_ID }
                 .figureText != before.figureText,
+        )
+    }
+
+    /**
+     * A failed read reaches the screen as a **banner**, and draws no rows.
+ *
+ * ## Why this test exists at all
+     *
+     * Because the first version of this story set `errorMessage.value` inside `catch` and
+     * **nothing carried it to `uiState`**: `errorMessage` was not one of the `combine`'s
+     * inputs, so the write re-rendered nothing. The screen would have sat on a skeleton
+     * forever — the owner unable to tell "no data" from "nothing owed", which is the one
+     * distinction this screen exists to keep.
+     *
+     * The fix was to make the failure a **value** in the sealed hierarchy rather than a
+     * side-channel write, so it flows through the same `combine` the rows do. This test is
+     * what pins that, and it fails against the side-channel version.
+     */
+    @Test
+    fun `a failed read reaches the screen as a banner rather than a silent skeleton`() =
+        runTest(dispatcher) {
+            val viewModel = failingViewModel()
+            backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue("the failure is a state, not a side channel", state.isFailed)
+            assertNotNull("and it carries the message the screen draws", state.errorMessage)
+            assertEquals(
+                "in Indonesian",
+                "Gagal menghitung tunggakan. Coba lagi.",
+                state.errorMessage,
+            )
+        }
+
+    /**
+     * And a failed read draws **no rows**, rather than an empty list.
+     *
+     * An empty arrears list is the claim "nobody owes you anything". A banner drawn over one
+     * states that confidently and then apologises for it, which is worse than saying
+     * nothing — so the two must not appear together.
+     */
+    @Test
+    fun `a failed read draws no rows, so it cannot read as nobody owing`() =
+        runTest(dispatcher) {
+            val viewModel = failingViewModel()
+            backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val state = viewModel.uiState.value
+            assertTrue("no rows", state.rows.isEmpty())
+            assertFalse(
+                "and not the empty state either — that is a claim, not a fallback",
+                state.isEmpty,
+            )
+        }
+
+    /**
+     * Dismissing the banner is a **retry**, and a retry that recovers.
+     *
+     * The half that could not exist before: `consumeError` used to clear a message the
+     * ViewModel did not read, so it changed nothing the owner could see. It now re-subscribes
+     * the source, so dismissing either hides the banner by recovering or — if the read still
+     * fails — brings the banner straight back. There is no state where the banner is gone and
+     * no figures behind it.
+     *
+     * The seam returns a flow that fails once and then succeeds, so the recovery path is
+     * exercised end to end rather than asserted.
+     */
+    @Test
+    fun `dismissing the banner retries the read and recovers`() = runTest(dispatcher) {
+        val attempts = AtomicInteger(0)
+        val flaky = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+        )
+        val viewModel = TunggakanViewModel(
+            payments = flaky,
+            renterRepository = RenterRepository(database.renterDao()),
+            vehicleRepository = VehicleRepository(database.vehicleDao()),
+            strings = strings,
+            clock = CLOCK,
+            arrearsSourceOverride = {
+                flow {
+                    if (attempts.getAndIncrement() == 0) {
+                        throw IllegalStateException("the read failed")
+                    }
+                    emit(emptyList())
+                }
+            },
+        )
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val failed = viewModel.uiState.value
+        assertTrue("the first attempt failed", failed.isFailed)
+        assertNotNull("and said so", failed.errorMessage)
+
+        viewModel.consumeError()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val recovered = viewModel.uiState.value
+        assertFalse("the retry cleared the failure", recovered.isFailed)
+        assertNull(
+            "and the banner with it — never a dismissal that leaves a silent empty list",
+            recovered.errorMessage,
+        )
+        assertEquals("the read really was attempted again", 2, attempts.get())
+    }
+
+    /**
+     * A dismissal that does **not** recover brings the banner back rather than hiding a
+     * failure the owner still cannot see.
+     *
+     * The opposite half of the retry: a screen that swallowed the dismissal would show an
+     * empty arrears list with no explanation, which is the claim this whole screen exists to
+     * avoid making.
+     */
+    @Test
+    fun `a dismissal that cannot recover shows the banner again`() = runTest(dispatcher) {
+        val viewModel = failingViewModel()
+        backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
+        dispatcher.scheduler.advanceUntilIdle()
+        assertTrue(viewModel.uiState.value.isFailed)
+
+        viewModel.consumeError()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertTrue("still failing, so still said", state.isFailed)
+        assertNotNull("and the message is back", state.errorMessage)
+        assertTrue("with no rows claiming nobody owes", state.rows.isEmpty())
+    }
+
+    /**
+     * A ViewModel over a repository whose arrears read **fails**.
+     *
+     * A hand-built `TunggakanUiState(isFailed = true)` would prove the screen's branch and
+     * nothing about the path that reaches it — which is the half that was broken. So the
+     * flow itself throws, and the test watches the state change because of it.
+     *
+     * `open` rather than `abstract`, because `PaymentRepository` is a final class and
+     * Kotlin has no way to stub a method on it. Wrapping it is therefore the only seam
+     * available, and it is an honest one: the test supplies the *behaviour* the ViewModel
+     * reacts to rather than the reaction, which is the half under test.
+     */
+    private fun TestScope.failingViewModel(): TunggakanViewModel {
+        val failing = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+        )
+        return TunggakanViewModel(
+            payments = failing,
+            renterRepository = RenterRepository(database.renterDao()),
+            vehicleRepository = VehicleRepository(database.vehicleDao()),
+            strings = strings,
+            clock = CLOCK,
+            // The seam: a read that throws the instant it is collected. Everything the
+            // ViewModel does on failure — the banner, the empty rows, the state — is
+            // exercised against a flow that genuinely fails.
+            arrearsSourceOverride = { flow { throw IllegalStateException("the read failed") } },
         )
     }
 

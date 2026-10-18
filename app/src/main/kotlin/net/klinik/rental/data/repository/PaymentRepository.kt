@@ -26,6 +26,7 @@ import net.klinik.rental.domain.calculate.settledDays
 import net.klinik.rental.domain.model.Allocation
 import net.klinik.rental.domain.model.Payment
 import net.klinik.rental.domain.validation.InvalidAmountException
+import java.time.Clock
 import java.time.Instant
 import java.time.LocalDate
 import java.util.UUID
@@ -812,20 +813,42 @@ class PaymentRepository(
      * rupiah short of `dailyRate` and a closed day reads as open. The **day count** is what a
      * tenant is told, so inflating it here would be the worst place for that bug to live.
      */
-    fun observeArrearsForAllContracts(asOf: LocalDate): Flow<List<ContractArrears>> =
+    fun observeArrearsForAllContracts(clock: Clock): Flow<List<ContractArrears>> =
         combine(
             contractDao.observeAll(),
-            // The two table-level invalidation triggers. **Required, not decoration:** Room's
-            // tracker re-emits a flow only for the tables its query names, and a deposit
-            // writes `payment` and `allocation` — never `contract`. A list fed by
-            // `observeAll()` alone would therefore show a stale figure after every save,
-            // which is the "no manual refresh" rule failing while looking implemented. The
-            // rows are discarded; what is being observed is *that the table changed*.
+            // The three tables the figure is derived from, **besides** `contract` — each one
+            // named because Room's tracker re-emits a flow only for the tables its query
+            // touches. Omitting any one of them leaves a stale figure that looks live, which
+            // is worse than a missing feature because nothing announces it:
+            //
+            //  - `payment` and `allocation`, because a deposit writes both and never
+            //    touches `contract`.
+            //  - `service_exception`, because marking a day unbilled takes it **out** of
+            //    the charge-day list, so it changes the day count and the rupiah without
+            //    writing either of the other two.
+            //
+            // The rows are discarded; what is being observed is *that the table changed*.
+            // The two `observeContractIds` queries exist only because `observeAll` on those
+            // two tables would read far more than the trigger needs.
             paymentDao.observeContractIds(),
             allocationDao.observeContractIds(),
-        ) { contracts, _, _ ->
-            contracts.map { contract ->
-                val entry = arrearsEntry(contract.id, asOf)
+            exceptionDao.observeAll(),
+        ) { contracts, _, _, _ ->
+            // **Read per emission, not once when the flow was built.** The bill depends on
+            // which period "today" falls in, so an app left open across midnight would
+            // otherwise show yesterday's figure until the owner left and came back — and
+            // nothing would say so. `LIST_MIDNIGHT` is that case: the figure must grow by
+            // the day that fell behind, and only a per-emission read can do that.
+            val asOf = LocalDate.now(clock)
+            contracts.mapNotNull { contract ->
+                // Per-contract, so **one** contract that cannot be computed costs that row
+                // and not the list. This screen is what the owner opens every morning, and
+                // voiding the whole thing over a single bad row would leave them with no
+                // answer at all — a worse outcome than one missing tenant, and one they
+                // cannot see the cause of. A genuine `UnknownContractException` (the row
+                // vanished between the query and here) is the same reasoning: skip it.
+                val entry = runCatching { arrearsEntry(contract.id, asOf) }.getOrNull()
+                    ?: return@mapNotNull null
                 ContractArrears(
                     contractId = entry.contractId,
                     amount = entry.amount,

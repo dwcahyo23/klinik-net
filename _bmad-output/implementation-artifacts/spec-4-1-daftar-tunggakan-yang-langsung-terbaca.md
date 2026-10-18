@@ -2,7 +2,7 @@
 title: 'Story 4.1 — Daftar tunggakan yang langsung terbaca'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_revision: 'a734af3a21289a883d2597c78f8d8d750d592ca9'
@@ -128,6 +128,34 @@ landscape the list and a per-contract detail sit side by side; in portrait the d
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-10-18 — Review pass 1
+- verdicts: 45 findings — high 3, medium 11, low 14, false 2, maybe-false 15
+- findings:
+  - `[high]` `[patch]` **service-exception writes never re-emit the arrears list** (edge-case E13; verification-gap G1, independently). `observeArrearsForAllContracts` combines `contractDao.observeAll()`, `paymentDao.observeContractIds()` and `allocationDao.observeContractIds()` — `PaymentRepository.kt:816-826` — but `arrearsEntry` reads excused days through `exceptionDao.forContract`, so `service_exception` is a table the figure depends on and **no query in the combine names it**. The owner marks a day unbilled and the row keeps its old day count and rupiah until they leave and re-enter. `PaymentDao.kt`'s KDoc claims the exception flow is combined; it is not. The existing invalidation test writes the two tables that *are* named, so it passes.
+  - `[high]` `[patch]` **`asOf` is frozen at ViewModel construction, not per emission** (edge-case E1; blind-hunter B2). `TunggakanViewModel.kt:104` passes `LocalDate.now(clock)` as an argument while *building* the flow, so an app left open past midnight shows yesterday's figure indefinitely. The KDoc at line 46 claims "read from the Clock once per emission" — the claim is the KDoc's, and it is false. `LIST_MIDNIGHT` unmet.
+  - `[high]` `[patch]` **the failure path probably never renders a banner** (edge-case E2, E3; blind-hunter B3). `.catch` sets `errorMessage.value`, emits `Source.Loading`, then rethrows — and `errorMessage` is not an input to the `combine` at line 122, so nothing re-emits to carry it into `uiState`. The one test covering the banner builds the state by hand (`TunggakanScreenTest.kt:262`) rather than making the flow fail, so nothing proves the path is live. A failure therefore reads as a permanent skeleton.
+  - `[medium]` `[patch]` **the row's only tap has no visible effect in portrait** (blind-hunter B1; edge-case E12). `onSelect` still fires, the selection is stored, and no pane draws it. This is the control-that-does-nothing defect `Screens.Kontrak`'s KDoc cites shipping twice.
+  - `[medium]` `[patch]` **`renterCount` counts rows, not renters** (edge-case E7; blind-hunter B9). The resource's own comment says one renter can hold two contracts with a balance, then the code returns `rows.size` — so the top bar reads "2 penyewa" for one person owing twice.
+  - `[medium]` `[patch]` the top bar shows **"0 penyewa" on every load**, because `renterCount` is 0 before the first emission (edge-case E8). The empty-looks-real failure, on the one line that states the screen's own subject.
+  - `[medium]` `[patch]` `toRows` silently drops a contract when `byId` misses (`return@mapNotNull null`) (edge-case E10). A contract owing money vanishing is the single failure this screen exists to prevent.
+  - `[medium]` `[patch]` **tone is decided by comparing two message strings** (edge-case E5; blind-hunter B4). MainActivity passes the same value on both channels, so severity is inferred from text rather than modelled — and identical text renders Danger on one channel and Success on the other.
+  - `[medium]` `[patch]` `onErrorDismiss` defaults to `{}` on `TunggakanScreen` (edge-case E6; verification-gap O1) while its own KDoc and `Screens.Tunggakan`'s forbid it. Production is unaffected, but the screen test passes through the default, so the dismiss wiring is unproven — and `SettleContractSheet` shipped this exact default.
+  - `[medium]` `[patch]` one contract's arrears read throwing voids the whole list (`contracts.map { … }` with no per-contract guard) (edge-case E11). One unreadable contract should degrade, not blank the screen the owner opens every morning.
+  - `[medium]` `[patch]` **the AC's literal example figure is never reproduced** (intent-alignment I3). `TunggakanScreenTest` asserts `Rp 750.000 · 3 hari` against a **hand-built** fixture; the repository-produced path is only asserted at 14 days. The join — a stored rupiah becoming that string — is proven only in `TunggakanViewModelTest`, and not at the AC's own numbers.
+  - `[medium]` `[patch]` **`isEmpty` is true while loading and on error**, and correctness rests entirely on the screen's `when` ordering (edge-case E9; verification-gap O3). Any other caller gets "everyone paid" mid-load.
+  - `[low]` `[patch]` two error channels carry one fact: `TunggakanUiState.errorMessage` plus the screen's own parameter (blind-hunter B5; edge-case E15).
+  - `[low]` `[patch]` `Screens.Tunggakan.errorMessage` defaults to `null` while its sibling `onErrorDismiss` is required — the parameter deciding *whether* a banner shows is the forgettable one (blind-hunter B7).
+  - `[low]` `[patch]` `RStrings` now imports the domain's `RiskLevel` (blind-hunter B15), coupling the string table to an enum it never knew.
+  - `[low]` `[patch]` the subtitle resource is a bare `%1$s` carrying only the plate, with a comment claiming it distinguishes two rentals of one renter (blind-hunter B13).
+  - `[low]` `[patch]` preview composables pass `onSelect = {}` and no error channel, so the preview cannot exercise the banner path (edge-case E16).
+  - `[low]` `[patch]` trailing newlines missing on `TunggakanViewModel.kt`, `TunggakanScreen.kt`, `PaymentDao.kt`, `TunggakanUiState.kt`, `epic-4-context.md` (blind-hunter B14; edge-case E17; verification-gap O2).
+  - `[low]` `[defer]` the aggregate recomputes every contract on every emission — O(contracts × deposits) per save, with no benchmark against NFR-1's 50 ms (blind-hunter B11; edge-case E18). Correctness is unquestioned here; the budget is unmeasured.
+  - `[low]` `[defer]` `harreatestOpenDay` is landscape-only — in portrait `selectedRow` is `null` by construction and the pane never draws, so the figure the Notes calls the thing the owner is looking for is unreachable on one orientation (intent-alignment I1, I5).
+  - `[false]` `[reject]` the tie-break test proves nothing because the ids happen to agree (intent-alignment, credits the diff positively) — already the strongest case in the suite; no finding to record.
+  - `[maybe-false]` `[reject]` declining to mount the two Epic 3 deferrals (intent-alignment I4, R-d). The epic context says they "land here"; 4.1's ACs never mention deposits, and mounting them is a second shippable goal. Recorded as a gate decision in the spec, so this is a scope judgment already surfaced rather than a hidden divergence.
+  - `[maybe-false]` `[reject]` the AC's `Rp 750.000 · 3 hari` example is internally inconsistent — 3 is days *closed*, the row shows days *open* (intent-alignment I6). The epic context's own rule ("derived from stored allocations", never `amount ÷ rate`) settles it, and the tests document the choice. Recorded so the choice is visible, not because the row is wrong.
+  - `[maybe-false]` `[reject]` 12 further low findings about KDoc phrasing and comment accuracy across both new screens and the shell fixtures, all confirmed cosmetic by reading the cited lines.
 
 ## Design Notes
 

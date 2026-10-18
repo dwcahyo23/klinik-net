@@ -5,9 +5,10 @@ import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
-import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.catch
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
@@ -43,12 +44,12 @@ import java.time.LocalDate
  * add a `@Query` with two JOINs: that would put a second reader of `renter` and `vehicle` next
  * to the existing ones.
  *
- * ## Why `asOf` is read from the [Clock] once per emission
+ * ## Why the clock is handed to the repository rather than read here
  *
- * Because a billing period depends on "today", and a ViewModel that called
- * `LocalDate.now()` per contract could produce a list whose first row and last row were
- * computed for different days — visible only across midnight, and wrong either way. Pinning it
- * also makes the list testable: a test that passed in October failed in November.
+ * Because "today" must be read **per emission**, not once when this ViewModel was built. An
+ * app left open across midnight would otherwise show yesterday's figure until the owner left
+ * and came back, and nothing would say so. Passing the `Clock` down puts the read where the
+ * emission happens; passing a `LocalDate` up freezes it at construction.
  */
 class TunggakanViewModel(
     private val payments: PaymentRepository,
@@ -56,6 +57,17 @@ class TunggakanViewModel(
     vehicleRepository: VehicleRepository,
     private val strings: RStrings,
     private val clock: Clock,
+    /**
+     * Overrides the arrears source. **For tests only.**
+     *
+     * A seam because `PaymentRepository` is a `final class` and cannot be stubbed, and the
+     * failure path is precisely the half a hand-built state cannot exercise: the screen's
+     * `isFailed` branch is easy to assert, and the route *to* it is what broke. Defaulted so
+     * production never has to know this exists, and named `arrearsSource` rather than
+     * something load-bearing-sounding so a caller reading the signature can tell it apart
+     * from the constructor's real collaborators.
+     */
+    private val arrearsSourceOverride: (() -> Flow<List<ContractArrears>>)? = null,
 ) : ViewModel() {
 
     /** What the arrears source has produced, tagged so "not yet read" is a value. */
@@ -72,7 +84,26 @@ class TunggakanViewModel(
 
         /** Read, possibly to nothing owed. */
         data class Loaded(val entries: List<ContractArrears>) : Source
+
+        /**
+         * The read failed, and the list must not be believed.
+         *
+         * A member rather than a `Boolean` beside the rows, because the two claims are the
+         * same claim: an empty list drawn after a failure is the app asserting that nobody
+         * owes anything, which is the one thing it must never do without having looked.
+         */
+        data object Failed : Source
     }
+
+    /**
+     * The banner text a source carries, or `null`.
+     *
+     * On the sealed type rather than in the caller, so "which state carries a message" is
+     * one question with one answer — a `when` over three members that the compiler can
+     * check is exhaustive, rather than three separate `?.let` branches that could disagree.
+     */
+    private fun Source.bannerOrNull(strings: RStrings): String? =
+        if (this is Source.Failed) strings.tunggakanError() else null
 
     /**
      * Which row the landscape detail pane is showing.
@@ -84,39 +115,69 @@ class TunggakanViewModel(
     private val selectedId = MutableStateFlow<String?>(null)
 
     /**
-     * The last failure that has no row of its own.
+     * Bumped by [consumeError] to ask the source to try again.
      *
-     * A banner over unchanged content, per the four-state rule: a calculation that could not
-     * be completed must say so rather than draw an empty list, because an empty arrears list
-     * reads as "everyone paid" and this app must never tell the owner that with confidence.
+     * A counter rather than a boolean because the same request twice must still re-subscribe
+     * — two dismissals in a row are two requests, not one repeated one, and a `Boolean` would
+     * make the second a no-op that leaves the banner up.
      */
-    private val errorMessage = MutableStateFlow<String?>(null)
+    private val arrearsRetry = MutableStateFlow(0)
 
     /**
-     * The arrears source, tagged and with its failures turned into a banner.
+     * The arrears source, tagged and with its failures carried as a **value**.
      *
-     * Named rather than inlined so the type is written once: the `combine` below cannot
-     * infer a `Flow<Source>` from a chain whose first element is `map { … }` on a sealed
-     * hierarchy it has not been shown, and spelling the type here is clearer than three
-     * explicit annotations on the lambda's parameter.
+     * ## Why the failure is a `Source` and not a side channel
+     *
+     * Because a `MutableStateFlow` written inside `catch` never reaches the screen. The
+     * `combine` below only re-emits when one of **its** inputs does, so a message written to
+     * a flow it does not read changes nothing that anyone can see: the screen would keep
+     * drawing its skeleton and the owner would read "no data" as "nothing owed" — which is
+     * the exact confusion the banner exists to prevent, reached by adding a banner.
+     *
+     * So the failure *is* the value. `Source.Failed` is part of the same sealed hierarchy
+     * the success path is, so it flows through the combine like any other emission and lands
+     * in `uiState` by construction rather than by a handler somebody has to remember.
+     *
+     * ## Why `asOf` is not a parameter here
+     *
+     * It is read **inside** the repository, per emission. Passing `LocalDate.now(clock)` as
+     * an argument froze it at construction, so an app left open across midnight showed
+     * yesterday's figure until the owner left and returned — and nothing said so.
      */
-    private val arrearsSource: Flow<Source> = payments
-        .observeArrearsForAllContracts(asOf = LocalDate.now(clock))
-        // `onStart` carries the *loading* value rather than branching the screen on
-        // emptiness: Room's first emission is an empty list, so a screen that treated that
-        // as "nothing owed" would show its empty state on every single load — the one
-        // failure this screen can least afford, since it tells the owner nobody owes them
-        // anything.
-        .map<List<ContractArrears>, Source> { entries -> Source.Loaded(entries) }
-        .onStart { emit(Source.Loading) }
-        .catch { throwable ->
-            // Reported, never swallowed, and never turned into an empty list: the list stops
-            // being trustworthy the moment a failure renders as "no arrears". Re-thrown so
-            // structured concurrency still sees it, after the banner has been raised — the
-            // same order `KontrakViewModel` uses for its own re-throws.
-            errorMessage.value = strings.tunggakanError()
-            emit(Source.Loading)
-            throw throwable
+    private val arrearsSource: Flow<Source> =
+        arrearsRetry.flatMapLatest { _ ->
+            (arrearsSourceOverride?.invoke() ?: payments.observeArrearsForAllContracts(clock))
+                // `onStart` carries the *loading* value rather than branching the screen on
+                // emptiness: Room's first emission is an empty list, so a screen that treated
+                // that as "nothing owed" would show its empty state on every single load — the
+                // one failure this screen can least afford, since it tells the owner nobody owes
+                // them anything.
+                .map<List<ContractArrears>, Source> { entries -> Source.Loaded(entries) }
+                .onStart { emit(Source.Loading) }
+                // The failure is a **value** on the same sealed hierarchy the rows travel, so it
+                // reaches the screen through the same `combine` they do.
+                //
+                // ## Why `catch` that does not re-throw
+                //
+                // A `catch` that re-throws emits `Source.Failed` and *then* terminates the flow;
+                // under `stateIn(WhileSubscribed)` that completes the sharing coroutine, so the
+                // value it just emitted is never delivered and `uiState` freezes on its last
+                // read — the screen sits on a skeleton forever, which is the very failure the
+                // banner exists to prevent.
+                //
+                // ## Why not `retryWhen { _, _ -> true }`
+                //
+                // Because a source that fails immediately fails again immediately, and
+                // re-subscribing in a tight loop spins the CPU while showing a banner — a worse
+                // failure than the frozen skeleton it replaces, and one that would not stop until
+                // the owner left the screen. Retrying on a timer is a refresh mechanism wearing
+                // a retry's name.
+                //
+                // So the flow **completes normally** after the failure, and [arrearsRetry]
+                // re-subscribes it: the owner dismisses the banner, the read is attempted again,
+                // and it either comes back with real figures or fails again visibly. Recovery is
+                // one deliberate act, not a spin.
+                .catch { emit(Source.Failed) }
         }
 
     val uiState: StateFlow<TunggakanUiState> = combine(
@@ -127,8 +188,10 @@ class TunggakanViewModel(
     ) { source, renters, vehicles, selection ->
         TunggakanUiState(
             rows = when (source) {
-                // Nothing rendered while loading: a skeleton, never a zero row.
-                Source.Loading -> emptyList()
+                // Nothing rendered while loading, and **nothing rendered on failure**: the
+                // banner beside an empty list would state "nobody owes you anything" and
+                // then apologise for it, which is worse than saying nothing.
+                Source.Loading, is Source.Failed -> emptyList()
                 is Source.Loaded -> source.entries.toRows(
                     renterNames = renters.associate { it.id to it.name },
                     vehiclePlates = vehicles.associate { it.id to it.plate },
@@ -140,7 +203,14 @@ class TunggakanViewModel(
             // different renter the moment a payment lands.
             selectedContractId = selection,
             isLoading = source is Source.Loading,
-            errorMessage = errorMessage.value,
+            isFailed = source is Source.Failed,
+            // **Derived from the source, not from a second channel.** The banner is a fact
+            // about which `Source` this is, so reading it from `Source.Failed` keeps one
+            // derivation; a `MutableStateFlow` written beside the flow was the original
+            // defect, because a message in a flow the `combine` does not read reaches
+            // nobody. A dismissal does not set this to null — it re-emits `Loaded`, which
+            // drops the banner because the read no longer says it failed.
+            errorMessage = source.bannerOrNull(strings),
         )
     }
         // After the projection, so a Room emission that produces an identical list does not
@@ -168,8 +238,16 @@ class TunggakanViewModel(
         selectedId.value = if (selectedId.value == contractId) null else contractId
     }
 
-    /** Clears the banner. Its own handler, not aliased to another message's setter. */
+    /**
+     * Dismisses the banner by asking the source to try again.
+     *
+     * Not a message setter, because the message is not held here: it is derived from
+     * `Source.Failed`. A dismiss that cleared a field the screen does not read would leave
+     * the banner up — the original defect in a second costume. Re-subscribing instead both
+     * hides the banner and puts the screen back on real data, so a dismissal that succeeds
+     * is one that also recovered.
+     */
     fun consumeError() {
-        errorMessage.value = null
+        arrearsRetry.value = arrearsRetry.value + 1
     }
 }

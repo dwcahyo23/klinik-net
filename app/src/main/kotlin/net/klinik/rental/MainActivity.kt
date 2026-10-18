@@ -482,11 +482,11 @@ private fun KlinikNetApp(
                 ),
                 // Story 4.1's arrears list. No route of its own beyond the destination —
                 // this is the whole of its wiring, which is the smallest block in `Screens`
-                // because the list has no sheets and one action.
+                // because the list has no sheets, one action, and a banner that rides on
+                // its own state rather than in a second channel.
                 tunggakan = Screens.Tunggakan(
                     state = tunggakanState,
                     onSelect = tunggakan::onSelect,
-                    errorMessage = tunggakanState.errorMessage,
                     onErrorDismiss = tunggakan::consumeError,
                 ),
             ),

@@ -71,18 +71,40 @@ data class ArrearsRow(
  *   a screen branching on emptiness would show "Tidak ada tunggakan" on every load — which on
  *   *this* screen is the worst version of the empty-looks-like-new-data failure, because it
  *   tells the owner nobody owes them anything.
+ * @param isFailed true when the read failed. **Separate from [isEmpty]** and not derivable
+ *   from it: a failed read also produces no rows, so a caller branching on `isEmpty` alone
+ *   cannot tell "nobody owes you anything" from "I could not find out" — and this screen has
+ *   the strongest reason of any in the app to keep those apart.
  */
 data class TunggakanUiState(
     val rows: List<ArrearsRow> = emptyList(),
     val selectedContractId: String? = null,
     val isLoading: Boolean = false,
+    val isFailed: Boolean = false,
     val errorMessage: String? = null,
 ) {
-    /** Nothing is owed, once the read has landed and produced no rows. */
-    val isEmpty: Boolean get() = rows.isEmpty()
+    /**
+     * Whether the empty state applies.
+     *
+     * False while loading **and** while failed, not merely when the list is short — both of
+     * those states also produce no rows, and drawing "semua sewa sudah lunas" over either one
+     * is the app telling the owner nobody owes them anything on the strength of a read that
+     * never happened. The screen's own `when` is ordered for the same reason; this property
+     * is here so a future caller cannot get it wrong by reaching for `rows.isEmpty()`.
+     */
+    val isEmpty: Boolean get() = rows.isEmpty() && !isLoading && !isFailed
 
-    /** How many people the list is about — the top bar's subtitle. */
-    val renterCount: Int get() = rows.size
+    /**
+     * How many people the list is about — the top bar's subtitle.
+     *
+     * Distinct people rather than rows, because one renter can hold two contracts with a
+     * balance and "3 penyewa" over two people is a number the owner cannot act on. The
+     * subtitle's own copy says "penyewa", so this counts renters.
+     *
+     * `0` while loading or failed, for the same reason [isEmpty] is false there: the bar
+     * must not claim the owner is owed by nobody before the app has looked.
+     */
+    val renterCount: Int get() = if (isLoading || isFailed) 0 else rows.distinctBy { it.renterName }.size
 
     /**
      * The row the detail pane shows, or `null`.
@@ -146,12 +168,21 @@ internal fun List<ContractArrears>.toRows(
     // Through `ArrearsEntry`, because the ordering and the zero-filter are the **domain's**
     // rules and this must not restate them. `ContractArrears` deliberately carries more than
     // an `ArrearsEntry` does, so the entry is built for the sort and the row is built from a
-    // lookup — a projection rather than a second ordering.
-    val byId = associateBy { it.contractId }
+    // lookup.
+    //
+    // The lookup cannot miss, and this says so rather than quietly tolerating it: both lists
+    // come from the same `entries` on the line above, so a miss would mean the projection had
+    // dropped a contract owing money — the one failure this screen exists to prevent. A
+    // `mapNotNull` here would swallow it into a shorter list that still renders, which is
+    // exactly the shape of defect the epic context calls "empty data that looks like new".
+    val byId = entriesById()
     return map { it.toEntry() }
         .inArrearsOrder()
-        .mapNotNull { entry ->
-            val contract = byId[entry.contractId] ?: return@mapNotNull null
+        .map { entry ->
+            val contract = requireNotNull(byId[entry.contractId]) {
+                "arrears entry ${entry.contractId} was ordered but has no contract behind it; " +
+                    "dropping it would hide a tenant who owes money"
+            }
             val risk = riskOf(entry.days)
             ArrearsRow(
                 contractId = entry.contractId,
@@ -184,3 +215,6 @@ internal fun ContractArrears.toEntry() = ArrearsEntry(
     amount = amount,
     oldestOpenDay = oldestOpenDay,
 )
+
+internal fun List<ContractArrears>.entriesById(): Map<String, ContractArrears> =
+    associateBy { it.contractId }
