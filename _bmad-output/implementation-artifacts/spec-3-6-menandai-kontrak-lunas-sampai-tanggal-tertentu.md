@@ -286,6 +286,101 @@ passed.
    `1 Maret 2026`; this app's formatter writes `24 Okt`. The app's own formatter was kept —
    a date one screen spells differently from another is a drift this repo has paid for.
 
+## Auto Run Result
+
+**Status:** done
+
+### Summary
+
+Story 3.6 lands FR-9b, the day-one exit from fictional arrears. `CONTRACT` gains a nullable
+`settledThroughDate`; `settleThrough` writes that one column in one transaction, and every
+charge-day list this app derives is narrowed through `settledDays` at the single place they are
+produced — `PaymentRepository.previewAllocation` — so `currentArrears`, the deposit preview,
+cancellation and correction all inherit it at once. No allocation row is written and no Setoran
+is created, which is asserted against a real database rather than claimed.
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `db/entity/ContractEntity.kt` | `settledThroughDate: LocalDate?`, outside the `endDate`/active-column guard |
+| `db/KlinikDatabase.kt` | `MIGRATION_7_8`, a bare `ADD COLUMN … DEFAULT NULL`; `version = 8` |
+| `data/repository/PaymentRepository.kt` | `settledDays` in the day list; `settlementImpact`; the `placeholderAmountIsDiscarded` guard |
+| `data/repository/ContractRepository.kt` | `settleThrough`, carrying the field through `endContract` |
+| `data/repository/Settlement.kt` | **New** — `SettlementImpact` and the typed refusals |
+| `ui/screens/kontrak/SettleContractSheet.kt` | **New** — the confirmation, its four figures and the date field |
+| `ui/screens/kontrak/KontrakScreen.kt` | The verb on the row; the sheet beside its three siblings |
+| `ui/screens/kontrak/KontrakViewModel.kt` | `openSettle`/`onSettleChange`/`settleContract`, four separate message channels |
+| `ui/shell/NavGraph.kt`, `MainActivity.kt` | The six callbacks, required not defaulted |
+| tests | `SettleContractTest` (14), `SettleContractViewModelTest` (9), `SettleContractSheetTest` (13), plus `KontrakScreenTest` and `DatabaseMigrationTest` additions |
+
+### Review findings
+
+25 findings across three layers: 2 high, 7 medium, 12 low, 1 false, 3 maybe-false. One layer
+returned prose about the epic instead of verification gaps and was not counted.
+
+**Both `high` findings were real.** `settleThrough` accepted a date earlier than an existing
+settlement — silently re-opening days the owner had declared paid, with no undo to recover them,
+because the write compared against `startDate` and never against the stored `settledThroughDate`.
+Two layers reached it independently. Fixed with `SettlementAlreadySettledException` carrying both
+dates; equal-or-later stays idempotent, so re-settling the same day is a no-op rather than a
+refusal. And the settle sheet's banner fell back to the contract screen's, merging two of the
+four message channels the design exists to keep separate.
+
+**Five further `medium` findings patched:** the stale-figures window that left confirm enabled on
+another date's numbers; the vanished-contract branch that set its message after closing the
+sheet; the missing assertion that confirm is disabled when a settlement closes nothing; the absent
+render test for a 215-line composable; and the defaulted dismiss handlers that made the banner
+unreachable.
+
+Rejected one `false` (a future settlement date — the picker only offers past dates, so it is
+unreachable) and three `maybe-false`, each already disproved by a test that ran.
+
+**Two items deferred.** `settlementImpact` reads the contract row three times per dialog open;
+not reachable with one write path. And the AC names a contract-detail surface while the verb is
+mounted on the list row, because no detail screen exists.
+
+### Follow-up review recommendation
+
+`false`. One `high` was patched, which under the first-pass rule would warrant a follow-up, but the
+named risk it should look at has been closed rather than left open: the settlement control **is**
+mounted and reachable (`KontrakScreen.kt:325` → `MainActivity.kt:394`), and the click tests assert
+the tap reaches the handler rather than merely that a node exists. Nothing specific remains
+unverified.
+
+**Patched counts:** 1 `high`, 7 `medium`.
+
+### Verification
+
+- `./gradlew :domain:test` — SUCCESS
+- `./gradlew :app:testDebugUnitTest` — SUCCESS, 754 tests across 53 classes
+- `./gradlew :app:assembleDebug` — SUCCESS
+
+All three re-run with `--rerun-tasks`. Per-class counts were read from the HTML reports rather
+than the Gradle summary, because an earlier run printed BUILD SUCCESSFUL while one class produced
+no results at all.
+
+**The placeholder defect, found by the implementer rather than a reviewer.** `settlementImpact`
+reported 13 days closed where the arithmetic gives 12: the `RECOMPUTE_ID` Rp 1 placeholder took a
+rupiah from the oldest open day, so the stored deposit's row landed Rp 1 short of `dailyRate`,
+and `arrearsOf` counts a partly-paid day as open. The rupiah total survived — the missing rupiah
+moved onto the placeholder's own row — so only the **day count** was inflated, on a confirmation
+the AC requires to name it. The implementer asserted the correct figure and left the test red
+rather than editing the expectation to match. Fixed with `placeholderAmountIsDiscarded`, which
+withholds the placeholder from the allocator entirely on an arrears-only read.
+
+### Residual risks
+
+1. **AR-8 is not exercised here** — a settlement is a single-column write, so the transaction
+   carries no multi-row rollback to prove, and nothing forces it to fail.
+2. **The stale-figures window is guarded but not directly observable.** The figures are zeroed
+   before the read, but the window between publishing the zeroed state and the read returning is
+   structurally invisible through `uiState` — it is a `combine` behind a `stateIn`. The confirm
+   path (impact read fails) is covered by a test that discriminates; the date-change window is
+   covered by its guard rather than by an observing test.
+3. **The verb sits on the list row, not a contract detail surface** — the AC's own wording names a
+   detail screen this app does not have.
+
 ## Verification
 
 **Commands:**
