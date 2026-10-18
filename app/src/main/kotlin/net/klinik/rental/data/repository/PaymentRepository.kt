@@ -866,6 +866,36 @@ class PaymentRepository(
         paymentDao.forContract(contractId).map { it.toDomain() }
 
     /**
+     * Today's income in whole rupiah, observed — Story 4.3's "Pendapatan hari ini".
+     *
+     * ## Why the clock is handed in rather than read here
+     *
+     * Because "today" is decided by the **caller's** clock, and the read must happen per
+     * emission: an app left open across midnight would otherwise show yesterday's income
+     * until the owner left and came back, and nothing would say so. The same argument
+     * [observeArrearsForAllContracts] gives, and the same shape the epic context's "one
+     * clock abstraction" requires.
+     *
+     * ## Why the query groups by date rather than filtering to one
+     *
+     * Because a bound date in the SQL **freezes the date in the subscription** — Room re-runs
+     * the query with the same bound value when the table changes, so a deposit landing after
+     * midnight would be counted against yesterday. Grouping hands the choice here, where the
+     * clock is read on every emission, and the figure moves when the day does. This is the
+     * same defect and the same fix as the frozen `asOf` in Story 4.1's arrears read.
+     *
+     * ## Why this is a **sum**, not a list
+     *
+     * Because the screen shows one figure — a total — and a total the UI adds up is a second
+     * place the arithmetic lives. The query sums, the repository picks today's bucket, and the
+     * ViewModel formats it.
+     */
+    fun observeTodaysIncome(clock: Clock): Flow<Long> =
+        paymentDao.observeIncomeByDate().map { byDate ->
+            byDate.firstOrNull { it.date == LocalDate.now(clock) }?.total ?: 0L
+        }
+
+    /**
      * Every deposit on one contract as a [Flow], for the arrears screens in Epic 4.
      *
      * A subscription rather than a one-shot read because a deposit must move the arrears

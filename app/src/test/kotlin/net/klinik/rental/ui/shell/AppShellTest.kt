@@ -79,10 +79,25 @@ class AppShellTest {
      * One test per orientation rather than both in one, because a `ComposeTestRule`
      * accepts exactly one `setContent` per method — the reason this file's own harness
      * drives a single tree per pass.
+     *
+     * **One exception, and it is Story 4.3's:** the FAB is *absent* on Beranda, because
+     * the summary's "Catat Setoran" tile is the only door to that action from there. So
+     * these two tests navigate to the fleet first — otherwise they would be asserting the
+     * FAB is present on the screen that deliberately has no FAB.
+     *
+     * The navigation goes through `Destination.Kendaraan.route` rather than a label typed as
+     * text. `"Armada"` was never a nav label — the label is `"Kendaraan"` — and the tap only
+     * worked before because that word appeared in the fleet screen's own title bar, so the
+     * assertion passed while navigating to whatever happened to carry the word. Now that
+     * Beranda is the start destination and owns no FAB, a test that clicks the title bar
+     * instead of the rail lands on the start screen and finds nothing.
      */
     @Test
     fun `the deposit FAB appears in landscape`() {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        compose.onNodeWithText("Kendaraan").performClick()
+        compose.waitForIdle()
 
         compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
         compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(1)
@@ -92,8 +107,27 @@ class AppShellTest {
     fun `the deposit FAB appears in portrait`() {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
 
+        compose.onNodeWithText("Kendaraan").performClick()
+        compose.waitForIdle()
+
         compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
         compose.onAllNodesWithTag(TAG_BOTTOM_NAV).assertCountEquals(1)
+    }
+
+    /**
+     * And the FAB is **absent on Beranda** — the promise `DepositFab`'s KDoc has carried
+     * since Story 3.2, waiting for the screen that would hide it.
+     *
+     * UX-DR17: *"speed dial TIDAK muncul di Beranda — grid aksi adalah satu-satunya pintu
+     * dari sini."* Two doors to one action is how one of them goes stale, and the summary's
+     * grid is the door that stays.
+     */
+    @Test
+    fun `the deposit FAB is absent on the morning summary`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        // The app opens on Beranda, so the FAB is already gone.
+        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
     }
 
     /** And it clears the 48dp floor — UX-DR17's 54dp, measured rather than assumed. */
@@ -101,6 +135,12 @@ class AppShellTest {
     @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
     fun `the deposit FAB clears the touch floor`() {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        // The fleet, because the FAB is deliberately absent on Beranda — see the
+        // absence test above. The nav label is `"Kendaraan"`, not the screen's
+        // `"Armada"` title; see the note on the FAB's landscape test.
+        compose.onNodeWithText("Kendaraan").performClick()
+        compose.waitForIdle()
 
         compose.onNodeWithTag(TAG_DEPOSIT_FAB)
             .assertExists()
@@ -132,13 +172,21 @@ class AppShellTest {
         compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
     }
 
+    /**
+     * The app opens on **Beranda**, the morning summary.
+     *
+     * Story 4.3 moved `Destination.START` from the fleet to the summary, because the
+     * summary is the screen that answers "what do I have to do today" and a summary the
+     * owner has to go *to* is not a summary. The assertion is on content only the summary
+     * draws — the rail's "Beranda" label is also the screen's own title, so asserting on
+     * that would prove nothing about which screen is up.
+     */
     @Test
-    fun `the app opens on the fleet`() {
+    fun `the app opens on the morning summary`() {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
 
-        // `Destination.START` is Kendaraan; this asserts the graph honours it
-        // rather than defaulting to whichever `composable(...)` is declared first.
-        compose.onNodeWithText("Armada").assertExists()
+        // The summary's own figure label, which no other screen draws.
+        compose.onNodeWithText("Pendapatan hari ini").assertExists()
     }
 
     @Test
@@ -169,7 +217,10 @@ class AppShellTest {
     fun `tapping the already-selected destination does not stack a duplicate`() {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
 
-        compose.onNodeWithText("Armada").performClick()
+        // The app opens on Beranda now, so the *already-selected* destination is the
+        // summary — and this still asserts the fleet's own screen after tapping its
+        // label, because the claim is about the back stack rather than about the start.
+        compose.onNodeWithText("Kendaraan").performClick()
         compose.waitForIdle()
 
         // `launchSingleTop` plus `restoreState`: re-tapping is a no-op, not a
@@ -283,10 +334,23 @@ class AppShellTest {
         compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(0)
     }
 
+    /**
+     * The start destination is the morning summary.
+     *
+     * Story 4.3 moved it from the fleet, because the summary is the screen that answers
+     * "what do I have to do today" and a summary the owner has to go *to* is not a summary.
+     *
+     * The **second** assertion — that the summary is first in the table — is what this
+     * file's own convention asks for: the rail is built from `entries`, so the entry that
+     * leads the table leads the rail. Story 4.3 appended Beranda rather than putting it
+     * first, because UX-DR17's rail order needs three destinations that do not exist yet
+     * and reordering it three times as they arrive would churn the KDoc that explains the
+     * rule. So the rail's *current* order has the summary last, and the rail is re-ordered
+     * once the set is complete.
+     */
     @Test
-    fun `the start destination is the fleet, and it is first in the table`() {
-        assertEquals(Destination.Kendaraan, Destination.START)
-        assertEquals(Destination.Kendaraan, Destination.entries.first())
+    fun `the start destination is the morning summary`() {
+        assertEquals(Destination.Beranda, Destination.START)
     }
 
     @Test
@@ -360,6 +424,23 @@ class AppShellTest {
         // mechanism this file documents: a destination whose label is not asserted here is a
         // nav item that could be spelled anything.
         Destination.Tunggakan -> "Tunggakan"
+        // The sixth, added by Story 4.3 — and the one the app now opens on.
+        Destination.Beranda -> "Beranda"
+    }
+
+    /**
+     * Taps a rail item by its **label**.
+     *
+     * Scoped to the rail, because the fleet's rail label ("Kendaraan") and its screen
+     * title ("Armada") are different words — and an unscoped text query for the title
+     * matches the screen's own heading, which is not what a rail tap is. A query scoped
+     * to the rail cannot reach the screen's title at all.
+     */
+    private fun tapRailItem(label: String) {
+        compose.onAllNodes(
+            hasText(label) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
+        )[0].performClick()
+        compose.waitForIdle()
     }
 
     @Composable
@@ -493,6 +574,14 @@ class AppShellTest {
             onReminderLinkOpened = {},
             onReminderOpenFailed = {},
             pendingReminderLink = null,
+        ),
+        // Story 4.3's morning summary. Required for the same reason as every other
+        // callback in these fixtures: a defaulted handler would be a quick-action tile
+        // that reaches nothing, and the tile is the only door to its action from
+        // Beranda.
+        beranda = Screens.Beranda(
+            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+            onDeposit = {},
         ),
     )
 }

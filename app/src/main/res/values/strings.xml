@@ -999,6 +999,57 @@
       out, so the sentence points at it rather than only reporting the failure.
     -->
     <string name="tunggakan_reminder_open_failed">WhatsApp tidak bisa dibuka di perangkat ini. Salin pesannya lalu kirim manual.</string>
+
+    <!--
+      Story 4.3 — Beranda (the morning summary).
+
+      The `beranda_*` prefix follows the same rule as every other screen's block: a screen's
+      whole copy set is findable from its prefix.
+    -->
+    <!-- The rail label and the bar title: the same word, so the item and the screen name one destination. -->
+    <string name="nav_beranda">Beranda</string>
+    <string name="beranda_title">Beranda</string>
+
+    <!--
+      The four KPI labels.
+
+      Each is the **question** the tile answers, so the tile is readable on its own: a label
+      saying "Pendapatan" answers what the figure is for, and one saying "Hari ini" alone
+      would not.
+    -->
+    <string name="beranda_kpi_income">Pendapatan hari ini</string>
+    <string name="beranda_kpi_arrears">Tunggakan aktif</string>
+    <!--
+      The fleet tile's label. "Armada" is the word the rest of the app uses for the fleet —
+      `nav_kendaraan` is "Kendaraan" for the screen, but the vehicles themselves are the
+      armada.
+    -->
+    <string name="beranda_kpi_fleet">Armada aktif</string>
+    <string name="beranda_kpi_rate">Tingkat penagihan</string>
+
+    <!--
+      The fleet split, as three counts in one line: "12 · 3 · 1".
+
+      The separator is a middot rather than a comma because the three numbers are counts of
+      the same thing in three states, not a sentence — and a middot is what the arrears
+      row's own figure line uses for the same reason.
+    -->
+    <string name="beranda_fleet_split">%1$d · %2$d · %3$d</string>
+    <!-- The collection rate, as a whole percentage. -->
+    <string name="beranda_rate">%1$d%%</string>
+
+    <!-- The quick actions' section heading. -->
+    <string name="beranda_actions_title">Aksi cepat</string>
+    <!--
+      The four action labels.
+
+      Named for what they do, and each names a **destination that exists** — the acceptance
+      criterion is explicit that no tile may open a screen this app does not have.
+    -->
+    <string name="beranda_action_deposit">Catat Setoran</string>
+    <string name="beranda_action_vehicle">Tambah Mobil</string>
+    <string name="beranda_action_renter">Kelola Penyewa</string>
+    <string name="beranda_action_reminder">Kirim Pengingat</string>
 </resources>
 
 

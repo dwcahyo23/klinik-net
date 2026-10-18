@@ -785,6 +785,13 @@ class AccessibilityTest {
             onReminderOpenFailed = {},
             pendingReminderLink = null,
         ),
+        // Story 4.3's morning summary, written out for the same reason: this fixture
+        // walks every interactive node the shell can draw, and the quick-action tiles are
+        // four new interactive nodes on the app's new start screen.
+        beranda = Screens.Beranda(
+            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+            onDeposit = {},
+        ),
     )
 
     private fun tag(variant: KnButtonVariant, size: KnButtonSize) =

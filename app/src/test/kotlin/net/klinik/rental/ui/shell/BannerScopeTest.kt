@@ -47,6 +47,10 @@ class BannerScopeTest {
         // that is exactly what destination-scoped ViewModels would do.
         compose.setContent { theme { AppShell(screens = refusingScreens(), isLandscape = true) } }
 
+        // The app opens on Beranda now, so the fleet is reached the way the owner
+        // would reach it — through the rail. The refusal is the fleet's own.
+        tapRailItem("Kendaraan")
+
         // It is up on arrival.
         compose.onAllNodesWithTag(TAG_BANNER).assertCountEquals(1)
 
@@ -218,6 +222,13 @@ class BannerScopeTest {
             onReminderLinkOpened = {},
             onReminderOpenFailed = {},
             pendingReminderLink = null,
+        ),
+        // Story 4.3's morning summary. It draws no banner of its own — every figure it
+        // shows comes from a read that either succeeded or is still loading — but the
+        // wiring is stated here so the fixture stays complete.
+        beranda = Screens.Beranda(
+            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+            onDeposit = {},
         ),
     )
 

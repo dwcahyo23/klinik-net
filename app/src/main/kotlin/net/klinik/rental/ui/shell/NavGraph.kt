@@ -9,6 +9,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
+import net.klinik.rental.ui.screens.beranda.BerandaScreen
 import net.klinik.rental.ui.screens.kendaraan.KendaraanScreen
 import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
 import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
@@ -79,6 +80,57 @@ internal fun AppNavGraph(
         // this route composes the screen directly rather than wrapping it in a `Box` for
         // sheets like `KendaraanRoute` and `PenyewaRoute` do.
         composable(Destination.Tunggakan.route) { TunggakanRoute(screens.tunggakan) }
+        // The sixth, added by Story 4.3 — the morning summary the app now opens on. Like
+        // `TunggakanRoute` it composes the screen directly: it has no sheet of its own, and
+        // its quick actions are **verbs** the shell performs rather than sheets it mounts.
+        composable(Destination.Beranda.route) { BerandaRoute(screens.beranda, navController) }
+    }
+}
+
+/**
+ * The morning summary.
+ *
+ * The route exists to hand the screen its four action handlers, and nothing else: the
+ * actions are **navigations or sheet opens the shell owns**, so the screen reports which
+ * action was chosen and the shell decides what that means. That is the same rule every
+ * other route follows, and the reason a test can drive Beranda with hand-built state and no
+ * database.
+ *
+ * ## Why the three navigations are derived here and not in `Screens`
+ *
+ * Because the nav controller lives in [AppShell], and a second one — the one
+ * `MainActivity` would need to wire "Tambah Mobil" — is a back stack that disagrees with
+ * itself. So the route derives them from the controller the shell already holds, and
+ * `Screens.Beranda` carries only the state and the deposit sheet's own action.
+ *
+ * Every destination these name **exists**: the fleet, the renters and the arrears list.
+ * The acceptance criterion is explicit that no quick-action tile may open a screen this app
+ * does not have, and this is where that promise is kept.
+ */
+@Composable
+private fun BerandaRoute(wiring: Screens.Beranda, navController: NavHostController) {
+    BerandaScreen(
+        state = wiring.state,
+        onDeposit = wiring.onDeposit,
+        onAddVehicle = { navController.navigateTo(Destination.Kendaraan.route) },
+        onManageRenters = { navController.navigateTo(Destination.Penyewa.route) },
+        onSendReminder = { navController.navigateTo(Destination.Tunggakan.route) },
+    )
+}
+
+/**
+ * Navigates to [route], the same way the rail does.
+ *
+ * The same `popUpTo`/`launchSingleTop`/`restoreState` shape [AppShell]'s own navigation
+ * uses, so a quick action and a rail item leave the back stack in the same condition. Two
+ * navigation shapes would be two back-stack behaviours, and the one that is rare is the one
+ * nobody tests.
+ */
+private fun NavHostController.navigateTo(route: String) {
+    navigate(route) {
+        popUpTo(graph.startDestinationId) { saveState = true }
+        launchSingleTop = true
+        restoreState = true
     }
 }
 
@@ -162,6 +214,14 @@ internal class Screens(
      * this repo has shipped that defect twice.
      */
     val tunggakan: Tunggakan,
+    /**
+     * The morning summary's wiring — Story 4.3.
+     *
+     * Two parameters, the smallest bundle in this type, because the summary's three
+     * *navigations* are derived by the route from the nav controller the shell already
+     * holds, and only the deposit sheet's action belongs here.
+     */
+    val beranda: Beranda,
 ) {
     /**
      * The arrears destination's wiring.
@@ -367,6 +427,24 @@ internal class Screens(
         val onDismissPreview: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
+    )
+
+    /**
+     * The morning summary's wiring — Story 4.3.
+     *
+     * Two members, both required, for the reason the destinations above give: a defaulted
+     * lambda produces a tile that renders and silently does nothing, and this repo has
+     * shipped that defect twice. A quick-action tile is the *only* door to its action from
+     * this screen, so a tile wired to `{}` is a door that opens onto nothing.
+     *
+     * Only the **deposit sheet**'s action is here, because that sheet is mounted by the
+     * shell over every destination. The other three actions are *navigations*, and the
+     * shell holds the nav controller — so the route derives them from it, rather than this
+     * class carrying a second copy of the graph.
+     */
+    class Beranda(
+        val state: net.klinik.rental.ui.screens.beranda.BerandaUiState,
+        val onDeposit: () -> Unit,
     )
 }
 

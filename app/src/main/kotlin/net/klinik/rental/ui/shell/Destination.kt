@@ -7,6 +7,7 @@ import androidx.compose.ui.res.stringResource
 import com.composables.icons.lucide.CarFront
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.ClipboardList
+import com.composables.icons.lucide.House
 import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.Users
@@ -77,20 +78,37 @@ enum class Destination(
      * The arrears list. `TunggakanScreen`.
      *
      * The fifth destination, and the one the owner opens most — the PRD calls it "layar yang
-     * paling sering dibuka" — while [`START`] stays on [Kendaraan]. That asymmetry is
-     * deliberate: Story 4.1's criteria do not ask for a different launch screen, and changing
-     * what every existing user sees on open is a decision somebody makes on purpose rather
-     * than one that rides along with a list.
-     *
-     * **Last** in the enum, and that ordering is the launch order: the fleet stays first
-     * because it is where the app opens, and this one is a step along the rail from it.
+     * paling sering dibuka". It was added while [`START`] was still on [Kendaraan], because
+     * Story 4.1's criteria do not ask for a different launch screen.
      */
     Tunggakan(route = "tunggakan", labelRes = R.string.nav_tunggakan),
+
+    /**
+     * The morning summary. `BerandaScreen`.
+     *
+     * The sixth destination, and the one the app **opens on** — Story 4.3 moved [START] here,
+     * because the screen exists to answer "what do I have to do today" and a summary the
+     * owner has to go *to* is not a summary.
+     *
+     * **Last** in the enum, and the ordering is the rail's ordering. UX-DR17's rail is
+     * ordered by frequency — Beranda · Setoran · Kendaraan · Penyewa · Tunggakan · Laporan ·
+     * Pengaturan — but three of those destinations (Setoran, Laporan and, in the prototype's
+     * ordering, the position of Tunggakan) do not exist yet, and reordering the rail three
+     * times as they arrive would churn the KDoc that explains the ordering rule. So Beranda is
+     * **appended** here, and the rail is re-ordered once the set is complete.
+     */
+    Beranda(route = "beranda", labelRes = R.string.nav_beranda),
     ;
 
     companion object {
-        /** Where the app opens. The fleet — the first thing the owner looks at. */
-        val START: Destination = Kendaraan
+        /**
+         * Where the app opens. Beranda — the morning summary.
+         *
+         * Story 4.3 moved this from the fleet. The prototype's own rail opens on the
+         * dashboard, and the PRD calls the arrears list "layar yang paling sering dibuka";
+         * the summary is where the owner starts, so it is where the app starts too.
+         */
+        val START: Destination = Beranda
 
         /**
          * The route for the rail item at [index], or `null` when the index is out
@@ -159,4 +177,8 @@ private val Destination.icon: ImageVector
         // arrears rather than to alarm about them, and a triangle on every visit would make
         // the icon decorative rather than informative.
         Destination.Tunggakan -> Lucide.CircleAlert
+        // The house, for the screen the app opens on. The same glyph the prototype's
+        // dashboard uses, so the rail's first item reads as "home" the way every other
+        // phone's does.
+        Destination.Beranda -> Lucide.House
     }

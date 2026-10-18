@@ -23,6 +23,7 @@ import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.ui.screens.beranda.BerandaViewModel
 import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
 import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
 import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
@@ -122,6 +123,22 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The morning summary's ViewModel — Story 4.3.
+     *
+     * A sixth instance rather than folded into `TunggakanViewModel`: the summary reads the
+     * same arrears the list does, but it is a different screen with a different lifetime,
+     * and a ViewModel per screen is what keeps each one's `combine` from growing a source
+     * the others have to carry.
+     */
+    private val berandaViewModel: BerandaViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createBerandaViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -142,6 +159,7 @@ class MainActivity : ComponentActivity() {
                     pengaturan = pengaturanViewModel,
                     setoran = setoranViewModel,
                     tunggakan = tunggakanViewModel,
+                    beranda = berandaViewModel,
                 )
             }
         }
@@ -281,6 +299,33 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
 }
 
 /**
+ * The morning summary's ViewModel over the same singleton.
+ *
+ * Two repositories, and both of them are **existing** ones: the payments repository (for
+ * today's income and the arrears total) and the vehicle repository (for the fleet split).
+ * The screen has no arithmetic of its own — that is the whole of its design — so it needs
+ * nothing new to read from.
+ */
+internal fun createBerandaViewModel(context: Context): BerandaViewModel {
+    val database = KlinikDatabase.get(context)
+    return BerandaViewModel(
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            database = database,
+        ),
+        vehicleRepository = VehicleRepository(database.vehicleDao(), database),
+        strings = RStrings(context),
+        // The same clock every other ViewModel gets, for the same reason: "today" decides
+        // which deposits count, and a test that passed in October would fail in November.
+        clock = Clock.systemDefaultZone(),
+    )
+}
+
+/**
  * Builds the arrears list's ViewModel over the database singleton.
  *
  * ## Why it holds a `PaymentRepository` of its own
@@ -352,6 +397,7 @@ private fun KlinikNetApp(
     pengaturan: PengaturanViewModel,
     setoran: SetoranViewModel,
     tunggakan: TunggakanViewModel,
+    beranda: BerandaViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -379,6 +425,10 @@ private fun KlinikNetApp(
     val pengaturanState by pengaturan.uiState.collectAsStateWithLifecycle()
     val pengaturanSnackbar by pengaturan.snackbarMessage.collectAsStateWithLifecycle()
     val setoranState by setoran.uiState.collectAsStateWithLifecycle()
+    // Story 4.3's morning summary. A whole screen rather than a sheet, so its banner would
+    // live on its own state — but it has no banner, because every figure it shows comes
+    // from a read that either succeeded or is still loading, and neither is a refusal.
+    val berandaState by beranda.uiState.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -517,6 +567,15 @@ private fun KlinikNetApp(
                     onReminderLinkOpened = tunggakan::onReminderLinkOpened,
                     onReminderOpenFailed = tunggakan::onReminderOpenFailed,
                     pendingReminderLink = tunggakanPendingLink,
+                ),
+                // Story 4.3's morning summary. Only the state and the **deposit sheet**
+                // action are wired here — the other three actions are *navigations*, and
+                // the shell owns the nav controller, so the route derives them from it.
+                // Putting a navigation here would need a second nav controller, and two
+                // of them is a back stack that disagrees with itself.
+                beranda = Screens.Beranda(
+                    state = berandaState,
+                    onDeposit = setoran::openDeposit,
                 ),
             ),
         )

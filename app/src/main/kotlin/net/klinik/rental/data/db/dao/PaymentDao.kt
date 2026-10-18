@@ -7,6 +7,7 @@ import androidx.room.Query
 import androidx.room.Update
 import kotlinx.coroutines.flow.Flow
 import net.klinik.rental.data.db.entity.PaymentEntity
+import java.time.LocalDate
 
 /**
  * Reads and writes for `PAYMENT`.
@@ -126,4 +127,57 @@ interface PaymentDao {
      */
     @Query("SELECT DISTINCT contractId FROM payment")
     fun observeContractIds(): Flow<List<String>>
+
+    /**
+     * The confirmed income of every day that has any, grouped by date — Story 4.3's
+     * "Pendapatan hari ini".
+     *
+     * ## Why this groups by date rather than filtering to one
+     *
+     * Because a query with a `WHERE date = :date` parameter **freezes the date in the
+     * subscription**: Room re-runs it with the same bound value when the table changes, so a
+     * deposit landing after midnight would be summed against yesterday. That is the same
+     * frozen-clock defect Story 4.1's review found in the arrears read, and the fix is the
+     * same shape — the clock is read where the figure is *chosen*, not where the query is
+     * built.
+     *
+     * Grouping by date hands the choice to Kotlin: one row per day, and the repository picks
+     * today's row with a clock read on every emission. A write at 00:05 therefore counts
+     * against the new day, on the same subscription, with no second mechanism.
+     *
+     * ## Why the status filter lives in the query
+     *
+     * Because a cancelled deposit is not income. It is kept for its audit trail and no longer
+     * counts against arrears, so counting it here would put a number on the morning screen that
+     * the rest of the app has already agreed is void — and the two would disagree the moment
+     * a cancellation landed.
+     *
+     * The filter is in the SQL rather than in Kotlin for the same reason
+     * [observeContractIds] reads no real column: this is read **per emission**, and a
+     * Kotlin-side filter would have to be applied to a list that had already been fetched.
+     */
+    @Query(
+        """
+        SELECT date, SUM(amount) AS total FROM payment
+        WHERE status = 'confirmed'
+        GROUP BY date
+        """,
+    )
+    fun observeIncomeByDate(): Flow<List<DailyIncome>>
 }
+
+/**
+ * One day's confirmed income, as the grouped query returns it.
+ *
+ * A projection rather than an entity because the query returns two columns and no row of
+ * its own — and a `@Query` with two JOINs would need a row POJO anyway, which the epic
+ * context names as the cost of a join. Here there is no join, and the projection is the
+ * smallest thing that can carry the figure.
+ *
+ * @property date the day the money arrived, as a billing fact.
+ * @property total the confirmed rupiah received that day, in whole units.
+ */
+data class DailyIncome(
+    val date: LocalDate,
+    val total: Long,
+)

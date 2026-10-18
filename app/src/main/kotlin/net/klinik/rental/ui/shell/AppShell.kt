@@ -91,6 +91,10 @@ internal fun AppShell(
         }
     }
 
+    // Whether Beranda is the screen showing — read from the back stack, the one
+    // place that knows. The FAB's visibility follows it, and follows nothing else.
+    val isOnBeranda = backStackEntry?.destination?.route == Destination.Beranda.route
+
     // The deposit FAB, mounted by the **shell** rather than by any destination.
     //
     // Story 3.2's AC opens the deposit form from "Beranda atau speed dial", and neither
@@ -142,8 +146,18 @@ internal fun AppShell(
         // The FAB floats over whichever branch drew, aligned to the bottom-end with
         // the shell's own gutter. `align` rather than a nested `Box`, so it adds no
         // layout of its own and cannot shift the graph above it.
+        //
+        // **Hidden on Beranda.** UX-DR17 is explicit — *"speed dial TIDAK muncul di
+        // Beranda"* — and the reason is worth keeping: the grid's "Catat Setoran" tile
+        // is the only door to that action from the morning screen, and two doors to one
+        // action is how one of them goes stale. `DepositFab`'s KDoc has carried this
+        // promise since Story 3.2, and this is the line it was waiting for.
+        //
+        // The check is the **route**, not a flag: the route is the fact, and a flag
+        // beside it would be a second thing to keep in step — the defect this repo
+        // finds whenever a fact is encoded twice.
         DepositFab(
-            visible = !screens.deposito.state.isOpen,
+            visible = !screens.deposito.state.isOpen && !isOnBeranda,
             onOpen = screens.deposito.onOpen,
             modifier = Modifier
                 .align(Alignment.BottomEnd)

@@ -920,4 +920,25 @@ class RStrings(private val context: Context) {
     /** WhatsApp could not be opened; the sentence points at Copy as the way out. */
     fun tunggakanReminderOpenFailed(): String =
         context.getString(R.string.tunggakan_reminder_open_failed)
+
+    // -------------------------------------------------------------- Story 4.3
+
+    /**
+     * The fleet split, as "12 · 3 · 1" — available, rented, in service.
+     *
+     * Three counts in one string rather than three numbers the screen places, for the reason
+     * the arrears row's figure line is one string: a figure assembled in two places is one
+     * that can be assembled differently.
+     */
+    fun berandaFleetSplit(available: Int, rented: Int, service: Int): String =
+        context.getString(R.string.beranda_fleet_split, available, rented, service)
+
+    /**
+     * The collection rate, as a whole percentage — "75%".
+     *
+     * The number arrives already whole, so this formats rather than rounds: a rate that was
+     * rounded here and rounded again on the tile would be two roundings of one figure.
+     */
+    fun berandaRate(percent: Int): String =
+        context.getString(R.string.beranda_rate, percent)
 }
