@@ -44,7 +44,7 @@ class GlobalSearchBarTest {
     /** The field is on the shell, so "every screen" is a property of the layout. */
     @Test
     fun `the search field is part of the shell`() {
-        compose.setContent { theme { Bar(state = GlobalSearchUiState()) } }
+        compose.setContent { theme { Bar(state = GlobalSearchUiState(), onQueryChange = {}, onClear = {}, onSelect = {}) } }
 
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_FIELD).assertIsDisplayed()
         // And an idle field draws no overlay: a panel beneath a field nobody typed in reads
@@ -56,7 +56,7 @@ class GlobalSearchBarTest {
     @Test
     fun `results appear once a query is typed`() {
         val state = GlobalSearchUiState.of("siti", listOf(siti()), emptyList())
-        compose.setContent { theme { Bar(state = state) } }
+        compose.setContent { theme { Bar(state = state, onQueryChange = {}, onClear = {}, onSelect = {}) } }
 
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertExists()
         // Group headings are drawn, so a result is never presented without saying what it is.
@@ -67,7 +67,7 @@ class GlobalSearchBarTest {
     @Test
     fun `no hits draws the explained empty state`() {
         val state = GlobalSearchUiState.of("zzzz", listOf(siti()), listOf(avanza()))
-        compose.setContent { theme { Bar(state = state) } }
+        compose.setContent { theme { Bar(state = state, onQueryChange = {}, onClear = {}, onSelect = {}) } }
 
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_EMPTY).assertExists()
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertExists()
@@ -84,7 +84,7 @@ class GlobalSearchBarTest {
     fun `tapping a result reaches the handler with that hit`() {
         var selected: SearchResult? = null
         val state = GlobalSearchUiState.of("siti", listOf(siti(), budi()), emptyList())
-        compose.setContent { theme { Bar(state = state, onSelect = { selected = it }) } }
+        compose.setContent { theme { Bar(state = state, onQueryChange = {}, onClear = {}, onSelect = { selected = it }) } }
 
         compose.onNodeWithTag(searchResultTag("Siti Aminah"))
             .performSemanticsAction(SemanticsActions.OnClick)
@@ -99,7 +99,7 @@ class GlobalSearchBarTest {
     fun `typing reaches the query handler`() {
         var typed = ""
         compose.setContent {
-            theme { Bar(state = GlobalSearchUiState(), onQueryChange = { typed = it }) }
+            theme { Bar(state = GlobalSearchUiState(), onQueryChange = { typed = it }, onClear = {}, onSelect = {}) }
         }
 
         compose.onNode(hasSetTextAction() and hasAncestorTag(TAG_GLOBAL_SEARCH_FIELD))
@@ -113,7 +113,7 @@ class GlobalSearchBarTest {
     @Test
     fun `a result row clears the touch floor`() {
         val state = GlobalSearchUiState.of("siti", listOf(siti()), emptyList())
-        compose.setContent { theme { Bar(state = state) } }
+        compose.setContent { theme { Bar(state = state, onQueryChange = {}, onClear = {}, onSelect = {}) } }
 
         compose.onNodeWithTag(searchResultTag("Siti Aminah")).assertHeightIsAtLeast(48.dp)
     }
@@ -128,13 +128,17 @@ class GlobalSearchBarTest {
     @Composable
     private fun Bar(
         state: GlobalSearchUiState,
-        onQueryChange: (String) -> Unit = {},
-        onSelect: (SearchResult) -> Unit = {},
+        // Both **required**. A defaulted handler here is a field rendered and wired to
+        // nothing, which is the failure this repo has shipped three times — and a test that
+        // forgets to pass one would pass vacuously rather than fail to compile.
+        onQueryChange: (String) -> Unit,
+        onClear: () -> Unit,
+        onSelect: (SearchResult) -> Unit,
     ) {
         GlobalSearchBar(
             state = state,
             onQueryChange = onQueryChange,
-            onClear = {},
+            onClear = onClear,
             onSelect = onSelect,
         )
     }

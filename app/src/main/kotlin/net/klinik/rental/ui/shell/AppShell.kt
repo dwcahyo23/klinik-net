@@ -187,8 +187,22 @@ internal fun AppShell(
         //
         // Mounted here rather than in each screen because "available on every screen" is then
         // a property of the layout rather than seven reminders: a destination added next year
-        // inherits it, and one added today cannot ship without it. The two screens that used
-        // to draw their own bars stopped, so the app has one search control rather than three.
+        // inherits it, and one added today cannot ship without it.
+        //
+        // ## Why the two screens keep their own bars — three bars, one rule
+        //
+        // `PenyewaScreen` and `KendaraanScreen` still draw theirs, and the task list that said
+        // they should stop was **wrong**. A screen's own bar is the only control that can
+        // *widen* a list this one narrowed: removing it would leave a list the owner can filter
+        // but never unfilter, and would strand that screen's `query` with no writer. So selecting
+        // a result writes the destination's own query (see [narrowTo]), the destination's bar
+        // shows it, and the owner clears it there.
+        //
+        // The two are different jobs rather than duplicates — this one searches across the app,
+        // a screen's searches its own list — and they agree by construction because both call
+        // the predicates in `SearchMatch.kt`. What makes that rule shared is the **matching**,
+        // not the count of fields: three bars matching by one implementation beats one bar
+        // matching by three.
         //
         // It sits above the graph in a `Column` rather than floating over it, so it never
         // covers a screen's own top bar — and the results overlay hangs beneath the field
