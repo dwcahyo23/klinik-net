@@ -10,21 +10,7 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
 warnings:
   - oversized
-deferred:
-  - summary: >-
-      Correction entry point (`openEditDeposit`) has no production caller in app/src/main
-    evidence: |-
-      `SetoranViewModel.openEditDeposit`, `DepositFormState.isEditing`, the edit-mode
-      title, and the method-chip lock are implemented and covered by
-      `CorrectDepositViewModelTest` and `DepositSheetTest`, but nothing in app/src/main
-      calls them. The same gap is already recorded for Story 3.4's `requestCancel`:
-      no deposit history list exists yet, so there is no row to tap. Mounting happens
-      when Epic 4 builds the deposit history surface. Pass 2 confirmed it independently
-      from the intent-alignment layer, whose reachability finding (R-b) is the same
-      defect seen from the AC's own "When saya membukanya" phrasing.
-    location: >-
-      app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/SetoranViewModel.kt
-    severity: medium
+deferred: []
   - summary: >-
       "Tunggakan dihitung ulang seketika" is proven only at the data layer
     evidence: |-

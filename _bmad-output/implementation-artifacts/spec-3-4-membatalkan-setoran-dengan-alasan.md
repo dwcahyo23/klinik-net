@@ -10,14 +10,7 @@ context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
 warnings:
   - oversized
-deferred:
-  - summary: >-
-      Cancellation UI surface and dialog mount deferred to Epic 4 history screen
-    evidence: |-
-      Spec explicitly states "No history screen. This story builds the row and proves it survives; Epic 4 builds the surface that lists it." CancelDepositDialog and SetoranViewModel.requestCancel are implemented and tested, but will be mounted when the deposit history list is introduced in Epic 4.
-    location: >-
-      app/src/main/kotlin/net/klinik/rental/ui/screens/setoran/CancelDepositDialog.kt
-    severity: low
+deferred: []
 ---
 
 <intent-contract>

@@ -2,7 +2,7 @@
 title: 'Riwayat Setoran — menutup deferral Epic 3'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '426b63cb729e48b913600d534be4d20f29e14b7a'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-3-context.md'
