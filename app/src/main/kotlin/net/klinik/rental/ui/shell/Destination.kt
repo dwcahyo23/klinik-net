@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.composables.icons.lucide.CarFront
+import com.composables.icons.lucide.ChartColumn
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.ClipboardList
 import com.composables.icons.lucide.House
@@ -98,6 +99,17 @@ enum class Destination(
      * **appended** here, and the rail is re-ordered once the set is complete.
      */
     Beranda(route = "beranda", labelRes = R.string.nav_beranda),
+
+    /**
+     * The period report. `LaporanScreen`.
+     *
+     * The seventh destination, and the last of UX-DR17's rail to arrive. UX-DR17 orders the
+     * rail **Beranda · Setoran · Kendaraan · Penyewa · Tunggakan · Laporan · Pengaturan** by
+     * frequency, and this is the one entry of that order that was still missing once the
+     * others had landed — so the rail's re-order is now possible and belongs to whatever
+     * closes Epic 4, not to a story that only adds an entry.
+     */
+    Laporan(route = "laporan", labelRes = R.string.nav_laporan),
     ;
 
     companion object {
@@ -181,4 +193,7 @@ private val Destination.icon: ImageVector
         // dashboard uses, so the rail's first item reads as "home" the way every other
         // phone's does.
         Destination.Beranda -> Lucide.House
+        // A bar chart for the period report — the screen's own subject rather than a
+        // generic document, so the rail reads as seven different jobs.
+        Destination.Laporan -> Lucide.ChartColumn
     }

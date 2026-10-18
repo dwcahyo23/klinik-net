@@ -792,6 +792,13 @@ class AccessibilityTest {
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
         ),
+        // Story 4.5's report, written out for the same reason: its period chips and its
+        // four risk rows are interactive or bearing nodes this walk has to reach.
+        laporan = Screens.Laporan(
+            state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
+            periodOptions = listOf("25 Sep - 24 Okt 2026"),
+            onSelectPeriod = {},
+        ),
     )
 
     private fun tag(variant: KnButtonVariant, size: KnButtonSize) =

@@ -426,6 +426,10 @@ class AppShellTest {
         Destination.Tunggakan -> "Tunggakan"
         // The sixth, added by Story 4.3 — and the one the app now opens on.
         Destination.Beranda -> "Beranda"
+        // The seventh, added by Story 4.5. The `when` going non-exhaustive is again the
+        // mechanism this file documents: the seventh destination's label could have been
+        // spelled anything and every other assertion here would still have passed.
+        Destination.Laporan -> "Laporan"
     }
 
     /**
@@ -582,6 +586,13 @@ class AppShellTest {
         beranda = Screens.Beranda(
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
+        ),
+        // The seventh, Story 4.5's. Empty but present: the parameter is required so this
+        // fixture cannot ship a report with no figures and call the shell green.
+        laporan = Screens.Laporan(
+            state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
+            periodOptions = listOf("25 Sep - 24 Okt 2026"),
+            onSelectPeriod = {},
         ),
     )
 }

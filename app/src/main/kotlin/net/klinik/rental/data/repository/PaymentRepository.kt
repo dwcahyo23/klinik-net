@@ -13,6 +13,7 @@ import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.SettingDao
 import net.klinik.rental.data.db.dao.VehicleDao
+import net.klinik.rental.data.db.dao.DailyIncome
 import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.PaymentEntity
@@ -812,8 +813,18 @@ class PaymentRepository(
      * placeholder takes a rupiah off the oldest open day, so every deposit's row lands one
      * rupiah short of `dailyRate` and a closed day reads as open. The **day count** is what a
      * tenant is told, so inflating it here would be the worst place for that bug to live.
+     *
+     * @param asOf the date the bill is cut at, defaulting to **today read per emission**.
+     *   Story 4.5's report calls this with a period's own last day, which is what makes
+     *   "the same function with a different time point" true in the strict sense — one body,
+     *   two arguments — rather than true only in the sense that two callers happen to agree
+     *   today. The default keeps this path byte-identical to what Beranda already ran, so
+     *   nothing on the morning screen moves.
      */
-    fun observeArrearsForAllContracts(clock: Clock): Flow<List<ContractArrears>> =
+    fun observeArrearsForAllContracts(
+        clock: Clock,
+        asOf: () -> LocalDate = { LocalDate.now(clock) },
+    ): Flow<List<ContractArrears>> =
         combine(
             contractDao.observeAll(),
             // The three tables the figure is derived from, **besides** `contract` — each one
@@ -839,7 +850,7 @@ class PaymentRepository(
             // otherwise show yesterday's figure until the owner left and came back — and
             // nothing would say so. `LIST_MIDNIGHT` is that case: the figure must grow by
             // the day that fell behind, and only a per-emission read can do that.
-            val asOf = LocalDate.now(clock)
+            val billAsOf = asOf()
             contracts.mapNotNull { contract ->
                 // Per-contract, so **one** contract that cannot be computed costs that row
                 // and not the list. This screen is what the owner opens every morning, and
@@ -847,7 +858,7 @@ class PaymentRepository(
                 // answer at all — a worse outcome than one missing tenant, and one they
                 // cannot see the cause of. A genuine `UnknownContractException` (the row
                 // vanished between the query and here) is the same reasoning: skip it.
-                val entry = runCatching { arrearsEntry(contract.id, asOf) }.getOrNull()
+                val entry = runCatching { arrearsEntry(contract.id, billAsOf) }.getOrNull()
                     ?: return@mapNotNull null
                 ContractArrears(
                     contractId = entry.contractId,
@@ -893,6 +904,50 @@ class PaymentRepository(
     fun observeTodaysIncome(clock: Clock): Flow<Long> =
         paymentDao.observeIncomeByDate().map { byDate ->
             byDate.firstOrNull { it.date == LocalDate.now(clock) }?.total ?: 0L
+        }
+
+    /**
+     * Confirmed income from [start] to [end] inclusive, observed — Story 4.5's period total.
+     *
+     * ## Why this filters the **existing** grouping rather than running its own query
+     *
+     * Because [observeIncomeByDate] is already the app's answer to "what came in on which
+     * day", and a second query would be a second place the status filter lives — and
+     * therefore a second thing that can forget that a cancelled deposit is not income. This
+     * takes the buckets the query already grouped and adds up the ones in range.
+     *
+     * ## Why the date decides membership, and nothing else does
+     *
+     * Because the acceptance criterion is that a deposit belongs to the period its **recorded
+     * date** falls in. There is no booking date in this app, so there is nothing else it
+     * could belong to: a deposit dated 20 March counts in March and not in April, because
+     * the bucket it is in is decided by `date` and nothing reads it twice.
+     *
+     * The range is **inclusive** at both ends, because a billing period's own boundaries are
+     * inclusive — [net.klinik.rental.domain.calculate.CutoffPeriod] starts on the cutoff day
+     * and ends the day before the next one, and a deposit on either boundary day is inside.
+     */
+    fun observeIncomeBetween(start: LocalDate, end: LocalDate): Flow<Long> =
+        paymentDao.observeIncomeByDate().map { byDate ->
+            byDate.filter { !it.date.isBefore(start) && !it.date.isAfter(end) }
+                .sumOf { it.total }
+        }
+
+    /**
+     * Income per day across [start] to [end] inclusive, zero-filled — Story 4.5's trend.
+     *
+     * ## Why the days are zero-filled here and not by the screen
+     *
+     * Because a gap is a fact about the period, and a chart that skipped a quiet day would
+     * draw a straight line through it — reading as a steady Tuesday when nothing arrived.
+     * Filling here rather than in the composable is what makes the Canvas a straight
+     * "one point per day" mapping rather than a chart that has to infer the missing days.
+     */
+    fun observeIncomeByDay(start: LocalDate, end: LocalDate): Flow<List<DailyIncome>> =
+        paymentDao.observeIncomeByDate().map { byDate ->
+            start.datesUntil(end.plusDays(1))
+                .map { day -> byDate.firstOrNull { it.date == day } ?: DailyIncome(day, 0L) }
+                .toList()
         }
 
     /**

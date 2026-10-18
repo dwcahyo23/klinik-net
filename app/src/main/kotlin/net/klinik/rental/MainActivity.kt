@@ -24,6 +24,7 @@ import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.screens.beranda.BerandaViewModel
+import net.klinik.rental.ui.screens.laporan.LaporanViewModel
 import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
 import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
 import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
@@ -139,6 +140,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The period report's ViewModel. Its own lifetime, for the reason the others have one:
+     * the report re-reads at whatever period is selected, and a shared `combine` would carry
+     * that as a source every other screen then has to hold.
+     */
+    private val laporanViewModel: LaporanViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createLaporanViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -160,6 +174,7 @@ class MainActivity : ComponentActivity() {
                     setoran = setoranViewModel,
                     tunggakan = tunggakanViewModel,
                     beranda = berandaViewModel,
+                    laporan = laporanViewModel,
                 )
             }
         }
@@ -326,6 +341,39 @@ internal fun createBerandaViewModel(context: Context): BerandaViewModel {
 }
 
 /**
+ * Builds the period report's ViewModel over the database singleton.
+ *
+ * [PaymentRepository] is built over the **same** DAO set `createBerandaViewModel` builds, and
+ * that is the point rather than an accident of wiring: the report's figures and the morning
+ * summary's must come from the same reads, so they share the repository's shape. Two
+ * repositories over one database would be harmless here but would invite the second
+ * arithmetic this story exists to prevent.
+ */
+internal fun createLaporanViewModel(context: Context): LaporanViewModel {
+    val database = KlinikDatabase.get(context)
+    val settingDao = database.settingDao()
+    return LaporanViewModel(
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = settingDao,
+            database = database,
+        ),
+        strings = RStrings(context),
+        // The same clock every other ViewModel gets: which period "today" falls in decides
+        // every figure on this screen.
+        clock = Clock.systemDefaultZone(),
+        // Read through the DAO the report already holds, so the period's boundaries are the
+        // ones the allocation engine used rather than a constant typed here.
+        cutoffDay = {
+            settingDao.findInt(PaymentRepository.KEY_CUTOFF_DAY, PaymentRepository.DEFAULT_CUTOFF_DAY)
+        },
+    )
+}
+
+/**
  * Builds the arrears list's ViewModel over the database singleton.
  *
  * ## Why it holds a `PaymentRepository` of its own
@@ -398,6 +446,7 @@ private fun KlinikNetApp(
     setoran: SetoranViewModel,
     tunggakan: TunggakanViewModel,
     beranda: BerandaViewModel,
+    laporan: LaporanViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -429,6 +478,10 @@ private fun KlinikNetApp(
     // live on its own state — but it has no banner, because every figure it shows comes
     // from a read that either succeeded or is still loading, and neither is a refusal.
     val berandaState by beranda.uiState.collectAsStateWithLifecycle()
+    // Story 4.5's two collections: the figures, and the periods the picker offers. The
+    // picker is its own flow so a chip appearing does not recompose the four tiles.
+    val laporanState by laporan.uiState.collectAsStateWithLifecycle()
+    val laporanPeriods by laporan.periodOptions.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -576,6 +629,14 @@ private fun KlinikNetApp(
                 beranda = Screens.Beranda(
                     state = berandaState,
                     onDeposit = setoran::openDeposit,
+                ),
+                // Story 4.5's report. No navigation verb: the only control is picking a
+                // period, which is the screen's own state, so a second nav controller here
+                // would be a back stack disagreeing with itself over nothing.
+                laporan = Screens.Laporan(
+                    state = laporanState,
+                    periodOptions = laporanPeriods,
+                    onSelectPeriod = laporan::selectPeriod,
                 ),
             ),
         )

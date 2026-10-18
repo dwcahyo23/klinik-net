@@ -2,6 +2,7 @@ package net.klinik.rental.ui.components
 
 import androidx.compose.foundation.BorderStroke
 import androidx.compose.foundation.background
+import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -285,7 +286,22 @@ fun KnBottomNav(
             .background(kn.bgRail)
             .padding(horizontal = spacing.sm, vertical = spacing.xs),
     ) {
-        Row(Modifier.fillMaxWidth()) {
+        // Seven destinations on a 360dp phone leave each tab a 44dp share, under the
+        // 48dp floor — `weight` constrains a child in a `Row` whether it comes before or
+        // after `minTouchTarget`, because the minimum is measured *inside* an already-fixed
+        // share. Ordering the modifiers does not help; the Row's own width has to be able
+        // to exceed the screen.
+        //
+        // So the row **scrolls**, exactly as the landscape rail does. Each destination
+        // keeps its full 48dp and the owner slides the bar sideways to reach the last one,
+        // which is a tab that is hard to reach rather than one that cannot be hit. A tab
+        // squeezed to 44dp is a destination the owner stops using, and a hidden one is at
+        // least visible.
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+        ) {
             items.forEachIndexed { index, item ->
                 val selected = index == selectedIndex
                 // Keyed on the destination for the same reason as the rail: an
@@ -298,7 +314,9 @@ fun KnBottomNav(
                     Surface(
                     onClick = { onSelect(index) },
                     modifier = Modifier
-                        .weight(1f)
+                        // `width`, not `weight`: the floor is the floor, and a weighted
+                        // share on seven items is below it.
+                        .width(BOTTOM_NAV_ITEM_WIDTH)
                         .minTouchTarget()
                         .focusRing(focused, MaterialTheme.knRadii.md),
                     shape = shape,
@@ -470,6 +488,24 @@ private val KnNavRailWidth = 88.dp
 
 /** `--rail-w-compact` */
 private val KnNavRailWidthCompact = 72.dp
+
+/**
+ * One bottom-nav destination's width.
+ *
+ * ## Why a fixed width rather than a weighted share
+ *
+ * Because `weight(1f)` hands each destination whatever is left after the others, and with
+ * seven destinations on a narrow phone that share is **44dp** — under the 48dp floor the
+ * whole app is measured against. `minTouchTarget` cannot save it: a child's minimum is
+ * measured *inside* an already-fixed share, so the floor was declared and then not reached.
+ * Reordering the two modifiers changes nothing, for the same reason — which is worth
+ * recording, because reordering is the first thing anyone tries.
+ *
+ * A fixed width keeps every tab at the floor and the bar scrolls instead: the same trade
+ * the landscape rail makes for height, and the same reason — a tab that is hard to reach
+ * beats one that cannot be hit.
+ */
+private val BOTTOM_NAV_ITEM_WIDTH = 64.dp
 
 /** `--topbar-h` */
 private val TopBarHeight = 72.dp

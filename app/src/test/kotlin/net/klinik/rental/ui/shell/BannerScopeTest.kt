@@ -230,6 +230,13 @@ class BannerScopeTest {
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
         ),
+        // Story 4.5's report. Like Beranda, it draws no banner of its own — every figure
+        // comes from a read — but the fixture states it so this stays complete.
+        laporan = Screens.Laporan(
+            state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
+            periodOptions = listOf("25 Sep - 24 Okt 2026"),
+            onSelectPeriod = {},
+        ),
     )
 
 }

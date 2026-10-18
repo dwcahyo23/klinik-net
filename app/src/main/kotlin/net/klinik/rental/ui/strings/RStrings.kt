@@ -941,4 +941,27 @@ class RStrings(private val context: Context) {
      */
     fun berandaRate(percent: Int): String =
         context.getString(R.string.beranda_rate, percent)
+
+    // -------------------------------------------------------------- Story 4.5
+
+    /**
+     * How many renters owe nothing — "3 penyewa lunas".
+     *
+     * The count arrives whole, so it is formatted rather than assembled: a number built by
+     * hand beside a string is a second spelling of the same figure.
+     */
+    fun laporanSettledRenters(count: Int): String =
+        context.getString(R.string.laporan_settled_renters, count)
+
+    /** One ladder level's name, from the domain's own word for it. */
+    fun laporanRiskLabel(level: net.klinik.rental.domain.calculate.RiskLevel): String =
+        context.getString(
+            when (level) {
+                net.klinik.rental.domain.calculate.RiskLevel.LANCAR -> R.string.laporan_risk_lancar
+                net.klinik.rental.domain.calculate.RiskLevel.RINGAN -> R.string.laporan_risk_ringan
+                net.klinik.rental.domain.calculate.RiskLevel.PERHATIAN ->
+                    R.string.laporan_risk_perhatian
+                net.klinik.rental.domain.calculate.RiskLevel.KRITIS -> R.string.laporan_risk_kritis
+            },
+        )
 }

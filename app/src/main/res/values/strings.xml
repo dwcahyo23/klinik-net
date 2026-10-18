@@ -1050,6 +1050,27 @@
     <string name="beranda_action_vehicle">Tambah Mobil</string>
     <string name="beranda_action_renter">Kelola Penyewa</string>
     <string name="beranda_action_reminder">Kirim Pengingat</string>
+
+    <!--
+      Story 4.5 — Laporan (the period report).
+
+      The `laporan_*` prefix follows the same rule as every other screen's block.
+    -->
+    <string name="nav_laporan">Laporan</string>
+    <string name="laporan_title">Laporan</string>
+    <string name="laporan_period_label">Periode</string>
+    <string name="laporan_kpi_income">Setoran masuk</string>
+    <string name="laporan_kpi_arrears">Tunggakan akhir periode</string>
+    <string name="laporan_kpi_settled">Penyewa lunas</string>
+    <string name="laporan_kpi_trend">Tren 7 hari</string>
+    <string name="laporan_settled_renters">%1$d penyewa lunas</string>
+    <string name="laporan_risk_title">Komposisi tunggakan</string>
+    <string name="laporan_risk_lancar">Lancar</string>
+    <string name="laporan_risk_ringan">Ringan</string>
+    <string name="laporan_risk_perhatian">Perhatian</string>
+    <string name="laporan_risk_kritis">Kritis</string>
+    <string name="laporan_empty_title">Belum ada angka di periode ini</string>
+    <string name="laporan_empty_body">Pilih periode lain di atas, atau catat setoran agar muncul di sini.</string>
 </resources>
 
 

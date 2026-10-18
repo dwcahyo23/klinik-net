@@ -17,6 +17,7 @@ import net.klinik.rental.ui.screens.kendaraan.VehicleFormSheet
 import net.klinik.rental.ui.screens.kontrak.ContractFormState
 import net.klinik.rental.ui.screens.kontrak.KontrakScreen
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
+import net.klinik.rental.ui.screens.laporan.LaporanScreen
 import net.klinik.rental.ui.screens.penyewa.PenyewaScreen
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.penyewa.RenterFormSheet
@@ -84,7 +85,29 @@ internal fun AppNavGraph(
         // `TunggakanRoute` it composes the screen directly: it has no sheet of its own, and
         // its quick actions are **verbs** the shell performs rather than sheets it mounts.
         composable(Destination.Beranda.route) { BerandaRoute(screens.beranda, navController) }
+
+        // The seventh, added by Story 4.5 — the period report. No sheet of its own and no
+        // navigation verb: its only action is picking a period, which is the screen's own
+        // state rather than the shell's.
+        composable(Destination.Laporan.route) { LaporanRoute(screens.laporan) }
     }
+}
+
+/**
+ * The period-report destination.
+ *
+ * No `navController` parameter, because nothing here navigates: the report's only control
+ * changes which period it reads, and that is `wiring.onSelectPeriod` reaching the ViewModel
+ * directly. A route that took a controller it never used would be a hint that this screen owns
+ * navigation it does not.
+ */
+@Composable
+private fun LaporanRoute(wiring: Screens.Laporan) {
+    LaporanScreen(
+        state = wiring.state,
+        periodOptions = wiring.periodOptions,
+        onSelectPeriod = wiring.onSelectPeriod,
+    )
 }
 
 /**
@@ -222,6 +245,15 @@ internal class Screens(
      * holds, and only the deposit sheet's action belongs here.
      */
     val beranda: Beranda,
+
+    /**
+     * The period report's wiring. See [Laporan].
+     *
+     * No route of its own in this class's own sense — the route lives on [Destination], and
+     * `AppNavGraph` composes it from the same `entries` it derives the rail from, so a
+     * destination cannot exist in the chrome and not in the graph.
+     */
+    val laporan: Laporan,
 ) {
     /**
      * The arrears destination's wiring.
@@ -445,6 +477,23 @@ internal class Screens(
     class Beranda(
         val state: net.klinik.rental.ui.screens.beranda.BerandaUiState,
         val onDeposit: () -> Unit,
+    )
+
+    /**
+     * The period report's wiring — Story 4.5.
+     *
+     * `strings` is carried rather than constructed here: this package holds no `Context`, and a
+     * `RStrings` built at the call site would be a second object per screen resolving the same
+     * resources. The Activity builds one and hands it over, as it does for every other screen.
+     *
+     * `onSelectPeriod` is required, not defaulted — a picker wired to `{}` renders six months
+     * that lead nowhere, which is the same control-that-reaches-nothing shape this class has
+     * refused to ship twice.
+     */
+    class Laporan(
+        val state: net.klinik.rental.ui.screens.laporan.LaporanUiState,
+        val periodOptions: List<String>,
+        val onSelectPeriod: (Int) -> Unit,
     )
 }
 
