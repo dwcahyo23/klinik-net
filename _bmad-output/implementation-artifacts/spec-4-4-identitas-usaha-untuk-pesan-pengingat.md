@@ -2,7 +2,8 @@
 title: 'Story 4.4 — Identitas usaha untuk pesan pengingat'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-review'
+status: 'done'
+followup_review_recommended: false
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_revision: '6dda9b6315f31246754330ee7458499c475c29b7'
@@ -133,6 +134,26 @@ reason to.
 
 ## Implementation Notes
 
+**The identity edit path lost data, and a test asserted the loss as intent.** `IdentityRow`
+carried only `name`, so `openIdentityForm` opened the address and phone empty even when they were
+stored; `toBusinessIdentity` turned an empty field into `null`; and `clearIfAbsent` **deletes**
+the row for a `null`. The owner's path: fill in all three, weeks later correct a typo in the
+name, save — and get a success confirmation with the address and phone gone, on the one action
+this UI cannot undo.
+
+What let it survive the first pass is the part worth recording. `IdentityFormTest` asserted the
+empty opening *as deliberate* — *"the address opens empty — a placeholder there would invite a
+value the owner never chose"* — a sound argument for a **fresh** form and exactly wrong for an
+**edit**. The test hand-built `IdentityFormState()` with no stored identity in play, so the
+distinction never arose. And `PengaturanViewModelTest` had eleven cases, **none of which called
+`openIdentityForm`**; its only prefill test was the *account* form's. So a KDoc could claim
+"Pre-filled on both halves" while the code passed only `name`, and a test could assert the
+opposite, and neither failed.
+
+The regression now lives in `PengaturanViewModelTest` — storage → form → storage — because that
+is the only place the distinction is visible. It opens a saved identity, changes one character
+of the name, saves, and reads all three back.
+
 **The required-callback rule paid for itself before the tests were written.** Making the four
 identity callbacks required — rather than defaulted like several of their siblings — produced
 eleven compile errors across five test files at the first `:app:compileDebugKotlin`. Every one
@@ -147,6 +168,12 @@ that can be set once and never cleared is a constant wearing a settings screen's
 and `""` are now kept distinct — a field the owner cleared is *absent*, which a future message
 can tell from one they never filled in.
 
+**Only one sheet may be up, and the guard shipped one-way.** `openIdentityForm` cleared the
+account form; `openAddForm` and `openEditForm` left the identity form standing, so the property
+the screen's own comment claims was true from one side and false from the other. Both directions
+are guarded now and both are asserted, because a test of one direction would have passed against
+the one-way version.
+
 **Two test failures were the harness's fault, not the code's, and both were worth the detour.**
 A `PAYMENT` row needs its vehicle, renter and contract to satisfy the `RESTRICT` foreign keys,
 so the "editing the identity leaves a deposit untouched" case failed on its own fixture. And
@@ -160,7 +187,26 @@ descendant; reading the existing pattern beat guessing twice.
 
 ## Review Triage Log
 
-### 2026-10-18 — Review pass 1
+### 2026-10-18 — Review pass 1 (fix round)
+- **All 13 patch findings applied.** The `high` is closed with a regression test that runs
+  storage → form → storage, which is the only shape that could have caught it.
+- **One asymmetry the reviewers named but the fix left open:** `openIdentityForm` cleared the
+  account form, but `openAddForm` and `openEditForm` did not clear the identity form — so the
+  "only one sheet at a time" property the screen's comment claims was one-way. Both directions
+  are guarded now, and `opening one sheet closes the other` asserts both, because a test of one
+  would have passed against the one-way version.
+- **One finding downgraded to a test gap, not a defect:** the identity action's 48dp floor is
+  already satisfied by `KnButtonSize.Small`'s `minTouchTarget` padding, verified by reading the
+  enum. The assertion was still added, because Story 4.1 shipped the identical 38dp failure on
+  this exact floor and only a measurement caught it.
+- **One finding retracted by its own reviewer:** `deleteSetting` is covered through the
+  repository, so the DAO-boundary gap does not exist.
+- **One test corrected rather than the code:** `the blank refusal renders on the name field`
+  asked for tag **and** text on one node, but `KnField` renders the error as a child row. The
+  query now uses `hasAnyAncestor`, the in-repo idiom. The behaviour was right; the assertion was
+  asking the wrong question.
+
+### 2026-10-18 — Review pass 1 (original)
 - verdicts: 45 findings — high 1, medium 9, low 19, false 3, maybe-false 14
 - findings:
   - `[high]` `[patch]` **editing an existing identity silently erases its address and phone** (blind-hunter B4, B5). `IdentityRow` carries only `name`, so `openIdentityForm` opens the other two fields empty; `toBusinessIdentity` turns an empty field into `null`; and `clearIfAbsent` **deletes** the stored row for a `null`. So the owner opens the form to correct a spelling, saves, and the address and phone they entered months ago are gone — with a success confirmation naming the save. `IdentityFormTest:67` *asserts* the empty opening as deliberate ("a placeholder there would invite a value the owner never chose"), which is a real argument for a fresh form and exactly wrong for an edit. Verified end to end: `PengaturanViewModel.kt:332-338`, `PengaturanUiState.kt` `IdentityFormState` and `toBusinessIdentity`, `BusinessIdentityRepository.clearIfAbsent`.
