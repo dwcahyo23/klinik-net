@@ -816,6 +816,16 @@ class AccessibilityTest {
             onQueryChange = {},
             onClear = {},
         ),
+        // The deposit screen's wiring, stated for the same reason every bundle above is:
+        // this file walks every interactive node the shell can draw, so the screen's tab
+        // chips and its two per-row verbs are measured only because the wiring is here.
+        setoran = Screens.Setoran(
+            state = net.klinik.rental.ui.screens.setoran.SetoranScreenState(),
+            onSelectTab = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDismissError = {},
+        ),
     )
 
     private fun tag(variant: KnButtonVariant, size: KnButtonSize) =

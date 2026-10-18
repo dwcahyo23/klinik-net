@@ -513,6 +513,10 @@ private fun KlinikNetApp(
     val pengaturanState by pengaturan.uiState.collectAsStateWithLifecycle()
     val pengaturanSnackbar by pengaturan.snackbarMessage.collectAsStateWithLifecycle()
     val setoranState by setoran.uiState.collectAsStateWithLifecycle()
+    // The deposit screen's own state, a separate flow from the sheet's for the reason
+    // `SetoranScreenState`'s KDoc gives: the sheet is a window over any screen, this is a
+    // destination with its own lifetime.
+    val setoranScreenState by setoran.screenState.collectAsStateWithLifecycle()
     // Story 4.3's morning summary. A whole screen rather than a sheet, so its banner would
     // live on its own state — but it has no banner, because every figure it shows comes
     // from a read that either succeeded or is still loading, and neither is a refusal.
@@ -707,6 +711,17 @@ private fun KlinikNetApp(
                     state = searchState,
                     onQueryChange = search::onQueryChange,
                     onClear = search::clearQuery,
+                ),
+                // The deposit screen's own wiring. Its three callbacks go to the
+                // **deposit** ViewModel — the same object the sheet uses — because the
+                // verbs must land where the cancellation dialog and the correction form
+                // live. Required, not defaulted: both verbs shipped unreachable once.
+                setoran = Screens.Setoran(
+                    state = setoranScreenState,
+                    onSelectTab = setoran::selectTab,
+                    onRequestDepositCancel = setoran::requestCancel,
+                    onRequestDepositEdit = setoran::openEditDeposit,
+                    onDismissError = setoran::consumeScreenError,
                 ),
             ),
         )

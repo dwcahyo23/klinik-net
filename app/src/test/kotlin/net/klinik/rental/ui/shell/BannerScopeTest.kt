@@ -249,6 +249,16 @@ class BannerScopeTest {
             onQueryChange = {},
             onClear = {},
         ),
+        // The deposit screen's wiring, stated so this fixture stays complete: a screen
+        // whose callbacks were omitted would differ from production in ways this file
+        // could not see.
+        setoran = Screens.Setoran(
+            state = net.klinik.rental.ui.screens.setoran.SetoranScreenState(),
+            onSelectTab = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDismissError = {},
+        ),
     )
 
 }

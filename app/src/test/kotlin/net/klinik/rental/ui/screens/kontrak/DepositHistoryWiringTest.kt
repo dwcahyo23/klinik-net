@@ -189,6 +189,51 @@ class DepositHistoryWiringTest {
         compose.onNodeWithText("Alasan pembatalan: salah tanggal").assertExists()
     }
 
+    /**
+     * The cancel verb carries the **row's** identity, not the block's.
+     *
+     * The Setoran screen widened this block from one contract to many, and this is the
+     * property that widening had to buy: a row naming Siti while the block names Budi would
+     * open Story 3.4's dialog — *"Tunggakan Pak Budi akan kembali menjadi…"* — about the
+     * wrong person, with the wrong arrears figure, when the owner tapped Siti's deposit.
+     *
+     * Every assertion above has the row agreeing with the block, which is true on the
+     * per-contract surface and therefore cannot tell the two rules apart. Only a row that
+     * **disagrees** can.
+     */
+    @Test
+    fun `the cancel verb prefers the row's identity over the block's`() {
+        var args: Triple<String, String, String>? = null
+        compose.setContent {
+            theme {
+                Block(
+                    state = history(
+                        rows = listOf(
+                            row(
+                                paymentId = "p9",
+                                contractId = "contract-2",
+                                renterName = "Siti Aminah",
+                            ),
+                        ),
+                    ),
+                    onRequestCancel = { contractId, renter, paymentId ->
+                        args = Triple(contractId, renter, paymentId)
+                    },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(depositHistoryCancelTag("p9"))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals(
+            "the tapped row's own contract and renter",
+            Triple("contract-2", "Siti Aminah", "p9"),
+            args,
+        )
+    }
+
     /** No deposits is an **invitation**, not a blank area. */
     @Test
     fun `a contract with no deposits says what to do`() {
@@ -255,13 +300,22 @@ class DepositHistoryWiringTest {
     /**
      * One row, already formatted — the ViewModel builds these, so a test that
      * hand-assembled the strings would be testing a second formatter.
+     *
+     * The three identity fields default to the **block's** values, which is what the
+     * per-contract surface produces and what every assertion above relies on. The one test
+     * that cares about the difference passes different ones.
      */
     private fun row(
         paymentId: String,
         isEditable: Boolean = true,
         cancelReason: String? = null,
+        contractId: String = CONTRACT_ID,
+        renterName: String = "Budi Santoso",
     ) = DepositHistoryRowUi(
         paymentId = paymentId,
+        contractId = contractId,
+        renterName = renterName,
+        contractLabel = "$renterName · B 1235 TF",
         amountText = "Rp 250.000",
         dateText = "5 Okt",
         methodText = "Tunai",

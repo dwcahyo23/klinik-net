@@ -111,9 +111,12 @@ internal fun AppShell(
         }
     }
 
-    // Whether Beranda is the screen showing — read from the back stack, the one
-    // place that knows. The FAB's visibility follows it, and follows nothing else.
-    val isOnBeranda = backStackEntry?.destination?.route == Destination.Beranda.route
+    // Whether the deposit FAB belongs on the screen showing — read from the back stack's
+    // **route**, the one place that knows. The rule lives beside the routing facts in
+    // `Destination.FAB_HIDDEN_ROUTES` (Beranda and Setoran), so the chrome and the table
+    // cannot disagree: a screen whose grid or tab already opens the deposit sheet carries
+    // no second door to it.
+    val isFabHidden = backStackEntry?.destination?.route in Destination.FAB_HIDDEN_ROUTES
 
     /**
      * Narrows the screen a result belongs to, so choosing a hit opens that screen **on that
@@ -265,17 +268,19 @@ internal fun AppShell(
                 // shell's own gutter. `align` rather than a nested `Box`, so it adds no layout
                 // of its own and cannot shift the graph above it.
                 //
-                // **Hidden on Beranda.** UX-DR17 is explicit — *"speed dial TIDAK muncul di
-                // Beranda"* — and the reason is worth keeping: the grid's "Catat Setoran" tile
-                // is the only door to that action from the morning screen, and two doors to one
-                // action is how one of them goes stale. `DepositFab`'s KDoc has carried this
-                // promise since Story 3.2, and this is the line it was waiting for.
+                // **Hidden on Beranda and Setoran.** UX-DR17 is explicit — *"speed dial TIDAK
+                // muncul di Beranda"* — and the reason is worth keeping: the grid's
+                // "Catat Setoran" tile is the only door to that action from the morning screen,
+                // and two doors to one action is how one of them goes stale. Setoran joins it
+                // when the deposit screen arrives: its Input tab is the second door, and the
+                // FAB would be a third. `DepositFab`'s KDoc has carried this promise since
+                // Story 3.2.
                 //
                 // The check is the **route**, not a flag: the route is the fact, and a flag
                 // beside it would be a second thing to keep in step — the defect this repo
                 // finds whenever a fact is encoded twice.
                 DepositFab(
-                    visible = !screens.deposito.state.isOpen && !isOnBeranda,
+                    visible = !screens.deposito.state.isOpen && !isFabHidden,
                     onOpen = screens.deposito.onOpen,
                     modifier = Modifier
                         .align(Alignment.BottomEnd)

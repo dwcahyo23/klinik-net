@@ -129,6 +129,35 @@ interface PaymentDao {
     fun observeContractIds(): Flow<List<String>>
 
     /**
+     * Every deposit on **every** contract, newest first — the Setoran screen's cross-contract
+     * history.
+     *
+     * ## Why this query exists despite the class KDoc's per-contract rule
+     *
+     * Because that rule is about the *allocator's* reads: a global list there would invite
+     * grouping by hand, which is the mistake `Allocation`'s KDoc warns about. This read is
+     * different in kind — it is an **audit listing**, not an arithmetic input, and its rows
+     * go to a projection that already carries `contractId` per row
+     * ([net.klinik.rental.data.repository.DepositHistoryRow]). The grouping lives on the row,
+     * so no caller is invited to regroup.
+     *
+     * ## Why no status filter
+     *
+     * The same rule [observeForContract]'s section gives: the status filter belongs to the
+     * allocator, not to a reader, and a history that hides a cancellation undoes the
+     * audit trail Story 3.4 kept the row for.
+     *
+     * ## Why newest first
+     *
+     * Because the question this list answers is "what came in recently", which is the
+     * opposite reading direction from a per-contract bank statement. The order comes from
+     * the query rather than a sort in the UI, so neither list can disagree with its own
+     * data.
+     */
+    @Query("SELECT * FROM payment ORDER BY date DESC, id DESC")
+    fun observeAllForHistory(): Flow<List<PaymentEntity>>
+
+    /**
      * The confirmed income of every day that has any, grouped by date — Story 4.3's
      * "Pendapatan hari ini".
      *

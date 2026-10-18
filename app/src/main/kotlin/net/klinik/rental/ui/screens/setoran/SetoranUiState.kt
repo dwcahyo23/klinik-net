@@ -277,6 +277,20 @@ data class SetoranUiState(
  */
 data class DepositHistoryRowUi(
     val paymentId: String,
+    /**
+     * The contract the deposit belongs to, and who rents it — **per row**.
+     *
+     * Carried on the row rather than held at block level because the same rows now serve
+     * two surfaces: the per-contract block in the contract sheet (where every row's values
+     * equal the block's) and the Setoran screen's cross-contract history (where they do
+     * not). A cancel callback that read block-level state would open the cancellation
+     * dialog for the wrong contract in that second surface — exactly the wrong-target
+     * failure the wiring test was written to catch.
+     */
+    val contractId: String,
+    val renterName: String,
+    /** `renterName · plate`, the label this app names a rental with. */
+    val contractLabel: String,
     /** `250.000` as `formatRupiah` spells it, including the `Rp` prefix. */
     val amountText: String,
     /** `14 Okt` — the app's own date form, not the ISO column. */
@@ -400,3 +414,85 @@ fun CancelDepositUi.setReason(reason: String): CancelDepositUi = copy(
  * the refusal then reads as a rule rather than as an app that stopped working.
  */
 val CancelDepositUi.canCancel: Boolean get() = reason.isNotBlank()
+
+// ------------------------------------------------------- the Setoran screen
+
+/** The Setoran screen's two tabs, in the order the rail's own screen shows them. */
+enum class SetoranTab {
+    /**
+     * The deposit input tab. Its action opens the **existing** deposit sheet — no second
+     * form, no second numpad, no second preview.
+     */
+    Input,
+
+    /**
+     * The cross-contract history tab: every deposit on every contract, newest first.
+     */
+    Riwayat,
+}
+
+/**
+ * The cross-contract summary strip — four plain figures, no chart, no KPI hierarchy.
+ *
+ * ## Why `total`/`active`/`cancelled` are **counts derived from the same rows**
+ *
+ * Because the acceptance criterion's rule is one subscription: figures derived here are
+ * figures that can never disagree with the list above them. A second counting query would
+ * be a second subscription and a second answer to "how many deposits are there".
+ *
+ * `receivedTodayText` is the one figure that does **not** come from the rows — it counts
+ * confirmed money that landed today, which cancelled rows are excluded from by
+ * construction. It comes from `observeTodaysIncome`'s own flow, the same read Beranda
+ * uses, so the two screens cannot spell today's income differently.
+ */
+data class DepositSummaryUi(
+    /** How many deposits are listed — cancelled ones included. */
+    val total: Int,
+    /** How many are still `confirmed`. */
+    val active: Int,
+    /** How many have been cancelled. */
+    val cancelled: Int,
+    /** Today's confirmed income, already formatted — from `observeTodaysIncome`. */
+    val receivedTodayText: String,
+)
+
+/**
+ * The Setoran screen's own state, distinct from the deposit **sheet's** [SetoranUiState].
+ *
+ * ## Why a separate type rather than a field on the sheet's state
+ *
+ * Because the sheet is a window the shell mounts over whichever screen shows, and this
+ * screen is a destination with its own lifetime. Folding the screen's state into the
+ * sheet's would make the shell collect and re-emit it on every sheet interaction — and
+ * the sheet's `isLoading` semantics ("the pickers have not emitted") would silently
+ * acquire a second meaning about the screen.
+ *
+ * ## Why there is no `isFailed` here
+ *
+ * Because a failed read **is** carried — on [historyUi.errorMessage] — but the summary
+ * strip deliberately has no error of its own: its figures are derived from the same
+ * emission the rows travel in, so a read that failed delivers neither and the history
+ * block's banner is the one surface that says so.
+ */
+data class SetoranScreenState(
+    /** The selected tab. Input first, which is where the screen opens. */
+    val selectedTab: SetoranTab = SetoranTab.Input,
+    /**
+     * The cross-contract rows, newest first — already formatted, the same shape the
+     * per-contract block draws.
+     */
+    val rows: List<DepositHistoryRowUi> = emptyList(),
+    /** The four summary figures, derived from [rows] plus `observeTodaysIncome`. */
+    val summary: DepositSummaryUi? = null,
+    /**
+     * The history read's own failure banner, or `null`.
+     *
+     * A failed read must not be drawn as an empty list: "no deposits anywhere" is a claim
+     * about money this screen must not make without having looked — the same rule every
+     * history surface here follows.
+     */
+    val errorMessage: String? = null,
+) {
+    /** Whether the empty state applies: looked, found nothing, nothing failed. */
+    val isEmpty: Boolean get() = rows.isEmpty() && errorMessage == null
+}

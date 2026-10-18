@@ -11,6 +11,7 @@ import com.composables.icons.lucide.ClipboardList
 import com.composables.icons.lucide.House
 import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.NotebookPen
 import com.composables.icons.lucide.Users
 import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnNavItem
@@ -55,61 +56,63 @@ enum class Destination(
     val route: String,
     @StringRes val labelRes: Int,
 ) {
-    /** The fleet. `KendaraanScreen`. */
-    Kendaraan(route = "kendaraan", labelRes = R.string.nav_kendaraan),
-
-    /** The renters. `PenyewaScreen`. */
-    Penyewa(route = "penyewa", labelRes = R.string.nav_penyewa),
-
-    /** The rental contracts. `KontrakScreen`. */
-    Kontrak(route = "kontrak", labelRes = R.string.nav_kontrak),
-
-    /**
-     * The business accounts transfers arrive at. `PengaturanScreen`.
-     *
-     * The fourth destination, and the first tenant of a place Epic 5's configuration story
-     * will also use — which is why it is a destination rather than a top-bar action on the
-     * fleet screen. Being in this enum is what puts it in **both** the landscape rail and the
-     * portrait bottom nav: `AppShell` derives both from `entries`, so there is no second list
-     * to update and none to forget.
-     */
-    Pengaturan(route = "pengaturan", labelRes = R.string.nav_pengaturan),
-
-    /**
-     * The arrears list. `TunggakanScreen`.
-     *
-     * The fifth destination, and the one the owner opens most — the PRD calls it "layar yang
-     * paling sering dibuka". It was added while [`START`] was still on [Kendaraan], because
-     * Story 4.1's criteria do not ask for a different launch screen.
-     */
-    Tunggakan(route = "tunggakan", labelRes = R.string.nav_tunggakan),
-
     /**
      * The morning summary. `BerandaScreen`.
      *
-     * The sixth destination, and the one the app **opens on** — Story 4.3 moved [START] here,
-     * because the screen exists to answer "what do I have to do today" and a summary the
-     * owner has to go *to* is not a summary.
+     * The one the app **opens on** — Story 4.3 moved [START] here, because the screen exists
+     * to answer "what do I have to do today" and a summary the owner has to go *to* is not a
+     * summary.
      *
-     * **Last** in the enum, and the ordering is the rail's ordering. UX-DR17's rail is
-     * ordered by frequency — Beranda · Setoran · Kendaraan · Penyewa · Tunggakan · Laporan ·
-     * Pengaturan — but three of those destinations (Setoran, Laporan and, in the prototype's
-     * ordering, the position of Tunggakan) do not exist yet, and reordering the rail three
-     * times as they arrive would churn the KDoc that explains the ordering rule. So Beranda is
-     * **appended** here, and the rail is re-ordered once the set is complete.
+     * **First** in the enum, and the ordering is the rail's ordering — see the class KDoc.
      */
     Beranda(route = "beranda", labelRes = R.string.nav_beranda),
 
     /**
-     * The period report. `LaporanScreen`.
+     * The deposit screen. `SetoranScreen` — two tabs: Input, and the cross-contract
+     * history.
      *
-     * The seventh destination, and the last of UX-DR17's rail to arrive. UX-DR17 orders the
-     * rail **Beranda · Setoran · Kendaraan · Penyewa · Tunggakan · Laporan · Pengaturan** by
-     * frequency, and this is the one entry of that order that was still missing once the
-     * others had landed — so the rail's re-order is now possible and belongs to whatever
-     * closes Epic 4, not to a story that only adds an entry.
+     * Second in UX-DR17's frequency order, because recording money is the action the owner
+     * performs most. This entry is what promotes it from a floating button to a
+     * destination; the shell's FAB is **hidden here** (see [FAB_HIDDEN_ROUTES]) for the same
+     * reason it is hidden on Beranda — the Input tab and the FAB would be two doors to one
+     * sheet, and two doors go stale.
      */
+    Setoran(route = "setoran", labelRes = R.string.nav_setoran),
+
+    /** The fleet. `KendaraanScreen`. */
+    Kendaraan(route = "kendaraan", labelRes = R.string.nav_kendaraan),
+
+    /** The rental contracts. `KontrakScreen`. */
+    Kontrak(route = "kontrak", labelRes = R.string.nav_kontrak),
+
+    /** The renters. `PenyewaScreen`. */
+    Penyewa(route = "penyewa", labelRes = R.string.nav_penyewa),
+
+    /**
+     * The arrears list. `TunggakanScreen`.
+     *
+     * The one the owner opens most among the data lists — the PRD calls it "layar yang
+     * paling sering dibuka".
+     */
+    Tunggakan(route = "tunggakan", labelRes = R.string.nav_tunggakan),
+
+    /** The period report. `LaporanScreen`. */
     Laporan(route = "laporan", labelRes = R.string.nav_laporan),
+
+    /**
+     * The business accounts transfers arrive at. `PengaturanScreen`.
+     *
+     * The first tenant of a place Epic 5's configuration story will also use — which is why
+     * it is a destination rather than a top-bar action on the fleet screen. Being in this
+     * enum is what puts it in **both** the landscape rail and the portrait bottom nav:
+     * `AppShell` derives both from `entries`, so there is no second list to update and none
+     * to forget.
+     *
+     * **Last** in the enum, matching UX-DR17's frequency order: settings is the destination
+     * the owner visits least, so it sits at the rail's end rather than where declaration
+     * accident put it.
+     */
+    Pengaturan(route = "pengaturan", labelRes = R.string.nav_pengaturan),
     ;
 
     companion object {
@@ -121,6 +124,22 @@ enum class Destination(
          * the summary is where the owner starts, so it is where the app starts too.
          */
         val START: Destination = Beranda
+
+        /**
+         * The routes the deposit FAB is **absent** on: Beranda and Setoran.
+         *
+         * UX-DR17's rule is that a screen whose own grid or tab already opens the deposit
+         * sheet carries no second door to it — two doors to one action is how one of them
+         * goes stale. Beranda's quick-action grid is one door, Setoran's Input tab is the
+         * other; the FAB would be a third everywhere else and is the only one there.
+         *
+         * A route **set** in the companion rather than a flag per destination, because the
+         * rule is a property of the shell's chrome and the routes are the fact it reads —
+         * the same reasoning `START` answers to. `AppShell` checks membership on the back
+         * stack's route, so a destination added later inherits the rule by declaring
+         * nothing.
+         */
+        val FAB_HIDDEN_ROUTES: Set<String> = setOf(Beranda.route, Setoran.route)
 
         /**
          * The route for the rail item at [index], or `null` when the index is out
@@ -193,6 +212,10 @@ private val Destination.icon: ImageVector
         // dashboard uses, so the rail's first item reads as "home" the way every other
         // phone's does.
         Destination.Beranda -> Lucide.House
+        // The same pen the deposit FAB and Beranda's "Catat Setoran" tile use — the
+        // destination inherits the action it houses, so the rail, the FAB and the tile
+        // name the same thing with the same glyph.
+        Destination.Setoran -> Lucide.NotebookPen
         // A bar chart for the period report — the screen's own subject rather than a
         // generic document, so the rail reads as seven different jobs.
         Destination.Laporan -> Lucide.ChartColumn

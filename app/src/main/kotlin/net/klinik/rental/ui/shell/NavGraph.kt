@@ -25,6 +25,7 @@ import net.klinik.rental.ui.screens.pengaturan.AccountRow
 import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.setoran.DepositSheet
+import net.klinik.rental.ui.screens.setoran.SetoranScreen
 import net.klinik.rental.ui.screens.tunggakan.TunggakanScreen
 
 /**
@@ -90,7 +91,35 @@ internal fun AppNavGraph(
         // navigation verb: its only action is picking a period, which is the screen's own
         // state rather than the shell's.
         composable(Destination.Laporan.route) { LaporanRoute(screens.laporan) }
+
+        // The eighth — the deposit screen, two tabs. Its Input tab opens the **existing**
+        // deposit sheet, which is why the route forwards `screens.deposito.onOpen` rather
+        // than a handler of its own: one sheet, and the doors contain the same actions.
+        // The two history verbs forward to the deposit ViewModel's handlers, required
+        // like every other verb in this file.
+        composable(Destination.Setoran.route) { SetoranRoute(screens.setoran, screens.deposito) }
     }
+}
+
+/**
+ * The deposit screen's destination.
+ *
+ * Takes **two** wiring bundles and that is deliberate: the screen's own state comes from
+ * [wiring], while its Input tab and its two history verbs act on the deposit sheet's
+ * state and ViewModel — the same objects the FAB and the contract sheet use. Splitting
+ * them here rather than merging the bundles is what keeps "one deposit sheet" true in
+ * the wiring rather than only in a comment.
+ */
+@Composable
+private fun SetoranRoute(wiring: Screens.Setoran, deposito: Screens.Deposito) {
+    SetoranScreen(
+        state = wiring.state,
+        onSelectTab = wiring.onSelectTab,
+        onOpenDepositInput = deposito.onOpen,
+        onRequestDepositCancel = wiring.onRequestDepositCancel,
+        onRequestDepositEdit = wiring.onRequestDepositEdit,
+        onDismissError = wiring.onDismissError,
+    )
 }
 
 /**
@@ -267,6 +296,18 @@ internal class Screens(
      * would be a second place navigation is decided.
      */
     val search: Search,
+
+    /**
+     * The deposit screen's wiring — two tabs, Input and Riwayat.
+     *
+     * Three callbacks, **required, not defaulted**, for the reason every other bundle here
+     * gives: a defaulted lambda produces a tab or a verb that renders and silently does
+     * nothing, and the two verbs are Stories 3.4's and 3.5's entry points — features that
+     * shipped unreachable once already. The Input tab's own action is **not** here: it
+     * opens the existing deposit sheet, so the route forwards `Screens.Deposito.onOpen`
+     * directly rather than carrying a second handle to the same door.
+     */
+    val setoran: Setoran,
 ) {
     /**
      * The arrears destination's wiring.
@@ -545,6 +586,28 @@ internal class Screens(
         val state: net.klinik.rental.ui.screens.laporan.LaporanUiState,
         val periodOptions: List<String>,
         val onSelectPeriod: (Int) -> Unit,
+    )
+
+    /**
+     * The deposit screen's wiring — two tabs.
+     *
+     * The screen's state is its own type ([net.klinik.rental.ui.screens.setoran.SetoranScreenState]),
+     * deliberately separate from the deposit **sheet's** state: the sheet is a window the
+     * shell mounts over any screen, and this is a destination with its own lifetime.
+     *
+     * All three callbacks are required, not defaulted — see the field KDoc on the class
+     * above.
+     */
+    class Setoran(
+        val state: net.klinik.rental.ui.screens.setoran.SetoranScreenState,
+        val onSelectTab: (net.klinik.rental.ui.screens.setoran.SetoranTab) -> Unit,
+        val onRequestDepositCancel: (
+            contractId: String,
+            renterName: String,
+            paymentId: String,
+        ) -> Unit,
+        val onRequestDepositEdit: (paymentId: String) -> Unit,
+        val onDismissError: () -> Unit,
     )
 }
 

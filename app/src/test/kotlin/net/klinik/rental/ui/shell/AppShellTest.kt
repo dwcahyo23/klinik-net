@@ -137,6 +137,24 @@ class AppShellTest {
         compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
     }
 
+    /**
+     * And the FAB is **absent on Setoran** — the second route in `FAB_HIDDEN_ROUTES`.
+     *
+     * The deposit screen's Input tab is the door to the sheet from there, exactly as
+     * Beranda's grid is; a FAB over the same sheet would be the third door, and two doors
+     * to one action is how one of them goes stale. Asserted the same way the Beranda
+     * absence is: by reaching the destination and finding no FAB node at all.
+     */
+    @Test
+    fun `the deposit FAB is absent on the deposit screen`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+
+        compose.onNodeWithText("Setoran").performClick()
+        compose.waitForIdle()
+
+        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
+    }
+
     /** And it clears the 48dp floor — UX-DR17's 54dp, measured rather than assumed. */
     @Test
     @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
@@ -356,7 +374,13 @@ class AppShellTest {
         compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
 
         Destination.entries.forEach { destination ->
-            compose.onNodeWithText(destinationLabel(destination)).performClick()
+            // Scoped to the **rail**, not `onNodeWithText`: once a destination's name is also
+            // its screen's own title — which Beranda now is, being both the start destination
+            // and the first rail item — a bare text match finds two nodes and the injection
+            // fails. The rail is what this test is walking.
+            compose.onNode(
+                hasText(destinationLabel(destination)) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
+            ).performClick()
             compose.waitForIdle()
             compose.onNodeWithTag(TAG_GLOBAL_SEARCH_FIELD).assertExists()
         }
@@ -513,17 +537,46 @@ class AppShellTest {
      * Story 4.3 moved it from the fleet, because the summary is the screen that answers
      * "what do I have to do today" and a summary the owner has to go *to* is not a summary.
      *
-     * The **second** assertion — that the summary is first in the table — is what this
-     * file's own convention asks for: the rail is built from `entries`, so the entry that
-     * leads the table leads the rail. Story 4.3 appended Beranda rather than putting it
-     * first, because UX-DR17's rail order needs three destinations that do not exist yet
-     * and reordering it three times as they arrive would churn the KDoc that explains the
-     * rule. So the rail's *current* order has the summary last, and the rail is re-ordered
-     * once the set is complete.
+     * The **second** assertion — that the summary leads the table — is what this file's own
+     * convention asks for: the rail is built from `entries`, so the entry that leads the
+     * table leads the rail. Story 4.3 appended Beranda rather than putting it first,
+     * because UX-DR17's rail order needed three destinations that did not exist yet;
+     * `the rail is ordered by UX-DR17's frequency order` is the test that closes that.
      */
     @Test
     fun `the start destination is the morning summary`() {
         assertEquals(Destination.Beranda, Destination.START)
+    }
+
+    /**
+     * The rail **is** UX-DR17's order, and this is the only test that says so.
+     *
+     * `every entry maps to its own index` proves the table is internally consistent — a
+     * re-ordering satisfies it exactly as well as the current order does. This test is what
+     * makes the re-ordering a fact rather than a KDoc claim: UX-DR17 orders the rail by how
+     * often the owner goes there, and a table that drifts back to declaration order would
+     * put Settings second and Settings is the destination he visits least.
+     *
+     * Kontrak sits **after** Kendaraan because it is not in UX-DR17's list at all — it
+     * arrived with Epic 3, after that list was written — and the prototype's screen map
+     * hangs it beneath the fleet. That is the one entry whose position is a judgement, and
+     * saying so here is what stops it being "tidied" later by someone who has forgotten.
+     */
+    @Test
+    fun `the rail is ordered by UX-DR17's frequency order`() {
+        assertEquals(
+            listOf(
+                Destination.Beranda,
+                Destination.Setoran,
+                Destination.Kendaraan,
+                Destination.Kontrak,
+                Destination.Penyewa,
+                Destination.Tunggakan,
+                Destination.Laporan,
+                Destination.Pengaturan,
+            ),
+            Destination.entries.toList(),
+        )
     }
 
     @Test
@@ -603,6 +656,9 @@ class AppShellTest {
         // mechanism this file documents: the seventh destination's label could have been
         // spelled anything and every other assertion here would still have passed.
         Destination.Laporan -> "Laporan"
+        // The eighth — the deposit screen. The rail's order is now UX-DR17's, with this
+        // entry second from the top, and the label is asserted like every other's.
+        Destination.Setoran -> "Setoran"
     }
 
     /**
@@ -886,6 +942,16 @@ class AppShellTest {
             ),
             onQueryChange = { wiring?.searchQuery = it },
             onClear = { wiring?.searchCleared() },
+        ),
+        // The deposit screen's wiring, stated like every other bundle here: this fixture
+        // builds the container the shell hands to the route, so an omitted callback would
+        // be a silent no-op at runtime rather than a compile error.
+        setoran = Screens.Setoran(
+            state = net.klinik.rental.ui.screens.setoran.SetoranScreenState(),
+            onSelectTab = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDismissError = {},
         ),
     )
 }

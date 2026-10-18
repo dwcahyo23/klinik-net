@@ -3,13 +3,18 @@ package net.klinik.rental.ui.screens.setoran
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
+import kotlinx.coroutines.ExperimentalCoroutinesApi
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.map
+import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.AccountRequiredException
@@ -192,6 +197,175 @@ class SetoranViewModel(
      */
     private val cancelState = MutableStateFlow<CancelDepositUi?>(null)
 
+    // --------------------------------------------------- the Setoran screen
+
+    /**
+     * The screen's selected tab.
+     *
+     * Held as its own flow rather than a field on [screenState] for the same reason every
+     * other selection in this app is: the tab survives a history re-emission, and folding
+     * it into a `combine` output it does not depend on would recompose the tab row every
+     * time a deposit landed anywhere.
+     */
+    private val selectedTab = MutableStateFlow(SetoranTab.Input)
+
+    /**
+     * Bumped by [consumeScreenError] to ask the history read to try again — the same
+     * re-subscribe-on-dismiss shape the arrears screen's `arrearsRetry` uses. A counter,
+     * because two dismissals are two requests and a boolean would make the second a no-op.
+     */
+    private val screenRetry = MutableStateFlow(0)
+
+    /** What the screen's history read has produced, tagged so "not yet read" is a value. */
+    private sealed interface ScreenHistorySource {
+        /** Not yet read. Carries no rows, so the screen cannot draw an empty list from it. */
+        data object Loading : ScreenHistorySource
+
+        /** Read, possibly to no deposits. */
+        data class Loaded(
+            val rows: List<net.klinik.rental.data.repository.DepositHistoryRow>,
+        ) : ScreenHistorySource
+
+        /** The read failed, and the list must not be believed. */
+        data object Failed : ScreenHistorySource
+    }
+
+    /**
+     * The screen's history source, with its failure carried as a **value**.
+     *
+     * The same three-step shape the arrears screen's source takes, for the same reasons:
+     * `onStart` carries Loading so the first empty Room emission cannot be read as "no
+     * deposits anywhere"; a `catch` that re-throws would terminate the sharing coroutine
+     * under `stateIn` and freeze the screen on its last value; and re-subscribing on
+     * dismiss is one deliberate recovery, not a spin.
+     */
+    @OptIn(ExperimentalCoroutinesApi::class)
+    private val screenHistorySource: Flow<ScreenHistorySource> =
+        screenRetry.flatMapLatest { _ ->
+            val repository = historyRepository
+                ?: return@flatMapLatest kotlinx.coroutines.flow.flow {
+                    emit(ScreenHistorySource.Failed)
+                }
+            repository.observeAll()
+                .map<
+                    List<net.klinik.rental.data.repository.DepositHistoryRow>,
+                    ScreenHistorySource,
+                    > { rows -> ScreenHistorySource.Loaded(rows) }
+                .onStart { emit(ScreenHistorySource.Loading) }
+                .catch { emit(ScreenHistorySource.Failed) }
+        }
+
+    /**
+     * The Setoran screen's state — the two-tab destination's own read.
+     *
+     * ## Why the summary is derived **here**, from the same emission as the rows
+     *
+     * Because a second counting query would be a second subscription and a second answer
+     * to "how many deposits are there" — figures that can drift from the list above them.
+     * total/active/cancelled are counts over the loaded rows, and received-today comes
+     * from `observeTodaysIncome`'s own flow, which is the read Beranda uses.
+     */
+    val screenState: StateFlow<SetoranScreenState> = combine(
+        selectedTab,
+        screenHistorySource,
+        payments.observeTodaysIncome(clock),
+    ) { tab, source, receivedToday ->
+        SetoranScreenState(
+            selectedTab = tab,
+            rows = when (source) {
+                // Nothing rendered while loading or failed: an empty list here would be
+                // the claim "no deposits anywhere", made without having looked.
+                ScreenHistorySource.Loading, is ScreenHistorySource.Failed -> emptyList()
+                is ScreenHistorySource.Loaded -> source.rows.map { row ->
+                    toScreenRow(row)
+                }
+            },
+            // Derived from the same emission the rows travel in — one subscription.
+            summary = when (source) {
+                ScreenHistorySource.Loading, is ScreenHistorySource.Failed -> null
+                is ScreenHistorySource.Loaded -> DepositSummaryUi(
+                    total = source.rows.size,
+                    active = source.rows.count { !it.isCanceled },
+                    cancelled = source.rows.count { it.isCanceled },
+                    receivedTodayText = formatRupiah(receivedToday),
+                )
+            },
+            errorMessage = when (source) {
+                is ScreenHistorySource.Failed -> strings.depositoErrorUnexpected()
+                else -> null
+            },
+        )
+    }
+        .distinctUntilChanged()
+        .stateIn(
+            scope = viewModelScope,
+            started = SharingStarted.WhileSubscribed(5_000),
+            initialValue = SetoranScreenState(),
+        )
+
+    /** Selects a tab. The two are the screen's whole chrome, so no guard is needed. */
+    fun selectTab(tab: SetoranTab) {
+        selectedTab.value = tab
+    }
+
+    /** Dismisses the screen's failure banner by asking the read to try again. */
+    fun consumeScreenError() {
+        screenRetry.value = screenRetry.value + 1
+    }
+
+    /**
+     * One repository row, formatted for the screen — the same projection
+     * `openHistory` builds for the per-contract block, with the three per-row
+     * identity fields the cross-contract list exists to show.
+     */
+    private suspend fun toScreenRow(
+        row: net.klinik.rental.data.repository.DepositHistoryRow,
+    ): DepositHistoryRowUi {
+        val label = resolveContractLabel(row.contractId)
+        val accounts = accountRepository.observeAccounts().first()
+            .associate { it.id to "${it.bankName} · ${it.number}" }
+        return DepositHistoryRowUi(
+            paymentId = row.id,
+            contractId = row.contractId,
+            renterName = label.first,
+            contractLabel = label.second,
+            amountText = formatRupiah(row.amount),
+            dateText = strings.formatExceptionDate(row.date),
+            methodText = if (row.method == PaymentMethod.TransferBank) {
+                strings.depositoMethodTransfer()
+            } else {
+                strings.depositoMethodCash()
+            },
+            accountText = row.accountId?.let { accounts[it] },
+            referenceNo = row.referenceNo,
+            notes = row.notes,
+            // From the row's own derivation, not a flag passed from the screen.
+            isEditable = row.isEditable,
+            cancelReasonText = row.cancelReason,
+        )
+    }
+
+    /**
+     * Resolves a contract id to its renter's name and `renterName · plate` label.
+     *
+     * A **Kotlin join**, not a SQL one — the same rule the contract and arrears screens
+     * follow: one reader per table, and the join is over static display facts a stale
+     * name cannot make wrong. Falls back to the id, which is a better outcome than a row
+     * that shows nothing at all.
+     */
+    private suspend fun resolveContractLabel(
+        contractId: String,
+    ): Pair<String, String> {
+        val contracts = contractRepository.observeContracts().first()
+        val contract = contracts.firstOrNull { it.id == contractId }
+            ?: return contractId to contractId
+        val renterName = renterRepository.observeRenters().first()
+            .firstOrNull { it.id == contract.renterId }?.name ?: contract.renterId
+        val plate = vehicleRepository.observeVehicles().first()
+            .firstOrNull { it.id == contract.vehicleId }?.plate ?: contract.vehicleId
+        return renterName to "$renterName · $plate"
+    }
+
 
     private data class OptionsSnapshot(
         val options: Options,
@@ -293,6 +467,13 @@ class SetoranViewModel(
                 val rows = repository.forContract(contractId).map { row ->
                     DepositHistoryRowUi(
                         paymentId = row.id,
+                        // The block's own values, which on this surface are the row's too:
+                        // every deposit here belongs to the contract `openHistory` was
+                        // asked for. Carried per row because the block's cancel callback
+                        // reads the row, not the block.
+                        contractId = contractId,
+                        renterName = renterName,
+                        contractLabel = "$renterName · $vehiclePlate",
                         amountText = formatRupiah(row.amount),
                         dateText = strings.formatExceptionDate(row.date),
                         methodText = if (row.method == PaymentMethod.TransferBank) {

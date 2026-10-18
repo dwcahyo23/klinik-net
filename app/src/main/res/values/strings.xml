@@ -687,6 +687,12 @@
     <string name="nav_kendaraan">Kendaraan</string>
     <string name="nav_penyewa">Penyewa</string>
     <string name="nav_kontrak">Kontrak</string>
+    <!--
+      The deposit screen's rail label. Flat like the others, for the same reason: the rail
+      and the bottom nav are shell surfaces and the same word has to read the same in both
+      orientations.
+    -->
+    <string name="nav_setoran">Setoran</string>
     <string name="error_read_title">Data tidak bisa dibaca</string>
     <string name="error_read_body">Aplikasi dihentikan agar riwayat tidak hilang. Coba buka lagi setelah data tersimpan.</string>
     <string name="error_read_action">Coba lagi</string>
@@ -1107,6 +1113,28 @@
     <string name="laporan_risk_kritis">Kritis</string>
     <string name="laporan_empty_title">Belum ada angka di periode ini</string>
     <string name="laporan_empty_body">Pilih periode lain di atas, atau catat setoran agar muncul di sini.</string>
+
+    <!--
+      The Setoran screen — two tabs, Input and Riwayat. The prototype's `payments.html`
+      structure, promoted from a floating button to a destination. The Input tab's copy
+      points at the sheet it opens rather than promising a form of its own, because there
+      is no second form: one numpad, one preview, one validation set.
+    -->
+    <string name="setoran_screen_title">Setoran</string>
+    <string name="setoran_tab_input">Input Setoran</string>
+    <string name="setoran_tab_history">Riwayat Transaksi</string>
+    <string name="setoran_input_title">Catat setoran yang diterima</string>
+    <string name="setoran_input_body">Buka formulir catat setoran: pilih penyewa, tulis jumlahnya, lalu cek pratinjau sebelum menyimpan.</string>
+    <string name="setoran_summary_total">Total transaksi</string>
+    <string name="setoran_summary_active">Aktif</string>
+    <string name="setoran_summary_cancelled">Dibatalkan</string>
+    <string name="setoran_summary_received_today">Diterima hari ini</string>
+    <!--
+      The history's empty state. Names what to do, the same rule every empty state here
+      follows — "no deposits" without a next step reads as a business nobody paid.
+    -->
+    <string name="setoran_history_empty_title">Belum ada setoran</string>
+    <string name="setoran_history_empty_body">Catat setoran pertama lewat tab Input Setoran. Semua setoran dari semua kontrak akan tercantum di sini, yang terbaru di atas.</string>
 </resources>
 
 

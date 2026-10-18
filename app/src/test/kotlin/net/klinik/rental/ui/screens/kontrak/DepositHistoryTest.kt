@@ -2,6 +2,10 @@ package net.klinik.rental.ui.screens.kontrak
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
+import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.take
+import kotlinx.coroutines.flow.toList
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.entity.BusinessAccountEntity
@@ -9,6 +13,7 @@ import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 import net.klinik.rental.data.repository.DepositHistoryRepository
+import net.klinik.rental.data.repository.DepositHistoryRow
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.PaymentRepository
 import org.junit.After
@@ -143,6 +148,102 @@ class DepositHistoryTest {
     @Test
     fun `a contract with no deposits reads empty`() = runBlocking {
         assertTrue(history.forContract(CONTRACT_ID).isEmpty())
+    }
+
+    /**
+     * `observeAll` — the Setoran screen's cross-contract read: **every** deposit on
+     * **every** contract, newest first, cancelled ones included.
+     *
+     * Two contracts so the "cross" is real rather than assumed, and one cancellation so
+     * the no-filter rule is exercised on this query too — the same rule
+     * `observeForContract` holds, and the reason the DAO's KDoc exists.
+     */
+    @Test
+    fun `observeAll lists every contract's deposits newest first, cancelled included`() = runBlocking {
+        saveDeposit("p1", 250_000, LocalDate.of(2026, 10, 5))
+        saveDeposit("p2", 500_000, LocalDate.of(2026, 10, 12))
+        // A second contract, so the read is genuinely cross-contract. It gets its **own**
+        // vehicle: `CONTRACT.activeVehicleId` is UNIQUE, and two live contracts on one van is
+        // a state the schema forbids.
+        database.vehicleDao().insert(
+            VehicleEntity(
+                id = "vehicle-2",
+                plate = "B 9999 ZZ",
+                brand = "Honda",
+                model = "Beat",
+                year = 2024,
+                color = null,
+                dailyRate = RATE,
+                notes = null,
+            ),
+        )
+        database.renterDao().insert(
+            RenterEntity(
+                id = "renter-2",
+                name = "Siti Aminah",
+                phone = "081298765432",
+                bankAccount = null,
+                emergencyContact = "081200000002",
+            ),
+        )
+        database.contractDao().insertContract(
+            ContractEntity(
+                id = "contract-2",
+                renterId = "renter-2",
+                vehicleId = "vehicle-2",
+                startDate = LocalDate.of(2026, 10, 1),
+                dailyRate = RATE,
+                restDay = null,
+                activeVehicleId = "vehicle-2",
+                activeRenterId = "renter-2",
+                endDate = null,
+            ),
+        )
+        payments.saveDeposit(
+            contractId = "contract-2",
+            payment = net.klinik.rental.domain.model.Payment(
+                id = "p3",
+                date = LocalDate.of(2026, 10, 15),
+                amount = 300_000,
+            ),
+            method = PaymentMethod.Tunai,
+            accountId = null,
+            referenceNo = null,
+            notes = null,
+            asOf = asOf,
+        )
+        payments.cancelDeposit(CONTRACT_ID, "p1", "salah tanggal")
+
+        val rows = history.observeAll().first()
+
+        assertEquals("both contracts' deposits, nothing hidden", 3, rows.size)
+        assertEquals(
+            "newest first — the opposite reading direction from the per-contract list",
+            listOf("p3", "p2", "p1"),
+            rows.map { it.id },
+        )
+        val cancelled = rows.first { it.id == "p1" }
+        assertTrue("the cancelled row is listed", cancelled.isCanceled)
+        assertEquals("salah tanggal", cancelled.cancelReason)
+        assertEquals("and every row names its own contract", "contract-2", rows.first().contractId)
+    }
+
+    /**
+     * The flow **re-emits** when a deposit lands — the destination stays mounted, so a
+     * deposit recorded while the screen is up must arrive with no reload.
+     */
+    @Test
+    fun `observeAll re-emits when a deposit is written`() = runBlocking {
+        val emissions = mutableListOf<List<DepositHistoryRow>>()
+        val job = launch { history.observeAll().take(2).toList(emissions) }
+
+        // Let the first (empty) emission land, then write and wait for the second.
+        kotlinx.coroutines.delay(200)
+        saveDeposit("p1", 250_000, LocalDate.of(2026, 10, 5))
+        job.join()
+
+        assertEquals(2, emissions.size)
+        assertEquals("the write arrived on the same subscription", listOf("p1"), emissions[1].map { it.id })
     }
 
     /**

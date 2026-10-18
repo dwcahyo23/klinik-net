@@ -1,5 +1,7 @@
 package net.klinik.rental.data.repository
 
+import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.dao.PaymentDao
 import net.klinik.rental.data.db.entity.PaymentEntity
 import java.time.LocalDate
@@ -97,6 +99,22 @@ class DepositHistoryRepository(
      */
     suspend fun forContract(contractId: String): List<DepositHistoryRow> =
         paymentDao.forContract(contractId).map { it.toHistoryRow() }
+
+    /**
+     * Every deposit on every contract, newest first, cancelled ones included — the Setoran
+     * screen's cross-contract history.
+     *
+     * A [Flow] rather than a one-shot, because the caller is a **destination** that stays
+     * mounted: a deposit recorded while the screen is up must appear with no reload, which
+     * is the same argument [PaymentDao.observeForContract] gives for the arrears screens.
+     * The per-contract read above stays one-shot for the opposite reason — it serves a
+     * sheet that opens and closes.
+     *
+     * The ordering comes from the query (`ORDER BY date DESC, id DESC`), not from a sort
+     * here.
+     */
+    fun observeAll(): Flow<List<DepositHistoryRow>> =
+        paymentDao.observeAllForHistory().map { rows -> rows.map { it.toHistoryRow() } }
 
     /**
      * Entity -> row, with the two columns [EditableDeposit] deliberately does not carry.

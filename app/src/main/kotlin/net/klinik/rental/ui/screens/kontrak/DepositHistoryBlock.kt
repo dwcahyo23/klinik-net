@@ -40,6 +40,15 @@ import net.klinik.rental.ui.theme.knTypography
  * cancelling or correcting a deposit was only possible from inside a form that opened
  * blank. Epic 3 recorded both as deferrals pointing at a history screen, and this is it.
  *
+ * ## Why the block now serves two surfaces, and why the callback reads the ROW
+ *
+ * The Setoran screen's cross-contract history reuses these rows — several contracts in one
+ * list. A cancel callback that read `state.contractId` would open the cancellation dialog
+ * for whichever contract the *block* was pointed at rather than the one the tapped row
+ * belongs to, so the callback reads `row.contractId`/`row.renterName`: a verb names its
+ * own target. On the per-contract surface every row carries the block's values, which is
+ * why the existing wiring test stays green unmodified.
+ *
  * The honest measure of this surface is small: it is a list with two buttons per row, and
  * the work behind them was done two stories earlier.
  *
@@ -65,6 +74,16 @@ fun DepositHistoryBlock(
     onRequestEdit: (paymentId: String) -> Unit,
     onErrorDismiss: () -> Unit,
     modifier: Modifier = Modifier,
+    /**
+     * The block's heading.
+     *
+     * A parameter rather than the hardcoded per-contract string because the same rows now
+     * serve two surfaces: the contract sheet (which says "Riwayat Setoran") and the
+     * Setoran screen's cross-contract list (whose heading belongs to the screen's own
+     * copy). A heading read from the resource here would be one wording for two different
+     * questions.
+     */
+    titleText: String = stringResource(R.string.kontrak_history_title),
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -75,7 +94,7 @@ fun DepositHistoryBlock(
         verticalArrangement = Arrangement.spacedBy(spacing.md),
     ) {
         Text(
-            text = stringResource(R.string.kontrak_history_title),
+            text = titleText,
             style = MaterialTheme.knTypography.label,
             color = MaterialTheme.knColors.textSecondary,
         )
@@ -111,8 +130,14 @@ fun DepositHistoryBlock(
                 key(row.paymentId) {
                     DepositHistoryRowContent(
                         row = row,
+                        // Reads the **row**, not block-level state: the rows now serve two
+                        // surfaces, and in the cross-contract one a block-level read would
+                        // open the cancellation dialog for whichever contract the block was
+                        // last pointed at — the wrong-target failure the wiring test's
+                        // `(CONTRACT_ID, "Budi Santoso", "p2")` assertion pins. The row
+                        // carries its own contract and renter, so a verb names its target.
                         onRequestCancel = {
-                            onRequestCancel(state.contractId, state.renterName, row.paymentId)
+                            onRequestCancel(row.contractId, row.renterName, row.paymentId)
                         },
                         onRequestEdit = { onRequestEdit(row.paymentId) },
                     )
