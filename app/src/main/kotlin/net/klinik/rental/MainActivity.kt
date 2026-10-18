@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
+import net.klinik.rental.data.repository.DepositHistoryRepository
 import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
@@ -341,6 +342,12 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
         ),
         strings = RStrings(context),
         clock = Clock.systemDefaultZone(),
+        // And the history read, over the same DAO the repositories already hold. Left
+        // out, `openHistory` refuses rather than showing an empty list -- and because the
+        // parameter is nullable for the tests' sake, nothing fails at build time to say so.
+        // That is the same trap the three above record, and it is why this line matters
+        // more than it looks.
+        historyRepository = DepositHistoryRepository(database.paymentDao()),
     )
 }
 
@@ -602,6 +609,27 @@ private fun KlinikNetApp(
                     onConfirmSettle = kontrak::settleContract,
                     settleErrorMessage = kontrakSettleError,
                     onSettleErrorDismiss = kontrak::consumeSettleError,
+                    // The deposit history, and the two verbs that mount Stories 3.4 and 3.5.
+                    // Wired to the **deposit** ViewModel rather than the contract one,
+                    // because `requestCancel` and `openEditDeposit` live there -- and the
+                    // history state does too, for the reason `SetoranViewModel` records on
+                    // its own: a read by one ViewModel and acted on by another is a state
+                    // that has to be kept in step across two objects.
+                    depositHistory = setoranState.history,
+                    onRequestDepositCancel = setoran::requestCancel,
+                    onRequestDepositEdit = setoran::openEditDeposit,
+                    onDepositHistoryDismiss = setoran::consumeHistoryError,
+                    // And the verb that opens it. A method reference rather than a lambda
+                    // wrapping one, because the row already carries the contract and the
+                    // renter name — a lambda would re-read the renter by id to fill an
+                    // argument the row was holding.
+                    onOpenHistory = { row ->
+                        setoran.openHistory(
+                            contractId = row.contract.id,
+                            renterName = row.renterName,
+                            vehiclePlate = row.vehiclePlate,
+                        )
+                    },
                 ),
                 pengaturan = Screens.Pengaturan(
                     state = pengaturanState,

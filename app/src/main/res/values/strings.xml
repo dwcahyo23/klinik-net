@@ -534,6 +534,25 @@
     <string name="kontrak_exception_removed">Pengecualian %1$s dihapus</string>
 
     <!--
+      Deposit history — the surface that mounts Epic 3's cancellation and correction.
+      Both were finished and unreachable until a row existed to tap, so the copy here is
+      the owner's record of their own money rather than a computed figure.
+    -->
+    <string name="kontrak_history_title">Riwayat Setoran</string>
+    <string name="kontrak_history_open_action">Riwayat</string>
+    <string name="kontrak_history_edit_action">Koreksi</string>
+    <string name="kontrak_history_cancel_action">Batalkan</string>
+    <string name="kontrak_history_cancelled_badge">Dibatalkan</string>
+    <string name="kontrak_history_reference">Kode: %1$s</string>
+    <string name="kontrak_history_cancel_reason">Alasan pembatalan: %1$s</string>
+    <!--
+      The empty state names what to do, because "no deposits" on its own reads as a
+      contract nobody paid rather than a contract nobody has paid *yet*.
+    -->
+    <string name="kontrak_history_empty_title">Belum ada setoran</string>
+    <string name="kontrak_history_empty_body">Catat setoran pertama lewat tombol Catat Setoran. Tunggakan dan hari yang tertutup akan ikut berubah.</string>
+
+    <!--
       Story 2.7 — Mengakhiri kontrak (ending a contract).
 
       Deliberately the smallest copy set this file has for a write. There is no

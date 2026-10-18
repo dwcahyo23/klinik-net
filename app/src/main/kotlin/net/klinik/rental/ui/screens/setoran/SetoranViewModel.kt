@@ -8,6 +8,7 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
@@ -15,8 +16,10 @@ import net.klinik.rental.data.repository.AccountRequiredException
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.DepositAlreadyCanceledException
+import net.klinik.rental.data.repository.DepositHistoryRepository
 import net.klinik.rental.data.repository.MissingDepositRelationException
 import net.klinik.rental.data.repository.PaymentRepository
+import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.UnknownDepositException
 import net.klinik.rental.data.repository.VehicleRepository
@@ -55,10 +58,27 @@ class SetoranViewModel(
     private val contractRepository: ContractRepository,
     private val strings: RStrings,
     private val clock: Clock,
+    /**
+     * The history read. Nullable **only** so the existing tests build a ViewModel over the
+     * repositories they already have; production passes it, and [openHistory] refuses
+     * without it rather than showing an empty list that would read as "this contract has
+     * never been paid".
+     */
+    private val historyRepository: DepositHistoryRepository? = null,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
     private val form = MutableStateFlow<DepositFormState?>(null)
+
+    /**
+     * The contract's deposit history, or `null` when none is open.
+     *
+     * Held here beside [form] rather than in [KontrakViewModel] because the two verbs this
+     * unlocks — [requestCancel] and [openEditDeposit] — live here, and their tests, their
+     * refusals and their dialogs are all here. A history read by one ViewModel and acted on
+     * by another is a state that has to be kept in step across two objects.
+     */
+    private val history = MutableStateFlow<DepositHistoryUi?>(null)
 
     /** The last banner-level refusal. A field refusal lands on its field instead. */
     private val errorMessage = MutableStateFlow<String?>(null)
@@ -188,7 +208,8 @@ class SetoranViewModel(
         combine(options, message) { currentOptions, currentMessage ->
             OptionsSnapshot(currentOptions, currentMessage)
         },
-    ) { currentForm, sheetSnapshot, currentCancel, optionsSnapshot ->
+        history,
+    ) { currentForm, sheetSnapshot, currentCancel, optionsSnapshot, currentHistory ->
         SetoranUiState(
             form = currentForm,
             errorMessage = sheetSnapshot.error,
@@ -197,6 +218,7 @@ class SetoranViewModel(
             successMessage = sheetSnapshot.message,
             preview = sheetSnapshot.preview,
             cancel = currentCancel,
+            history = currentHistory,
         )
     }
         .distinctUntilChanged()
@@ -216,6 +238,114 @@ class SetoranViewModel(
     )
 
     // ------------------------------------------------------------------- form
+
+    /**
+     * Opens one contract's deposit history — the surface that mounts Stories 3.4 and 3.5.
+     *
+     * ## Why this reads rather than computes
+     *
+     * Because the rows are facts the owner recorded, not a question about money. No
+     * arrears figure appears here, and the day count a deposit closed is deliberately
+     * absent too: putting that beside the contract's arrears would show two different
+     * numbers under one heading, and the owner cannot tell which is which.
+     *
+     * ## Why cancelled rows are listed rather than filtered
+     *
+     * Because Story 3.4 chose a status flag over a delete precisely so this trail could be
+     * read later, and a history that hid the cancellation would undo that decision one
+     * screen later. The owner's own reason for cancelling is the most useful column on
+     * the row — it is the answer to *"why did Budi's arrears jump on the 17th"*.
+     *
+     * @param contractId the contract whose deposits to list.
+     * @param renterName for the block's title, matching the exception sheet's label shape.
+     * @param vehiclePlate likewise.
+     */
+    fun openHistory(contractId: String, renterName: String, vehiclePlate: String) {
+        errorMessage.value = null
+        message.value = null
+        val repository = historyRepository
+        if (repository == null) {
+            // Rather than an empty list: "this contract has never been paid" and "this
+            // ViewModel cannot read history" are different claims, and only one of them
+            // is true in production.
+            errorMessage.value = strings.depositoErrorUnexpected()
+            return
+        }
+        // Replaces any edit still reading — see `openDeposit`'s note on the same token.
+        openRequests++
+
+        history.value = DepositHistoryUi(
+            contractId = contractId,
+            contractLabel = "$renterName · $vehiclePlate",
+            renterName = renterName,
+            // Set empty, then filled by the read below. A block that appears with no rows
+            // draws its empty state for one frame on every open, which is the
+            // "empty data that looks like a new account" failure Story 2.8 is about.
+            rows = emptyList(),
+            errorMessage = null,
+        )
+
+        val request = openRequests
+        viewModelScope.launch {
+            try {
+                val accounts = accountRepository.observeAccounts().first()
+                    .associate { it.id to "${it.bankName} · ${it.number}" }
+                val rows = repository.forContract(contractId).map { row ->
+                    DepositHistoryRowUi(
+                        paymentId = row.id,
+                        amountText = formatRupiah(row.amount),
+                        dateText = strings.formatExceptionDate(row.date),
+                        methodText = if (row.method == PaymentMethod.TransferBank) {
+                            strings.depositoMethodTransfer()
+                        } else {
+                            strings.depositoMethodCash()
+                        },
+                        accountText = row.accountId?.let { accounts[it] },
+                        referenceNo = row.referenceNo,
+                        notes = row.notes,
+                        // From the row's own derivation, not a flag passed from the screen:
+                        // a verb offered on a row the repository would refuse renders live
+                        // and ignores the tap.
+                        isEditable = row.isEditable,
+                        cancelReasonText = row.cancelReason,
+                    )
+                }
+                if (request != openRequests) return@launch
+                history.value = history.value?.copy(rows = rows)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                // Reported, and the block keeps its error rather than its empty rows: a
+                // failed read shown as "no deposits" tells the owner this contract was
+                // never paid, which is the one claim it must never make without having
+                // looked.
+                if (request == openRequests) {
+                    history.value = history.value?.copy(
+                        errorMessage = strings.depositoErrorUnexpected(),
+                    )
+                }
+            }
+        }
+    }
+
+    /** Closes the history block. */
+    fun closeHistory() {
+        errorMessage.value = null
+        history.value = null
+    }
+
+    /**
+     * Dismisses the history block's own failure banner.
+     *
+     * Its own handler rather than aliased to [consumeError]: the two clear different
+     * messages, and sharing a setter is how one message is cleared through the other's
+     * channel while staying on screen — the trap every other banner pair in this app
+     * records. It clears the banner **inside** the block and leaves the rows alone, so a
+     * dismissed failure does not also read as an emptied contract.
+     */
+    fun consumeHistoryError() {
+        history.value = history.value?.copy(errorMessage = null)
+    }
 
     /**
      * Opens the sheet on a **blank** form — including a blank amount.
@@ -678,11 +808,23 @@ class SetoranViewModel(
      * exactly what the write will produce. That is the property Story 3.3 exists to
      * protect, and `CancelDepositTest` proves it at the data layer with a case where the
      * two answers differ by a day.
+     *
+     * ## Why the caller passes the contract and renter
+     *
+     * Because this used to read both from [form] — which meant a cancellation was only
+     * reachable from inside the deposit sheet, and Story 3.4 shipped unreachable for
+     * exactly that reason. The **deposit history** mounts this verb from outside any
+     * form, so the contract is now a parameter and the sheet is merely one caller.
+     *
+     * Taken as a parameter rather than looked up, because a deposit row already carries
+     * its contract and looking it up would be a second read of a fact the row holds.
+     *
+     * @param contractId the contract the deposit belongs to, from the row.
+     * @param renterName for the impact sentence — *"Tunggakan Pak Budi akan kembali menjadi…"* —
+     *   names the person, and a row knows it without the sheet being open.
      */
-    fun requestCancel(paymentId: String) {
+    fun requestCancel(contractId: String, renterName: String, paymentId: String) {
         errorMessage.value = null
-        val contractId = form.value?.contractId ?: return
-        val renterName = form.value?.renterName.orEmpty()
         viewModelScope.launch {
             try {
                 val arrearsAfter = payments.arrearsAfterCanceling(

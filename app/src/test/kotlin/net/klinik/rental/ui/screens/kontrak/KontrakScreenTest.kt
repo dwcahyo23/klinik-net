@@ -1226,6 +1226,16 @@ class KontrakScreenTest {
         onConfirmSettle: () -> Unit = {},
         settleErrorMessage: String? = null,
         onSettleErrorDismiss: () -> Unit = {},
+        // And the deposit history's four, defaulted here **for the same reason as every
+        // other parameter in this fixture**: the screen's own parameters are required, so
+        // a fixture that did not pass them would not compile. A test that cares about the
+        // history's wiring passes a handler and asserts it received the right row —
+        // `DepositHistoryWiringTest` is where that happens.
+        depositHistory: net.klinik.rental.ui.screens.setoran.DepositHistoryUi? = null,
+        onOpenHistory: (ContractRow) -> Unit = {},
+        onRequestDepositCancel: (String, String, String) -> Unit = { _, _, _ -> },
+        onRequestDepositEdit: (String) -> Unit = {},
+        onDepositHistoryDismiss: () -> Unit = {},
     ) {
         KontrakScreen(
             state = state,
@@ -1268,6 +1278,11 @@ class KontrakScreenTest {
             onConfirmSettle = onConfirmSettle,
             settleErrorMessage = settleErrorMessage,
             onSettleErrorDismiss = onSettleErrorDismiss,
+            depositHistory = depositHistory,
+            onOpenHistory = onOpenHistory,
+            onRequestDepositCancel = onRequestDepositCancel,
+            onRequestDepositEdit = onRequestDepositEdit,
+            onDepositHistoryDismiss = onDepositHistoryDismiss,
         )
     }
 

@@ -122,7 +122,7 @@ class CancelDepositViewModelTest {
         saveDeposit()
         val viewModel = openSheet()
 
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
 
         assertTrue("the dialog is up", viewModel.uiState.value.isCanceling)
@@ -152,7 +152,7 @@ class CancelDepositViewModelTest {
         saveDeposit()
         val viewModel = openSheet()
 
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
 
         val cancel = viewModel.uiState.value.cancel!!
@@ -176,7 +176,7 @@ class CancelDepositViewModelTest {
     fun `a blank reason is refused on the dialog and writes nothing`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
 
         viewModel.cancelDeposit()
@@ -202,7 +202,7 @@ class CancelDepositViewModelTest {
     fun `a whitespace-only reason is refused too`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
 
         viewModel.onCancelChange { it.setReason("   ") }
@@ -226,7 +226,7 @@ class CancelDepositViewModelTest {
     fun `the refusal clears as soon as the owner types`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.cancelDeposit()
         dispatcher.scheduler.advanceUntilIdle()
@@ -249,7 +249,7 @@ class CancelDepositViewModelTest {
     fun `confirming with a reason cancels the deposit`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.onCancelChange { it.setReason("salah tanggal") }
 
@@ -278,7 +278,7 @@ class CancelDepositViewModelTest {
     fun `the confirmation carries the dialog's own figure`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         val promised = viewModel.uiState.value.cancel!!.amountLabel
         viewModel.onCancelChange { it.setReason("salah tanggal") }
@@ -299,7 +299,7 @@ class CancelDepositViewModelTest {
     fun `dismissing writes nothing and forgets the reason`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.onCancelChange { it.setReason("salah tanggal") }
 
@@ -312,7 +312,7 @@ class CancelDepositViewModelTest {
         )
 
         // And the next attempt starts clean rather than inheriting it.
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         assertEquals("", viewModel.uiState.value.cancel!!.reason)
     }
@@ -328,13 +328,13 @@ class CancelDepositViewModelTest {
     fun `cancelling twice is refused and the banner says why`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.onCancelChange { it.setReason("salah tanggal") }
         viewModel.cancelDeposit()
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.requestCancel(PAYMENT_ID)
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, PAYMENT_ID)
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.onCancelChange { it.setReason("alasan lain") }
         viewModel.cancelDeposit()
@@ -382,7 +382,7 @@ class CancelDepositViewModelTest {
         saveDeposit()
         val viewModel = openSheet()
 
-        viewModel.requestCancel("no-such-payment")
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, "no-such-payment")
         dispatcher.scheduler.advanceUntilIdle()
 
         // The repository returns the *current* arrears rather than throwing, so the dialog
@@ -401,7 +401,7 @@ class CancelDepositViewModelTest {
     fun `confirming an unknown deposit refuses and writes nothing`() = runTest(dispatcher) {
         saveDeposit()
         val viewModel = openSheet()
-        viewModel.requestCancel("no-such-payment")
+        viewModel.requestCancel(CONTRACT_ID, RENTER_NAME, "no-such-payment")
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.onCancelChange { it.setReason("salah tanggal") }
 
@@ -531,6 +531,7 @@ class CancelDepositViewModelTest {
         const val VEHICLE_ID = "vehicle-1"
         const val RENTER_ID = "renter-1"
         const val CONTRACT_ID = "contract-1"
+        const val RENTER_NAME = "Budi Santoso"
         const val ACCOUNT_ID = "account-1"
         const val PAYMENT_ID = "payment-1"
         const val RATE = 250_000L

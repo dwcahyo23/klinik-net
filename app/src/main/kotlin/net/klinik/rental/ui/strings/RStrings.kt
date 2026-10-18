@@ -744,6 +744,22 @@ class RStrings(private val context: Context) {
     fun depositoCanceled(amount: String): String =
         context.getString(R.string.deposito_cancel_done, amount)
 
+    // -------------------------------------------------------------- Deposit history
+
+    /**
+     * Transfer Bank / Tunai — a row's method, spelled the sheet spells it.
+     *
+     * The same two strings the deposit sheet's chips use, read through this class rather
+     * than resolved twice: a method shown as "Transfer Bank" on the form and "Transfer"
+     * on a history row is two spellings of one fact, and the owner is the one who has to
+     * notice.
+     */
+    fun depositoMethodTransfer(): String =
+        context.getString(R.string.deposito_method_transfer)
+
+    fun depositoMethodCash(): String =
+        context.getString(R.string.deposito_method_cash)
+
     // -------------------------------------------------------------- Story 3.5
 
     /**

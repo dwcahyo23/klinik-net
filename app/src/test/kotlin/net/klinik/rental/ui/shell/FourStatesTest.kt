@@ -481,6 +481,11 @@ class FourStatesTest {
             onSettleChange = { it },
             onConfirmSettle = {},
             onSettleErrorDismiss = {},
+            depositHistory = null,
+            onOpenHistory = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDepositHistoryDismiss = {},
         )
     }
 

@@ -733,6 +733,15 @@ class AccessibilityTest {
             // and a defaulted argument is a difference it cannot see.
             settleErrorMessage = null,
             onSettleErrorDismiss = {},
+            // The deposit history's four, explicit for the same reason as the pair above:
+            // this file measures every interactive node on the shell against the 48dp floor,
+            // so the history's two per-row verbs are measured only because the wiring is
+            // stated here.
+            depositHistory = null,
+            onOpenHistory = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDepositHistoryDismiss = {},
         ),
         // Story 3.1's destination. This file walks *every* interactive node on the shell
         // against the 48dp floor, so the settings screen's top-bar action, its empty-state

@@ -230,6 +230,19 @@ fun KontrakScreen(
     /** The settlement sheet's own error slot and dismiss, as its own pair. */
     settleErrorMessage: String? = null,
     onSettleErrorDismiss: () -> Unit,
+    // The deposit history's four. Required for the same reason every set above is: this
+    // is the surface that mounts Stories 3.4 and 3.5, and a defaulted verb here is one
+    // that renders and reaches nothing — which is how those two shipped unreachable in the
+    // first place.
+    //
+    // The contract and renter travel with the cancel verb rather than being looked up, so
+    // the row that owns the deposit decides where the cancellation applies — the same
+    // shape `requestCancel` now takes on `SetoranViewModel`.
+    onOpenHistory: (ContractRow) -> Unit,
+    depositHistory: net.klinik.rental.ui.screens.setoran.DepositHistoryUi? = null,
+    onRequestDepositCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
+    onRequestDepositEdit: (paymentId: String) -> Unit,
+    onDepositHistoryDismiss: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
 
@@ -323,6 +336,7 @@ fun KontrakScreen(
                                         null
                                     },
                                     settleClick = { onOpenSettle(row) },
+                                    historyClick = { onOpenHistory(row) },
                                 )
                             }
                         }
@@ -477,6 +491,23 @@ fun KontrakScreen(
                 onDismissError = onSettleErrorDismiss,
             )
         }
+
+        // And the deposit history, which is deliberately **not** a fifth sheet. It is a
+        // block on this screen rather than a window of its own, for the reason all four
+        // above are mounted from this file: two `ModalBottomSheet` windows over one state
+        // is the `high` Story 2.8's review found, and a fifth would be a fifth chance at
+        // it. A history the owner reads and then acts on does not need its own scrim.
+        //
+        // Its two verbs are Story 3.4's and Story 3.5's entry points, which were
+        // finished and unreachable until a row existed to tap — this block is that row.
+        depositHistory?.let { history ->
+            DepositHistoryBlock(
+                state = history,
+                onRequestCancel = onRequestDepositCancel,
+                onRequestEdit = onRequestDepositEdit,
+                onErrorDismiss = onDepositHistoryDismiss,
+            )
+        }
     }
 }
 
@@ -535,6 +566,14 @@ private fun KontrakRow(
      * needed most on the ended contracts the end verb is hidden from.
      */
     settleClick: () -> Unit,
+    /**
+     * The deposit-history verb's handler.
+     *
+     * Required, for the same reason [settleClick] is: it is offered on every row, and a
+     * defaulted lambda here is a button that opens nothing — which is precisely how
+     * Stories 3.4 and 3.5 shipped unreachable in the first place.
+     */
+    historyClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -637,6 +676,19 @@ private fun KontrakRow(
                         modifier = Modifier.testTag("kontrak-row-settle-${row.contract.id}"),
                     )
                 }
+                // And the deposit-history verb, on **every** row for the same reason the
+                // settlement verb above is: a deposit belongs to a rental whatever state
+                // that rental is in, and the history the owner most wants is usually the
+                // one on a contract that has already ended. Offer it wherever a contract
+                // is — this is the control that finally makes Stories 3.4 and 3.5
+                // reachable.
+                KnButton(
+                    label = stringResource(R.string.kontrak_history_open_action),
+                    onClick = historyClick,
+                    variant = KnButtonVariant.Secondary,
+                    size = KnButtonSize.Small,
+                    modifier = Modifier.testTag("kontrak-row-history-${row.contract.id}"),
+                )
                 // And, on a settled contract, the day it is settled through — beside the
                 // end date rather than in place of it, because the two answer different
                 // questions and a contract can carry both.
@@ -766,6 +818,7 @@ private fun KontrakScreenPreview() {
             // control is wired to `{}` would look exactly like one that works, and FR-9b
             // is not undoable.
             onOpenSettle = {},
+            onOpenHistory = {},
             onCloseSettle = {},
             onSettleChange = { it },
             onConfirmSettle = {},
@@ -774,6 +827,13 @@ private fun KontrakScreenPreview() {
             // that stops predicting production.
             settleErrorMessage = null,
             onSettleErrorDismiss = {},
+            // And the deposit history's three, for the same reason as every pair above:
+            // this preview is a fixture that must predict production, and a history verb
+            // wired to `{}` would render a cancellation the preview cannot perform.
+            depositHistory = null,
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDepositHistoryDismiss = {},
         )
     }
 }

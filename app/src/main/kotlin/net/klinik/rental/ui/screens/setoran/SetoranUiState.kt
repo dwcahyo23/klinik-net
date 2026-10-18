@@ -234,6 +234,16 @@ data class SetoranUiState(
     val successMessage: String? = null,
     val preview: DepositPreviewUi? = null,
     val cancel: CancelDepositUi? = null,
+    /**
+     * The contract's deposit history, or `null` when no history is open.
+     *
+     * **`null` rather than an empty list**, because "no history open" and "a contract with
+     * no deposits" are different states and this sheet can draw a wrong one from
+     * mistaking them: the first shows nothing at all, the second shows an invitation to
+     * record one. Room's first emission is an empty list, so an empty list alone cannot
+     * tell them apart.
+     */
+    val history: DepositHistoryUi? = null,
     val isLoading: Boolean = false,
 ) {
     /** The sheet is up. */
@@ -244,7 +254,64 @@ data class SetoranUiState(
 
     /** The cancellation dialog is up — a third window, and the only one with a field. */
     val isCanceling: Boolean get() = cancel != null
+
+    /** The history block is up — the surface that mounts Stories 3.4 and 3.5. */
+    val isShowingHistory: Boolean get() = history != null
 }
+
+/**
+ * One contract's deposit history, **already formatted**.
+ *
+ * ## Why this type carries no rupiah figure and no date
+ *
+ * Because the row is a *record of what the owner recorded*, not an answer to a question
+ * about money. The amount is formatted once here for the same reason the preview's strings
+ * are: a rupiah figure assembled in two places is a rupiah figure that can differ in two
+ * places. What the row deliberately does **not** carry is an arrears figure — the days a
+ * deposit closed are not the contract's arrears, and a row showing both would put two
+ * different numbers next to each other under one heading.
+ *
+ * @property renterName carried so the cancellation verb can name the person without the
+ *   caller re-reading it. Story 3.4's impact sentence is *"Tunggakan Pak Budi akan kembali
+ *   menjadi…"* — it is about a person, so the row that starts it knows the person.
+ */
+data class DepositHistoryRowUi(
+    val paymentId: String,
+    /** `250.000` as `formatRupiah` spells it, including the `Rp` prefix. */
+    val amountText: String,
+    /** `14 Okt` — the app's own date form, not the ISO column. */
+    val dateText: String,
+    val methodText: String,
+    /** `BCA · 1234567890`, or `null` for cash. */
+    val accountText: String?,
+    val referenceNo: String?,
+    val notes: String?,
+    /**
+     * Whether **either** verb may be offered.
+     *
+     * Carried rather than recomputed in the composable, because a row that offers a verb
+     * the repository would refuse renders live and ignores the tap — the defect this repo
+     * has shipped three times. `DepositHistoryRow.isEditable` is where the decision is made.
+     */
+    val isEditable: Boolean,
+    /** The owner's own reason for cancelling, shown only when cancelled. */
+    val cancelReasonText: String?,
+)
+
+/**
+ * The history block's state: the contract, the rows, and whether anything has gone wrong.
+ *
+ * @param rows empty **and** [contractId] non-null is the "this contract has no deposits"
+ *   state, which is an invitation to record one rather than an absence.
+ */
+data class DepositHistoryUi(
+    val contractId: String,
+    /** `renterName · plate`, the label the exception sheet's title uses. */
+    val contractLabel: String,
+    val renterName: String,
+    val rows: List<DepositHistoryRowUi> = emptyList(),
+    val errorMessage: String? = null,
+)
 
 /**
  * The preview, **already formatted**, for a dialog that renders text and never figures.

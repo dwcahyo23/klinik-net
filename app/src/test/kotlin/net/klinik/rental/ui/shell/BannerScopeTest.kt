@@ -172,6 +172,11 @@ class BannerScopeTest {
             onSettleChange = { it },
             onConfirmSettle = {},
             onSettleErrorDismiss = {},
+            depositHistory = null,
+            onOpenHistory = {},
+            onRequestDepositCancel = { _, _, _ -> },
+            onRequestDepositEdit = {},
+            onDepositHistoryDismiss = {},
         ),
         // Story 3.1's destination. This file proves which *window* each message is drawn
         // in, and the settings screen has a form sheet whose banner must land inside it

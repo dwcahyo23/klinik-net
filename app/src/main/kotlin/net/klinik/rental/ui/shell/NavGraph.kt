@@ -424,6 +424,25 @@ internal class Screens(
         /** The settlement sheet's own banner pair — a fourth window, a fourth slot. */
         val settleErrorMessage: String? = null,
         val onSettleErrorDismiss: () -> Unit,
+        // The deposit history's four. Required for the same reason every set above is:
+        // these are the verbs that mount Stories 3.4 and 3.5, and both shipped
+        // **unreachable** once already. A defaulted lambda here is the same defect again.
+        val depositHistory: net.klinik.rental.ui.screens.setoran.DepositHistoryUi? = null,
+        val onRequestDepositCancel: (
+            contractId: String,
+            renterName: String,
+            paymentId: String,
+        ) -> Unit,
+        val onRequestDepositEdit: (paymentId: String) -> Unit,
+        val onDepositHistoryDismiss: () -> Unit,
+        /**
+         * Opens one contract's deposit history.
+         *
+         * Takes the row rather than ids, because the row carries the renter name the
+         * cancellation's impact sentence needs — and a caller that had to look that up
+         * would be a second read of a fact the row already holds.
+         */
+        val onOpenHistory: (net.klinik.rental.ui.screens.kontrak.ContractRow) -> Unit,
     )
 
     /**
@@ -648,6 +667,14 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
         onConfirmSettle = wiring.onConfirmSettle,
         settleErrorMessage = wiring.settleErrorMessage,
         onSettleErrorDismiss = wiring.onSettleErrorDismiss,
+        // And the deposit history's four, forwarded for the same reason. Still **no** sheet
+        // of its own from this route: the history is a block on `KontrakScreen`, not a
+        // fifth window over its state.
+        depositHistory = wiring.depositHistory,
+        onOpenHistory = wiring.onOpenHistory,
+        onRequestDepositCancel = wiring.onRequestDepositCancel,
+        onRequestDepositEdit = wiring.onRequestDepositEdit,
+        onDepositHistoryDismiss = wiring.onDepositHistoryDismiss,
         renterOptions = wiring.renterOptions,
         vehicleOptions = wiring.vehicleOptions,
     )
