@@ -307,6 +307,9 @@ class PengaturanScreenTest {
         onCloseIdentity: () -> Unit = {},
         onIdentityChange: ((IdentityFormState) -> IdentityFormState) -> Unit = {},
         onSaveIdentity: () -> Unit = {},
+        // Defaulted here for the same reason as the identity callbacks above — this helper is
+        // the fixture every existing test uses. The production parameter is required.
+        onIdentityErrorDismiss: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -322,6 +325,7 @@ class PengaturanScreenTest {
             onCloseIdentity = onCloseIdentity,
             onIdentityChange = onIdentityChange,
             onSaveIdentity = onSaveIdentity,
+            onIdentityErrorDismiss = onIdentityErrorDismiss,
         )
     }
 

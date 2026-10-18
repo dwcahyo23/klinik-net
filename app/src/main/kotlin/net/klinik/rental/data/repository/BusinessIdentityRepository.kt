@@ -50,11 +50,16 @@ class BusinessIdentityRepository(
      * The default is applied **here**, on the way out, rather than at each read site — so a
      * screen that forgot to apply it would show a blank name rather than the owner's last
      * choice. One place supplies it, and a caller cannot opt out by forgetting.
+     *
+     * **Three keys, three `findValue` calls, one snapshot.** They are separate queries because
+     * `SettingDao` reads a key at a time and the alternative — three callers each reading one
+     * key and assembling the identity — is a figure built from three moments in time, which is
+     * the mixed-state failure the epic context names for anything that leaves the app.
      */
     suspend fun identity(): BusinessIdentity = BusinessIdentity(
-        name = dao.findValue(KEY_NAME)?.takeIf { it.isNotBlank() } ?: DEFAULT_NAME,
-        address = dao.findValue(KEY_ADDRESS)?.takeIf { it.isNotBlank() },
-        phone = dao.findValue(KEY_PHONE)?.takeIf { it.isNotBlank() },
+        name = resolveName(),
+        address = readOptional(KEY_ADDRESS),
+        phone = readOptional(KEY_PHONE),
     )
 
     /**
@@ -62,10 +67,31 @@ class BusinessIdentityRepository(
      *
      * Its own method rather than `identity().name` at every call site, because this is the one
      * field that leaves the app and it must never be assembled with a fallback that differs from
-     * this repository's: two defaults would be two names in the same message.
+     * this repository's: two defaults would be two names in the same message. And it reads
+     * **one** key rather than going through [identity] — a message needs the name, not three
+     * settings rows it will never print.
      */
-    suspend fun businessName(): String =
+    suspend fun businessName(): String = resolveName()
+
+    /**
+     * The stored name, or the default for a key that was never written.
+     *
+     * The one place [DEFAULT_NAME] is applied, so a caller cannot reach a different fallback
+     * than this repository's — which matters because a second default would be a second
+     * business name in the same message.
+     */
+    private suspend fun resolveName(): String =
         dao.findValue(KEY_NAME)?.takeIf { it.isNotBlank() } ?: DEFAULT_NAME
+
+    /**
+     * An optional stored value, or `null` for a key that was never written.
+     *
+     * `null` and `""` are kept apart deliberately: a row holding an empty string is a value the
+     * owner set to nothing, and a message quoting it would print a blank line where the owner
+     * expected their address.
+     */
+    private suspend fun readOptional(key: String): String? =
+        dao.findValue(key)?.takeIf { it.isNotBlank() }
 
     /**
      * Stores all three fields as one block.

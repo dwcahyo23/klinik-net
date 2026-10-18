@@ -474,6 +474,7 @@ private fun KlinikNetApp(
                     onCloseIdentity = pengaturan::dismissIdentity,
                     onIdentityChange = pengaturan::onIdentityChange,
                     onSaveIdentity = pengaturan::saveIdentity,
+                    onIdentityErrorDismiss = pengaturan::consumeIdentityError,
                     onSnackbarDismiss = pengaturan::consumeMessage,
                     onErrorDismiss = pengaturan::consumeError,
                 ),

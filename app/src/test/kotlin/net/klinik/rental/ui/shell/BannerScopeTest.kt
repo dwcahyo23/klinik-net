@@ -188,6 +188,7 @@ class BannerScopeTest {
             onCloseIdentity = {},
             onIdentityChange = { it },
             onSaveIdentity = {},
+            onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),

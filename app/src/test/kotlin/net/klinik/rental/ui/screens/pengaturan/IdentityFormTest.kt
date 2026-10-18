@@ -11,6 +11,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasSetTextAction
 import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -65,7 +66,7 @@ class IdentityFormTest {
      */
     @Test
     fun `the name opens pre-filled with the default`() {
-        compose.setContent { theme { Sheet(state = IdentityFormState()) } }
+        compose.setContent { theme { Sheet(state = IdentityFormState(name = BusinessIdentityRepository.DEFAULT_NAME), onChange = { t -> t }, onSave = {}) } }
 
         compose.onNodeWithTag(TAG_IDENTITY_FIELD_NAME).assertExists()
         compose.onNodeWithText(BusinessIdentityRepository.DEFAULT_NAME).assertExists()
@@ -78,11 +79,43 @@ class IdentityFormTest {
         assertEquals("and so does the phone", "", fieldText(TAG_IDENTITY_FIELD_PHONE))
     }
 
+    /**
+     * Save is disabled **after a blank name is typed**, not merely on a hand-built state.
+     *
+     * The version above constructs `IdentityFormState(name = "   ")` directly, which proves
+     * `canSaveIdentity` reads the field — and says nothing about the *handler* path. If
+     * `setIdentityName` stopped clearing or stopped copying, or `onChange` were wired to
+     * nothing, this test would stay green while the owner could save an empty business name.
+     * So the blank is typed through `onChange` here.
+     */
+    @Test
+    fun `typing a blank name through onChange disables save`() {
+        var state by mutableStateOf(IdentityFormState(name = "Rental SAYA"))
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = state,
+                    onChange = { transform -> state = transform(state) },
+                    onSave = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_IDENTITY_SAVE).assertExists().assertIsEnabled()
+
+        compose.onNode(
+            hasSetTextAction() and hasAnyAncestor(hasTestTag(TAG_IDENTITY_FIELD_NAME)),
+        ).performTextReplacement("   ")
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TAG_IDENTITY_SAVE).assertExists().assertIsNotEnabled()
+    }
+
     /** A blank name keeps Save **disabled**, with the field's own reason. */
     @Test
     fun `a blank name keeps save disabled`() {
         compose.setContent {
-            theme { Sheet(state = IdentityFormState(name = "   ")) }
+            theme { Sheet(state = IdentityFormState(name = "   "), onChange = { t -> t }, onSave = {}) }
         }
 
         compose.onNodeWithTag(TAG_IDENTITY_SAVE).assertExists().assertIsNotEnabled()
@@ -102,13 +135,33 @@ class IdentityFormTest {
                     state = IdentityFormState(
                         nameError = "Isi nama usaha. Nama ini yang muncul di pesan pengingat ke penyewa.",
                     ),
+                    onChange = { t -> t },
+                    onSave = {},
                 )
             }
         }
 
-        compose.onNodeWithText(
-            "Isi nama usaha. Nama ini yang muncul di pesan pengingat ke penyewa.",
+        // **Inside the name field, not merely somewhere on the sheet.** `KnField` renders
+        // `error` as a row *beneath* its label, so the message is a descendant of the field's
+        // tagged node rather than a node carrying the tag itself — which is why the query is
+        // `hasAnyAncestor`, the same shape `RenterFormTest` uses for its own fields. Asking for
+        // tag *and* text on one node would find nothing even when the message is exactly where
+        // it belongs.
+        compose.onNode(
+            hasText(MESSAGE, substring = true)
+                and hasAnyAncestor(hasTestTag(TAG_IDENTITY_FIELD_NAME)),
         ).assertExists()
+
+        // And it is **not** on the address field, which has no rule to fail.
+        assertTrue(
+            "the address cannot be refused, so it never carries the message",
+            compose.onAllNodes(
+                hasText(MESSAGE, substring = true)
+                    and hasAnyAncestor(hasTestTag(TAG_IDENTITY_FIELD_ADDRESS)),
+            ).fetchSemanticsNodes().isEmpty(),
+        )
+
+        // Nor as a sheet-level banner — this refusal has a field, so it lands there.
         compose.onNodeWithTag(TAG_IDENTITY_ERROR).assertDoesNotExist()
     }
 
@@ -201,6 +254,7 @@ class IdentityFormTest {
             theme {
                 Sheet(
                     state = IdentityFormState(),
+                    onChange = { t -> t },
                     onSave = { saved = true },
                     onDismissRequest = { cancelled = true },
                 )
@@ -222,6 +276,8 @@ class IdentityFormTest {
             theme {
                 Sheet(
                     state = IdentityFormState(),
+                    onChange = { t -> t },
+                    onSave = {},
                     errorMessage = "Gagal menyimpan. Coba lagi.",
                     successMessage = "Rental SAYA tersimpan sebagai identitas usaha",
                 )
@@ -235,7 +291,7 @@ class IdentityFormTest {
     /** All three fields are present, and each has its own tag. */
     @Test
     fun `the sheet renders all three fields`() {
-        compose.setContent { theme { Sheet(state = IdentityFormState()) } }
+        compose.setContent { theme { Sheet(state = IdentityFormState(name = BusinessIdentityRepository.DEFAULT_NAME), onChange = { t -> t }, onSave = {}) } }
 
         compose.onNodeWithTag(TAG_IDENTITY_FIELD_NAME).assertExists()
         compose.onNodeWithTag(TAG_IDENTITY_FIELD_ADDRESS).assertExists()
@@ -244,6 +300,19 @@ class IdentityFormTest {
     }
 
     // -------------------------------------------------------------------- helpers
+
+    /**
+     * The transform the sheet hands to `onChange`, applied to the state it was given.
+     *
+     * A **value**, not a callback: `IdentityFormSheet` takes `onChange` as
+     * `((IdentityFormState) -> IdentityFormState) -> Unit`, so a test that wants the field's
+     * edit to reach the state must hand it that shape. Writing `onChange = { transform ->
+     * state = transform(state) }` reads as equivalent and is not — that lambda's return value
+     * is what the sheet's inner handler returns, and `mutableStateOf` yields `Unit`.
+     */
+    private fun IdentityFormState.changedTo(
+        next: IdentityFormState,
+    ): IdentityFormState = next
 
     /**
      * The address and phone open with **nothing in them**.
@@ -268,10 +337,26 @@ class IdentityFormTest {
     private fun Sheet(
         state: IdentityFormState,
         onDismissRequest: () -> Unit = {},
-        onChange: ((IdentityFormState) -> IdentityFormState) -> Unit = {},
-        onSave: () -> Unit = {},
+        /**
+         * The sheet's `onChange`: a **callback taking a transform**, which it then calls with
+         * the current state. Defaulted and mis-shaped `onChange` is what makes every edit
+         * assertion vacuously pass while the owner's typing reaches nowhere — the defect
+         * `Screens.Pengaturan`'s KDoc exists to prevent, and which this repo has shipped
+         * twice. Required, so a test that forgets one fails to compile instead of passing.
+         *
+         * Call it as `onChange { it.setIdentityName("…") }` — a transform, not a statement —
+         * because `mutableStateOf` yields `Unit`, and a lambda whose last expression is an
+         * assignment would satisfy the callback's shape while returning nothing.
+         */
+        onChange: ((IdentityFormState) -> IdentityFormState) -> Unit,
+        /** Also required: a defaulted save lets a test assert "reached" while it reached nothing. */
+        onSave: () -> Unit,
+        // These carry the message, so defaulting them only asserts "a banner renders" — never
+        // that its close glyph reaches a handler, which is the `SettleContractSheet` gap.
         errorMessage: String? = null,
+        onDismissError: () -> Unit = {},
         successMessage: String? = null,
+        onDismissSuccess: () -> Unit = {},
     ) {
         IdentityFormSheet(
             state = state,
@@ -279,7 +364,14 @@ class IdentityFormTest {
             onChange = onChange,
             onSave = onSave,
             errorMessage = errorMessage,
+            onDismissError = onDismissError,
             successMessage = successMessage,
+            onDismissSuccess = onDismissSuccess,
         )
+    }
+
+    private companion object {
+        /** The blank-name refusal, spelled once so the two scoped queries cannot drift. */
+        const val MESSAGE = "Isi nama usaha"
     }
 }

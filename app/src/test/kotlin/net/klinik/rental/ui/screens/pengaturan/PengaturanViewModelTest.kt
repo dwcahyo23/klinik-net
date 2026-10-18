@@ -329,6 +329,189 @@ class PengaturanViewModelTest {
         )
     }
 
+    // ------------------------------------------------- Story 4.4: the identity
+
+    /**
+     * The regression this story's first pass shipped: **editing the name erased the address
+     * and the phone.**
+     *
+     * The form used to be seeded with the name only, so an edit opened the other two empty;
+     * `toBusinessIdentity` turned an empty field into `null`, and the repository reads `null`
+     * as *clear this field*. The owner's path was: fill in all three, weeks later correct a typo
+     * in the name, save — and get a success confirmation with the other two gone, on the one
+     * action this UI cannot undo.
+     *
+     * `IdentityFormTest` never saw it, because it hand-builds `IdentityFormState()` with no
+     * stored identity in play — which is why the regression belongs **here**, where the flow
+     * runs storage → form → storage.
+     */
+    @Test
+    fun `correcting only the name leaves the address and phone stored`() =
+        runTest(dispatcher) {
+            identity.save("PT Klinik Net Rent Car", "Jl. Boulevard Raya Q18", "0812-8899-7722")
+
+            val viewModel = observingViewModel()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.openIdentityForm()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            // Pre-filled on all three — the half of the fix that makes the save safe.
+            val opened = viewModel.uiState.value.identityForm
+            assertNotNull("the form opened", opened)
+            assertEquals("PT Klinik Net Rent Car", opened!!.name)
+            assertEquals("Jl. Boulevard Raya Q18", opened.address)
+            assertEquals("0812-8899-7722", opened.phone)
+
+            // The owner fixes one character and saves, touching nothing else.
+            viewModel.onIdentityChange { it.setIdentityName("PT KLINIK NET RENT CAR") }
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.saveIdentity()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val stored = identity.identity()
+            assertEquals("the corrected name", "PT KLINIK NET RENT CAR", stored.name)
+            assertEquals(
+                "and the address the owner never touched is still there",
+                "Jl. Boulevard Raya Q18",
+                stored.address,
+            )
+            assertEquals(
+                "and so is the phone — a name-only edit is not a request to clear the rest",
+                "0812-8899-7722",
+                stored.phone,
+            )
+        }
+
+    /**
+     * A **fresh** form still opens with the default name and the optional fields empty.
+     *
+     * The counterpart to the test above, and the reason the two live together: pre-filling an
+     * edit and leaving a fresh form blank are the same rule seen from two sides, and an
+     * implementation that pre-filled everything — or nothing — would satisfy one and fail the
+     * other.
+     */
+    @Test
+    fun `a first run opens with the default name and no invented address`() =
+        runTest(dispatcher) {
+            val viewModel = observingViewModel()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            viewModel.openIdentityForm()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val form = viewModel.uiState.value.identityForm!!
+            assertEquals(BusinessIdentityRepository.DEFAULT_NAME, form.name)
+            assertEquals("and no invented address", "", form.address)
+            assertEquals("nor phone", "", form.phone)
+        }
+
+    /**
+     * **Only one sheet may be up at a time**, in both directions.
+     *
+     * Two `ModalBottomSheet` windows over one state is the defect Story 2.8's review found as
+     * its only `high`: two scrims, two tap-blockers, and a screen scrolling under both. The
+     * guard was one-way at first — `openIdentityForm` cleared the account form, but
+     * `openAddForm` left the identity form standing — so the property the screen's own comment
+     * claims was true from one side and false from the other.
+     *
+     * Both directions are asserted here because a test of one would pass against the one-way
+     * version that shipped.
+     */
+    @Test
+    fun `opening one sheet closes the other`() = runTest(dispatcher) {
+        val viewModel = observingViewModel()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.openAddForm()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.openIdentityForm()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val afterIdentity = viewModel.uiState.value
+        assertNotNull("the identity sheet is up", afterIdentity.identityForm)
+        assertNull("and the account sheet is gone", afterIdentity.form)
+
+        viewModel.openAddForm()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val afterAccount = viewModel.uiState.value
+        assertNotNull("the account sheet is back", afterAccount.form)
+        assertNull("and the identity sheet is gone", afterAccount.identityForm)
+    }
+
+    /** A blank name is refused on its field, and nothing is written. */
+    @Test
+    fun `a blank name is refused on the field and writes nothing`() = runTest(dispatcher) {
+        identity.save("Rental SAYA", "Jl. Baru", "0812")
+        val viewModel = observingViewModel()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.openIdentityForm()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onIdentityChange { it.setIdentityName("   ") }
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.saveIdentity()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val form = viewModel.uiState.value.identityForm
+        assertNotNull("the form stays open so the owner can fix it", form)
+        assertNotNull(
+            "and the refusal is on the name field",
+            form!!.nameError,
+        )
+        assertEquals(
+            "while the stored identity is untouched",
+            "Rental SAYA",
+            identity.identity().name,
+        )
+    }
+
+    /** Saving closes the form and confirms in Indonesian. */
+    @Test
+    fun `saving the identity closes the form and confirms`() = runTest(dispatcher) {
+        val viewModel = observingViewModel()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.openIdentityForm()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onIdentityChange { it.setIdentityAddress("Jl. Boulevard Raya Q18") }
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.saveIdentity()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertNull("the form closed", viewModel.uiState.value.identityForm)
+        // The confirmation is its own `snackbarMessage` flow, not a field on `uiState` —
+        // success does not change screen state, which is the four-state rule.
+        assertEquals(
+            "the name is the one the sheet was opened on — this test changes only the address",
+            "PT Klinik Net Rent Car tersimpan sebagai identitas usaha",
+            viewModel.snackbarMessage.value,
+        )
+        assertEquals("Jl. Boulevard Raya Q18", identity.identity().address)
+    }
+
+    /** The section's header reads what is stored, not what the form last held. */
+    @Test
+    fun `the section shows the stored name after a save`() = runTest(dispatcher) {
+        val viewModel = observingViewModel()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.openIdentityForm()
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.onIdentityChange { it.setIdentityName("Rental SAYA") }
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.saveIdentity()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertEquals(
+            "the header follows the write — a section still showing the old name beside a form "
+                + "that just saved a new one is a screen contradicting itself",
+            "Rental SAYA",
+            viewModel.uiState.value.identity?.name,
+        )
+    }
+
     // ------------------------------------------------------------------ helper
 
     /**

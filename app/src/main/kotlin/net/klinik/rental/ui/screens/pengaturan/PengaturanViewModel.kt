@@ -64,6 +64,16 @@ class PengaturanViewModel(
     private val identityForm = MutableStateFlow<IdentityFormState?>(null)
 
     /**
+     * The identity sheet's **own** banner.
+     *
+     * Separate from [errorMessage] for the reason
+     * `PengaturanUiState.identityErrorMessage` gives: two windows sharing one message slot is
+     * how a dismissal clears another form's message, and how the account sheet's refusal ends
+     * up drawn inside the identity window.
+     */
+    private val identityError = MutableStateFlow<String?>(null)
+
+    /**
      * The stored identity, read once and refreshed after a save.
      *
      * A `StateFlow` rather than a `Flow` from the DAO because `settings` has **no** read
@@ -73,6 +83,16 @@ class PengaturanViewModel(
      * also the only one that exists until this table has a `Flow` query of its own.
      */
     private val storedIdentity = MutableStateFlow<IdentityRow?>(null)
+
+    /**
+     * Why the stored identity could not be read, or `null`.
+     *
+     * A **failure**, distinct from [storedIdentity] being `null` for "not read yet" — the
+     * distinction the loading state depends on. `PengaturanUiState.hasIdentity` reads the row,
+     * so a failed read would otherwise look exactly like a fresh install and would let
+     * `openIdentityForm` write the default over a real business name.
+     */
+    private val identityLoadError = MutableStateFlow<String?>(null)
 
     /** A transient confirmation. Success does not change screen state. */
     private val message = MutableStateFlow<String?>(null)
@@ -119,8 +139,8 @@ class PengaturanViewModel(
     val uiState: StateFlow<PengaturanUiState> = combine(
         accountsWithLoadFlag(),
         combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) },
-        combine(identityForm, storedIdentity) { form, stored ->
-            IdentitySnapshot(form, stored)
+        combine(identityForm, storedIdentity, identityError) { form, stored, error ->
+            IdentitySnapshot(form, stored, error)
         },
     ) { (accounts, hasEmitted), formSnapshot, identitySnapshot ->
         PengaturanUiState(
@@ -130,6 +150,11 @@ class PengaturanViewModel(
             form = formSnapshot.form,
             identity = identitySnapshot.stored,
             identityForm = identitySnapshot.form,
+            identityErrorMessage = identitySnapshot.error,
+            // The confirmation is the same message the account save produces, read from the
+            // one flow both share: success does not change screen state, so it is a
+            // transient bar rather than a field either sheet owns.
+            identitySuccessMessage = null,
             errorMessage = formSnapshot.error,
             isLoading = !hasEmitted,
         )
@@ -169,6 +194,7 @@ class PengaturanViewModel(
     private data class IdentitySnapshot(
         val form: IdentityFormState?,
         val stored: IdentityRow?,
+        val error: String?,
     )
 
     init {
@@ -177,6 +203,9 @@ class PengaturanViewModel(
         // between the tap and the answer.
         viewModelScope.launch {
             storedIdentity.value = identity.identity().toRow()
+            identityLoadError.value = null
+        }.invokeOnCompletion { cause ->
+            if (cause != null) identityLoadError.value = strings.pengaturanErrorUnexpected()
         }
     }
 
@@ -193,6 +222,13 @@ class PengaturanViewModel(
      */
     fun openAddForm() {
         errorMessage.value = null
+        // Closes the identity form rather than stacking over it — the mirror of
+        // [openIdentityForm]'s own guard. Only one of the two sheets may be up: two
+        // `ModalBottomSheet` windows over one state is the defect Story 2.8's review found as
+        // its only `high`, and the screen's comment states this as a property rather than a
+        // hope. The modal blocks the owner from reaching the add button today, but a deep link
+        // or a second caller would not be blocked, and a one-way guard would read as complete.
+        identityForm.value = null
         form.value = AccountFormState()
     }
 
@@ -205,6 +241,8 @@ class PengaturanViewModel(
      */
     fun openEditForm(row: AccountRow) {
         errorMessage.value = null
+        // The same one-sheet-at-a-time guard [openAddForm] carries, for the same reason.
+        identityForm.value = null
         form.value = AccountFormState(
             id = row.account.id,
             bankName = row.account.bankName,
@@ -324,16 +362,38 @@ class PengaturanViewModel(
     /**
      * Opens the identity form, pre-filled with what is stored.
      *
-     * Pre-filled on **both** halves — the name and the address — because an edit is *about*
-     * the stored values, which is the same argument `openEditForm` gives. The name additionally
-     * arrives with the default when nothing has been saved, so a first run opens on something
-     * the owner can accept rather than a blank field that would end up in a message.
+     * **All three fields are seeded**, and that is the whole of this method. Pre-filling the
+     * name alone would open the address and phone empty, and `toBusinessIdentity` turns an
+     * empty field into `null` — which the repository reads as *clear it*. So an owner fixing a
+     * typo in the name would see a success confirmation and lose the other two, on the one
+     * action the UI cannot undo.
+     *
+     * The default name fills in only when nothing has been stored, because a fresh form has no
+     * values to pre-fill and a blank business name would end up in every outgoing message.
      */
     fun openIdentityForm() {
         errorMessage.value = null
+        // **Closes the account form rather than stacking over it.** Two `ModalBottomSheet`
+        // windows over one state is the defect Story 2.8's review found as its only `high`:
+        // two tap-blockers, two scrims, and one screen that scrolls under both. The owner who
+        // taps the identity section while an account sheet is up gets the identity sheet —
+        // and the account's half-typed bank name, which they would have to retype.
+        form.value = null
+
         val stored = storedIdentity.value
+        // A tap before the read lands would otherwise open the form on the **default** while
+        // the stored identity is already in hand — and the owner's next save would write that
+        // default over their real business name. So the form waits for the read rather than
+        // racing it, and the section's own action is disabled until it has arrived.
+        if (stored == null) {
+            identityError.value = strings.pengaturanErrorUnexpected()
+            return
+        }
+
         identityForm.value = IdentityFormState(
-            name = stored?.name ?: BusinessIdentityRepository.DEFAULT_NAME,
+            name = stored.name,
+            address = stored.address.orEmpty(),
+            phone = stored.phone.orEmpty(),
         )
     }
 
@@ -346,7 +406,13 @@ class PengaturanViewModel(
      */
     fun dismissIdentity() {
         errorMessage.value = null
+        identityError.value = null
         identityForm.value = null
+    }
+
+    /** The identity sheet's own banner channel. See `PengaturanUiState.identityErrorMessage`. */
+    fun consumeIdentityError() {
+        identityError.value = null
     }
 
     /** Applies an identity edit. Pure and hoisted, like [onFormChange]. */
@@ -406,6 +472,7 @@ class PengaturanViewModel(
                 if (live != null && live === current) identityForm.value = null
                 storedIdentity.value = this@PengaturanViewModel.identity.identity().toRow()
                 errorMessage.value = null
+                identityError.value = null
                 message.value = strings.pengaturanIdentitySaved(identity.name)
             } catch (e: BlankIdentityNameException) {
                 val live = identityForm.value ?: current
@@ -415,7 +482,10 @@ class PengaturanViewModel(
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                errorMessage.value = strings.pengaturanErrorUnexpected()
+                // On the identity's **own** channel: routing this to the account screen's
+                // banner would draw it inside the wrong window and clear it through the
+                // wrong setter.
+                identityError.value = strings.pengaturanErrorUnexpected()
             } finally {
                 saving.set(false)
             }
@@ -423,7 +493,20 @@ class PengaturanViewModel(
     }
 
     /** Projects the stored identity onto its row. The name is already resolved. */
-    private fun BusinessIdentity.toRow() = IdentityRow(name = name)
+    /**
+     * Projects the stored identity onto its row.
+     *
+     * **All three fields travel.** A row carrying only the name would seed an edit with the
+     * address and phone empty, and saving that writes `null` for both — which
+     * `BusinessIdentityRepository.save` treats as *clear this field*. The owner corrects a typo
+     * in the business name and loses the address and phone they entered weeks ago, with a
+     * confirmation saying it saved. `IdentityRow`'s KDoc carries the full argument.
+     */
+    private fun BusinessIdentity.toRow() = IdentityRow(
+        name = name,
+        address = address,
+        phone = phone,
+    )
 
     fun consumeError() {
         errorMessage.value = null

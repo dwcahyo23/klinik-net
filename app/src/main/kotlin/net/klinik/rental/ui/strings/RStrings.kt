@@ -537,38 +537,12 @@ class RStrings(private val context: Context) {
 
     // -------------------------------------------------------------- Story 4.4
 
-    /**
-     * The identity section's heading and its body.
-     *
-     * The body exists because the section answers a question the owner did not ask: *why is
-     * my business name on this settings screen at all*. "This is the name the reminder message
-     * quotes" is the sentence that makes the field worth filling in.
-     */
-    fun pengaturanIdentitySection(): String =
-        context.getString(R.string.pengaturan_identity_section)
-
-    fun pengaturanIdentitySectionBody(): String =
-        context.getString(R.string.pengaturan_identity_section_body)
-
-    /** The section's action, which reads "edit" once an identity is stored. */
-    fun pengaturanIdentityAction(): String =
-        context.getString(R.string.pengaturan_identity_action)
-
-    fun pengaturanIdentityEditAction(): String =
-        context.getString(R.string.pengaturan_identity_edit_action)
-
-    /** The sheet's title, and its three field labels. */
-    fun pengaturanIdentityTitle(): String =
-        context.getString(R.string.pengaturan_identity_title)
-
-    fun pengaturanIdentityFieldName(): String =
-        context.getString(R.string.pengaturan_identity_field_name)
-
-    fun pengaturanIdentityFieldAddress(): String =
-        context.getString(R.string.pengaturan_identity_field_address)
-
-    fun pengaturanIdentityFieldPhone(): String =
-        context.getString(R.string.pengaturan_identity_field_phone)
+    // Only the two **messages** get accessors here. The section's heading, its action and the
+    // sheet's three field labels are read with `stringResource` inside the composables that
+    // draw them, because those live in a composition and a ViewModel has none — an accessor
+    // for each would be a second way to spell a string that a composable never calls, and
+    // eight uncalled accessors read as protection while protecting nothing. Every other
+    // screen's own copy follows the same rule; only what the ViewModel assembles comes here.
 
     /**
      * The blank-name refusal.

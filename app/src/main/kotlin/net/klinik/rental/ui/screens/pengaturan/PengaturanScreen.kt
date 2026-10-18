@@ -90,6 +90,13 @@ fun PengaturanScreen(
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
     onSnackbarDismiss: () -> Unit = {},
+    // The identity sheet's own banner pair. A **third** message slot on this screen, and the
+    // reason is the one `KontrakScreen` gives for its three: two `BottomCenter` bars drawn
+    // independently stack on the same pixels, so a shared pair would place the screen's
+    // failure and the sheet's on top of each other — and one form's dismissal would clear the
+    // other's message.
+    identityErrorMessage: String? = null,
+    onIdentityErrorDismiss: () -> Unit,
     // Required, not defaulted. A defaulted lambda produces a control that renders and
     // silently does nothing — the failure the required-parameter rule exists to prevent, and
     // it has caught unwired call sites in five test files across two stories.
@@ -141,6 +148,12 @@ fun PengaturanScreen(
                 // hide the very form a first run most needs.
                 IdentitySection(
                     name = state.identity?.name,
+                    // Disabled until the identity has been read. The action is not a
+                    // navigation — it opens a form seeded from storage — so a tap before the
+                    // read lands would open the form on the **default** and the owner's next
+                    // save would write that over their real business name. The same reason
+                    // `KnNumPad`'s Save is gated rather than merely flashing.
+                    enabled = state.identity != null,
                     onOpen = onOpenIdentity,
                 )
 
@@ -230,20 +243,25 @@ fun PengaturanScreen(
                 onDismissError = onErrorDismiss,
             )
         }
-
         // And the identity sheet beside it, never inside it: two `ModalBottomSheet` windows
         // over one state is the defect Story 2.8's review found as its only `high`, and the
-        // account and identity forms are never open at once.
+        // account and identity forms are never open at once — see [openIdentityForm]'s guard.
+        //
+        // Its **own** banner pair, not the screen's. The screen's `errorMessage` is the
+        // *account* form's refusal: passing it here would draw an account refusal inside the
+        // identity window, and its dismiss would clear the other form's message. That is the
+        // shared-channel defect `KontrakScreen` gives each of its three sheets a private
+        // message slot to avoid, and it was the shape `TunggakanScreen` shipped in Story 4.1.
         state.identityForm?.let { form ->
             IdentityFormSheet(
                 state = form,
-                errorMessage = state.errorMessage,
+                errorMessage = state.identityErrorMessage,
                 onDismissRequest = onCloseIdentity,
                 onChange = onIdentityChange,
                 onSave = onSaveIdentity,
-                successMessage = snackbarMessage,
+                successMessage = state.identitySuccessMessage,
                 onDismissSuccess = onSnackbarDismiss,
-                onDismissError = onErrorDismiss,
+                onDismissError = onIdentityErrorDismiss,
             )
         }
     }
@@ -269,6 +287,7 @@ fun PengaturanScreen(
 @Composable
 private fun IdentitySection(
     name: String?,
+    enabled: Boolean,
     onOpen: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -321,6 +340,9 @@ private fun IdentitySection(
                 onClick = onOpen,
                 variant = KnButtonVariant.Secondary,
                 size = KnButtonSize.Small,
+                // See the call site: a live button here would open a form seeded from a
+                // read that has not landed.
+                enabled = enabled,
                 modifier = Modifier.testTag(TAG_IDENTITY_ACTION),
             )
         }
@@ -450,6 +472,7 @@ private fun PengaturanScreenPreview() {
             onCloseIdentity = {},
             onIdentityChange = { it },
             onSaveIdentity = {},
+            onIdentityErrorDismiss = {},
             onErrorDismiss = {},
         )
     }

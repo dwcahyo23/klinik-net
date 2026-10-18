@@ -503,6 +503,7 @@ class FourStatesTest {
             onCloseIdentity = {},
             onIdentityChange = { it },
             onSaveIdentity = {},
+            onIdentityErrorDismiss = {},
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},
             onErrorDismiss = {},

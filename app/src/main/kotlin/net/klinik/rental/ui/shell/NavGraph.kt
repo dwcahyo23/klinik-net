@@ -284,7 +284,7 @@ internal class Screens(
     /**
      * The settings destination's wiring.
      *
-     * Eleven callbacks, all required, for the reason the three destinations above give: a
+     * Thirteen callbacks, all required, for the reason the three destinations above give: a
      * defaulted lambda produces a control that renders and silently does nothing, and this
      * screen's only verbs are adding or editing an account and filling in the business
      * identity. The screen also mounts its own form sheets, so nothing is composed here — the
@@ -307,6 +307,10 @@ internal class Screens(
         val onIdentityChange:
             ((net.klinik.rental.ui.screens.pengaturan.IdentityFormState) -> net.klinik.rental.ui.screens.pengaturan.IdentityFormState) -> Unit,
         val onSaveIdentity: () -> Unit,
+        // The identity sheet's own banner dismissal. A **separate** slot from
+        // `onErrorDismiss` for the reason `Screens.Kontrak` keeps three: one setter per
+        // window, so clearing a message cannot go through another form's channel.
+        val onIdentityErrorDismiss: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
     )
@@ -493,6 +497,7 @@ private fun PengaturanRoute(wiring: Screens.Pengaturan) {
         onCloseIdentity = wiring.onCloseIdentity,
         onIdentityChange = wiring.onIdentityChange,
         onSaveIdentity = wiring.onSaveIdentity,
+        onIdentityErrorDismiss = wiring.onIdentityErrorDismiss,
         snackbarMessage = wiring.snackbarMessage,
         onSnackbarDismiss = wiring.onSnackbarDismiss,
         onErrorDismiss = wiring.onErrorDismiss,

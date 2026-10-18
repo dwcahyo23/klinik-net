@@ -68,10 +68,19 @@ fun IdentityFormSheet(
     onChange: ((IdentityFormState) -> IdentityFormState) -> Unit,
     onSave: () -> Unit,
     modifier: Modifier = Modifier,
-    errorMessage: String? = null,
-    onDismissError: () -> Unit = {},
-    successMessage: String? = null,
-    onDismissSuccess: () -> Unit = {},
+    /**
+     * The failure and confirmation, and their dismissals.
+     *
+     * **Required, not defaulted** — and that is not an accident of ordering. `SettleContractSheet`
+     * in Story 3.6 shipped `onDismissError = {}` and `onDismissSuccess = {}`, so both of its
+     * banners drew a close glyph that did nothing; the sheet test passed them through the
+     * defaults, so the gap was never exercised. The same trap `ExceptionFormSheet`'s KDoc
+     * forbids and `Screens.Pengaturan`'s own rule exists to close.
+     */
+    errorMessage: String?,
+    onDismissError: () -> Unit,
+    successMessage: String?,
+    onDismissSuccess: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

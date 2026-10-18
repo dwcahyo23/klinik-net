@@ -1,7 +1,6 @@
 package net.klinik.rental.ui.screens.pengaturan
 
 import net.klinik.rental.data.repository.BusinessIdentity
-import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.domain.model.BusinessAccount
 
 /**
@@ -46,6 +45,16 @@ data class PengaturanUiState(
     /** The business identity as stored, or the default. Story 4.4's section header reads it. */
     val identity: IdentityRow? = null,
     val identityForm: IdentityFormState? = null,
+    /**
+     * The identity sheet's **own** failure and confirmation.
+     *
+     * Separate from [errorMessage], which is the account form's. Two windows sharing one
+     * message slot is the defect `KontrakScreen` gives each of its three sheets a private slot
+     * to avoid: the account's refusal would draw inside the identity window, and dismissing it
+     * would clear a message belonging to the other form.
+     */
+    val identityErrorMessage: String? = null,
+    val identitySuccessMessage: String? = null,
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
@@ -216,10 +225,26 @@ fun AccountFormState.toBusinessAccount(id: String): BusinessAccount? {
  * Read from storage rather than compiled in — the prototype's three hardcoded copies of the
  * business name are exactly what this replaces, so the screen reads one default from one
  * constant rather than repeating it.
+ *
+ * ## Why all three fields and not just the name
+ *
+ * Because an edit **seeds the form from this row**, and a row carrying only the name would
+ * open the address and phone empty — after which saving them writes `null`, which
+ * `BusinessIdentityRepository.clearIfAbsent` treats as *clear this field*. That is silent data
+ * loss on the one action the UI cannot undo: the owner corrects a typo in the name, taps save,
+ * sees a confirmation, and the address and phone they entered weeks ago are gone.
+ *
+ * So the row carries exactly what the form needs to be pre-filled, and `null` here means
+ * "never filled in" — which is a different act from "cleared", and is preserved as such all
+ * the way to storage.
  */
 data class IdentityRow(
     /** The business name as stored, or the default when nothing has been saved yet. */
     val name: String,
+    /** The stored address, or `null` when the owner never filled one in. */
+    val address: String? = null,
+    /** The stored phone, or `null` when the owner never filled one in. */
+    val phone: String? = null,
 )
 
 /**
@@ -240,11 +265,22 @@ data class IdentityRow(
  * to type a placeholder, and `openAddForm`'s KDoc gives the same reason for leaving the account
  * bank field empty.
  *
+ * That is the **fresh** form's rule. An **edit** opens all three from what is stored, because
+ * the alternative is the silent data loss [IdentityRow]'s KDoc describes: the owner fixes one
+ * field and the two they left alone are read as "cleared" and deleted.
+ *
  * @param nameError the last refusal's message for the name field, or `null`. `null` means
  *   "validation has not run" and renders no error row.
+ *
+ * @param name **no default here, deliberately.** A `DEFAULT_NAME` default parameter would be a
+ *   second home for the constant beside `BusinessIdentityRepository`'s — and the spec forbids
+ *   exactly that, because a second copy is one that can drift: an owner would be shown a
+ *   default on a fresh form that differs from the one a message falls back to. The value
+ *   arrives from the ViewModel, which reads the single constant; `""` here means "constructed
+ *   by hand", which is what a test fixture is.
  */
 data class IdentityFormState(
-    val name: String = BusinessIdentityRepository.DEFAULT_NAME,
+    val name: String = "",
     val address: String = "",
     val phone: String = "",
     val nameError: String? = null,

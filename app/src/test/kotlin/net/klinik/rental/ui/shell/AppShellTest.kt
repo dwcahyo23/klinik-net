@@ -459,6 +459,7 @@ class AppShellTest {
             onCloseIdentity = {},
             onIdentityChange = { it },
             onSaveIdentity = {},
+            onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),

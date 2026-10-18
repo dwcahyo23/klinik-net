@@ -752,6 +752,7 @@ class AccessibilityTest {
             onCloseIdentity = {},
             onIdentityChange = { it },
             onSaveIdentity = {},
+            onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),

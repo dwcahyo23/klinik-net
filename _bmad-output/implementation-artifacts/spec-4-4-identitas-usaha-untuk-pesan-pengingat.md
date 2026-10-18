@@ -2,7 +2,7 @@
 title: 'Story 4.4 — Identitas usaha untuk pesan pengingat'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'in-review'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_revision: '6dda9b6315f31246754330ee7458499c475c29b7'
@@ -159,6 +159,35 @@ descendant; reading the existing pattern beat guessing twice.
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-10-18 — Review pass 1
+- verdicts: 45 findings — high 1, medium 9, low 19, false 3, maybe-false 14
+- findings:
+  - `[high]` `[patch]` **editing an existing identity silently erases its address and phone** (blind-hunter B4, B5). `IdentityRow` carries only `name`, so `openIdentityForm` opens the other two fields empty; `toBusinessIdentity` turns an empty field into `null`; and `clearIfAbsent` **deletes** the stored row for a `null`. So the owner opens the form to correct a spelling, saves, and the address and phone they entered months ago are gone — with a success confirmation naming the save. `IdentityFormTest:67` *asserts* the empty opening as deliberate ("a placeholder there would invite a value the owner never chose"), which is a real argument for a fresh form and exactly wrong for an edit. Verified end to end: `PengaturanViewModel.kt:332-338`, `PengaturanUiState.kt` `IdentityFormState` and `toBusinessIdentity`, `BusinessIdentityRepository.clearIfAbsent`.
+  - `[medium]` `[patch]` `IdentityFormSheet` defaults `onDismissError` and `onDismissSuccess` to `{}` (blind-hunter B1; edge-case E11). Both banners are then undismissable, and `Screens.Pengaturan`'s own KDoc forbids the default — `SettleContractSheet` shipped this exact pair in Story 3.6.
+  - `[medium]` `[patch]` the identity sheet receives the **account screen's** `state.errorMessage`, `onErrorDismiss` and `snackbarMessage` (blind-hunter B2). Two forms share one channel, so an account refusal renders inside the identity window and a dismissal clears the other form's message. `PengaturanScreen.kt:238-247`.
+  - `[medium]` `[patch]` `openIdentityForm` reads `storedIdentity.value` which is populated once at construction (edge-case E8, E22). A first tap before that read lands shows the default rather than the owner's stored name. `storedIdentity` is a `StateFlow` with no `Flow` behind it, so the section only refreshes after this screen's own save.
+  - `[medium]` `[patch]` the two forms have **no mutual exclusion** (edge-case E9, E10). `PengaturanScreen.kt:191` suppresses the screen banner when either is open, but nothing stops both being open — two `ModalBottomSheet` windows over one state, the defect Story 2.8's review found as its only `high`.
+  - `[medium]` `[patch]` `identity()` and `businessName()` each issue their own `findValue` reads (blind-hunter B8), so one identity is three DAO reads and the name alone is two.
+  - `[medium]` `[patch]` the blank-name refusal is asserted by `onNodeWithText` only (blind-hunter B13) — nothing proves the message lands on the **name field** rather than anywhere on the sheet, which is what the KDoc claims.
+  - `[medium]` `[patch]` no test pins that Save is disabled after a blank name typed **through `onChange`** (blind-hunter B14); the existing test hand-builds `IdentityFormState(name = "   ")`.
+  - `[medium]` `[patch]` `IdentityFormState` imports `BusinessIdentityRepository` for `DEFAULT_NAME` (blind-hunter B11, B12; edge-case E13), and its own default parameter is a **second place the default lives** — which the spec's "no second copy of the default name" boundary forbids.
+  - `[medium]` `[patch]` `IdentityFormTest`'s fixture helper defaults `onChange` and `onSave` to no-ops (edge-case E18), so a test that forgets to pass one passes vacuously — the same trap `Screens.Pengaturan`'s KDoc exists to prevent.
+  - `[low]` `[patch]` `PengaturanScreenTest` reaches the identity block through defaulted `onOpenIdentity` in nine existing tests (edge-case E19), so the block renders but is unreachable in every older test.
+  - `[low]` `[patch]` the identity action's touch target is unmeasured (verification-gap G3). `KnButtonSize.Small` pads its hit area back out to 48dp through `minTouchTarget` — **so this is a test gap, not a defect**, verified by reading the enum. It is still worth the assertion, because Story 4.1 shipped the identical 38dp failure on this floor and only a measurement caught it.
+  - `[false]` `[reject]` `SettingDao.deleteSetting` is untested at the DAO boundary (verification-gap G2) — retracted by the reviewer themselves, and correct: `clearing a field afterwards removes it` exercises it through the repository. Recorded so it is not re-litigated.
+  - `[low]` `[patch]` no test pins `KeyboardType.Phone` on the phone field, which is the sheet's own stated reason for choosing it (blind-hunter B15).
+  - `[low]` `[patch]` the name field uses a `hint` where `KnField`'s `placeholder` drives the display (edge-case E23), so the field shows no placeholder.
+  - `[low]` `[patch]` `RStrings.pengaturanIdentitySection()` and its siblings are dead — the screen reads `stringResource` directly (edge-case E21).
+  - `[low]` `[patch]` `Screens.Pengaturan`'s KDoc says "Eleven callbacks" while the class no longer matches that count (blind-hunter B19).
+  - `[low]` `[patch]` trailing newlines missing on the spec and `SettingDao.kt` (blind-hunter B18).
+  - `[low]` `[patch]` `BusinessIdentityRepositoryTest` seeds its entities fully-qualified instead of imported, unlike every sibling test file (blind-hunter B10).
+  - `[low]` `[patch]` `saveIdentity`'s re-read message can briefly disagree with the header if a save lands between them (edge-case E6), and a `BlankIdentityNameException` after dismissal writes onto a closed sheet (edge-case E7).
+  - `[medium]` `[defer]` nothing proves a **changed** business name reaches an outgoing message (intent-alignment R-b, I1). No message exists — that is Story 4.2, the next story — so the AC's own proof has no surface yet. Recorded as this story's known boundary, not a gap in it.
+  - `[low]` `[defer]` `IDENTITY_BACKUP` is asserted by proxy: the rows live in `settings` and are read back through the DAO, because export is Story 5.1. A `SharedPreferences` implementation would pass every other test and still lose the name on restore.
+  - `[false]` `[reject]` address/phone reach a render path (edge-case's own verification) — refuted: they are only passed to the save call, and the identity section renders the name alone.
+  - `[maybe-false]` `[reject]` `clearIfAbsent` deleting on blank is accidental data loss (blind-hunter B9). It is correct **for a value the owner just cleared**; the loss is upstream of it, where an edit opens the fields empty. Same root as the `high`, folded there rather than counted twice.
+  - `[maybe-false]` `[reject]` 16 further low findings about KDoc phrasing, unused imports and comment accuracy across `IdentityFormSheet`, `PengaturanUiState` and `SettingDao`, each confirmed cosmetic by reading the cited line.
 
 ## Design Notes
 
