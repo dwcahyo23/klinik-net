@@ -3,6 +3,7 @@ package net.klinik.rental.ui.strings
 import android.content.Context
 import androidx.annotation.StringRes
 import net.klinik.rental.R
+import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.format.formatTanggalBulan
 
 /**
@@ -740,4 +741,84 @@ class RStrings(private val context: Context) {
      */
     fun depositoErrorNotFound(): String =
         context.getString(R.string.deposito_error_not_found)
+
+    // -------------------------------------------------------------- Story 4.1
+
+    /**
+     * `Rp 750.000 · 3 hari` — the arrears row's figure line, the AC's exact shape.
+     *
+     * Takes two **already-formatted** halves rather than the raw rupiah and the count,
+     * because this class is the ViewModel's only route to text and the rupiah is formatted by
+     * the one `formatRupiah` call the screen makes. Passing a `Long` here would put a second
+     * spelling of a money figure on this class, which is the thing every other money
+     * accessor above refuses.
+     */
+    fun tunggakanRowFigure(amount: String, days: String): String =
+        context.getString(R.string.tunggakan_row_figure, amount, days)
+
+    /**
+     * `3 hari`.
+     *
+     * Takes the count rather than a formatted string, because "hari" is the same word for
+     * every count including one — a format the whole app can therefore only spell one way.
+     */
+    fun tunggakanRowDays(days: Int): String =
+        context.getString(R.string.tunggakan_row_days, days)
+
+    /**
+     * The ladder's own word for a risk level.
+     *
+     * A `when` over the enum rather than four call sites, for the reason
+     * `Destination.icon` documents: one place maps a domain value to its display, so the word
+     * beside the badge and the colour of the badge cannot come from two ladders. Exhaustive
+     * on purpose — a new `RiskLevel` breaks this rather than inheriting the last branch.
+     */
+    fun tunggakanRiskLabel(risk: RiskLevel): String = when (risk) {
+        RiskLevel.LANCAR -> context.getString(R.string.tunggakan_risk_lancar)
+        RiskLevel.RINGAN -> context.getString(R.string.tunggakan_risk_ringan)
+        RiskLevel.PERHATIAN -> context.getString(R.string.tunggakan_risk_perhatian)
+        RiskLevel.KRITIS -> context.getString(R.string.tunggakan_risk_kritis)
+    }
+
+    /**
+     * The oldest still-open charge day as `14 Okt`, or `null` when no day is open.
+     *
+     * Delegates to [formatExceptionDate] rather than spelling `formatTanggalBulan` a second
+     * time: this is the same "14 Okt" the exception sheet and the contract end sheet draw, and
+     * a date the owner reads three ways on one screen is a date they stop trusting.
+     */
+    fun formatOldestOpenDay(date: java.time.LocalDate?): String? =
+        date?.let(::formatExceptionDate)
+
+    /** The top bar's subtitle: how many people are in the list. */
+    fun tunggakanCount(renters: Int): String =
+        context.getString(R.string.tunggakan_count, renters)
+
+    /** A calculation that could not be completed. Never drawn as an empty list. */
+    fun tunggakanError(): String =
+        context.getString(R.string.tunggakan_error)
+
+    /** The empty state's title. */
+    fun tunggakanEmptyTitle(): String =
+        context.getString(R.string.tunggakan_empty_title)
+
+    /** The empty state's body — what to do, per the epic context's rule. */
+    fun tunggakanEmptyBody(): String =
+        context.getString(R.string.tunggakan_empty_body)
+
+    /** The detail pane's heading. */
+    fun tunggakanDetailTitle(): String =
+        context.getString(R.string.tunggakan_detail_title)
+
+    /** The detail pane's prompt when no row is selected. */
+    fun tunggakanDetailEmpty(): String =
+        context.getString(R.string.tunggakan_detail_empty)
+
+    /** The detail pane's heading row: `Budi Santoso · B 1235 TF`. */
+    fun tunggakanDetailLabel(renter: String, plate: String): String =
+        context.getString(R.string.tunggakan_detail_label, renter, plate)
+
+    /** The detail pane's "nothing open" line. */
+    fun tunggakanDetailOldestNone(): String =
+        context.getString(R.string.tunggakan_detail_oldest_none)
 }

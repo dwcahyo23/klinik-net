@@ -78,3 +78,43 @@ data class SettlementImpact(
     /** Rupiah still owed afterwards. */
     val amountRemaining: Long,
 )
+
+/**
+ * One contract's arrears as a **complete** entry — Story 4.1's list row source.
+ *
+ * ## Why this carries the contract's own fields beside the figures
+ *
+ * Because the epic context requires that a figure leaving the app be read from one snapshot.
+ * If the list screen read the amount, then the day count, then the renter's name as three
+ * separate things, a write landing between two of them could produce a row whose amount and
+ * day count describe one moment and whose name describes another — and that row is what the
+ * owner reads before contacting a tenant.
+ *
+ * So one call returns everything the row draws. The names themselves are still joined by the
+ * ViewModel from the renter and vehicle flows, exactly as `KontrakViewModel` joins its list:
+ * those two are **static facts** about a person and a car, not a moving figure, so a stale
+ * name cannot make a wrong number look right.
+ *
+ * ## Why [isEnded] and not the end date
+ *
+ * Because the row marks a finished rental as finished; it does not display when the rental
+ * ended — the contract screen already shows that, and this list's job is answering "who do I
+ * contact today". Carrying the date here would invite a second screen to format it.
+ *
+ * @property days the open charge days, from stored allocation rows. **Never** `amount ÷
+ *   rate`: a partly-paid day is open and counts as one whole day, so the two disagree and only
+ *   the allocation-derived figure is right.
+ */
+data class ContractArrears(
+    val contractId: String,
+    /** Rupiah owed, in whole units. */
+    val amount: Long,
+    /** Open charge days. See the KDoc on why this is not derived from [amount]. */
+    val days: Int,
+    /** The oldest still-open charge day, or `null` when no day is open. */
+    val oldestOpenDay: LocalDate?,
+    val renterId: String,
+    val vehicleId: String,
+    /** Whether the rental has ended. An ended contract stays in the list until it is settled. */
+    val isEnded: Boolean,
+)

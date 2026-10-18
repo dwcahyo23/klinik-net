@@ -19,6 +19,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -129,7 +131,20 @@ fun KnNavRail(
         Column(
             modifier = Modifier
                 .weight(1f)
-                .fillMaxWidth(),
+                .fillMaxWidth()
+                // `.nav-rail { gap: var(--sp-1); overflow-y: auto }`.
+                //
+                // The scroll is **load-bearing, not decoration**, and it was missing until
+                // Story 4.1 added a fifth destination: with four, the items fit a landscape
+                // tablet and nothing was lost. The `weight(1f)` above hands this Column a
+                // *bounded* height, so five items no longer fit — and a child measured inside
+                // a bounded column is compressed below its own `minTouchTarget()`, which is
+                // how `AccessibilityTest` caught `Tunggakan` measuring 38dp instead of 48dp.
+                //
+                // Scrolling fixes it the way the CSS does: the rail grows past the viewport
+                // and the owner scrolls to a destination that would otherwise be squashed
+                // into an untappable strip — or, without this, clipped and unreachable.
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.spacedBy(spacing.xs),
         ) {
             items.forEachIndexed { index, item ->

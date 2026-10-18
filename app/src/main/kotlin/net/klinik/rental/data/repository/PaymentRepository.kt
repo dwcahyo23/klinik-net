@@ -2,6 +2,7 @@ package net.klinik.rental.data.repository
 
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.AllocationDao
@@ -783,6 +784,59 @@ class PaymentRepository(
 
     /** "Today" for a write that has no date of its own. See the call sites. */
     private fun asOf(): LocalDate = LocalDate.now()
+
+    /**
+     * Every contract's arrears as one list, observed — Story 4.1's.
+     *
+     * ## Why this is not three reads joined by the caller
+     *
+     * Because the epic context is explicit that a figure leaving the app comes from one
+     * snapshot: reading arrears, then the day count, then the name can land on either side of
+     * a write, and the number the owner sends to a tenant has no undo behind it. So one call
+     * returns one **complete** entry per contract — amount, day count and the contract's own
+     * fields together — rather than three things the UI assembles.
+     *
+     * ## Why the entry is per contract rather than a sum
+     *
+     * Because a total is not what the screen shows. Every figure here is read through
+     * [previewAllocation], which is the **one** place that narrows charge days through
+     * `settledDays` and the one place that allocates the stored deposits — so a contract
+     * settled through a date reports zero here without this method knowing FR-9b exists, and
+     * a day that is partly paid is counted as open because that is `arrearsOf`'s rule rather
+     * than one re-derived here.
+     *
+     * ## Why the placeholder is withheld
+     *
+     * Same reason [arrearsEntry] withholds it, and for the same failure: a discarded
+     * placeholder takes a rupiah off the oldest open day, so every deposit's row lands one
+     * rupiah short of `dailyRate` and a closed day reads as open. The **day count** is what a
+     * tenant is told, so inflating it here would be the worst place for that bug to live.
+     */
+    fun observeArrearsForAllContracts(asOf: LocalDate): Flow<List<ContractArrears>> =
+        combine(
+            contractDao.observeAll(),
+            // The two table-level invalidation triggers. **Required, not decoration:** Room's
+            // tracker re-emits a flow only for the tables its query names, and a deposit
+            // writes `payment` and `allocation` — never `contract`. A list fed by
+            // `observeAll()` alone would therefore show a stale figure after every save,
+            // which is the "no manual refresh" rule failing while looking implemented. The
+            // rows are discarded; what is being observed is *that the table changed*.
+            paymentDao.observeContractIds(),
+            allocationDao.observeContractIds(),
+        ) { contracts, _, _ ->
+            contracts.map { contract ->
+                val entry = arrearsEntry(contract.id, asOf)
+                ContractArrears(
+                    contractId = entry.contractId,
+                    amount = entry.amount,
+                    days = entry.days,
+                    oldestOpenDay = entry.oldestOpenDay,
+                    renterId = contract.renterId,
+                    vehicleId = contract.vehicleId,
+                    isEnded = contract.endDate != null,
+                )
+            }
+        }
 
     /** Every deposit on one contract, as domain values. */
     suspend fun paymentsFor(contractId: String): List<Payment> =

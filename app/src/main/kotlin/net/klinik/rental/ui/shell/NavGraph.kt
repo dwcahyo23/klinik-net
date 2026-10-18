@@ -23,6 +23,7 @@ import net.klinik.rental.ui.screens.pengaturan.AccountRow
 import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.setoran.DepositSheet
+import net.klinik.rental.ui.screens.tunggakan.TunggakanScreen
 
 /**
  * The app's single navigation graph (AR-18).
@@ -74,7 +75,30 @@ internal fun AppNavGraph(
         // `AppShellTest`, because a route composed but absent from the enum is invisible in
         // the nav and one present in the enum but not composed lands on a blank screen.
         composable(Destination.Pengaturan.route) { PengaturanRoute(screens.pengaturan) }
+        // The fifth, added by Story 4.1 — and the first with **no** sheet of its own, so
+        // this route composes the screen directly rather than wrapping it in a `Box` for
+        // sheets like `KendaraanRoute` and `PenyewaRoute` do.
+        composable(Destination.Tunggakan.route) { TunggakanRoute(screens.tunggakan) }
     }
+}
+
+/**
+ * The arrears destination.
+ *
+ * The one route with no sheet host: the list's only action is selecting a row for the
+ * landscape detail pane, and that pane is drawn *by the screen* beside the list rather than
+ * mounted here as a second window — two surfaces over one state is the defect
+ * `KontrakRoute`'s KDoc records, and a pane that covered the list it is read against would
+ * be the same shape in a smaller size.
+ */
+@Composable
+private fun TunggakanRoute(wiring: Screens.Tunggakan) {
+    TunggakanScreen(
+        state = wiring.state,
+        onSelect = wiring.onSelect,
+        errorMessage = wiring.errorMessage,
+        onErrorDismiss = wiring.onErrorDismiss,
+    )
 }
 
 /**
@@ -116,7 +140,27 @@ internal class Screens(
      * shell with hand-built values and no database.
      */
     val deposito: Deposito,
+    /**
+     * The arrears list's wiring — Story 4.1.
+     *
+     * Four parameters, and the smallest bundle in this type, because the list is the only
+     * screen so far with **no** sheets: its one action is selecting a row for the landscape
+     * detail pane, which the screen draws itself.
+     *
+     * [onSelect] and [onErrorDismiss] are **required, not defaulted**, for the same reason
+     * every other required callback here is: a defaulted lambda produces a list whose rows
+     * select nothing, which reads as a broken screen rather than as a missing handler — and
+     * this repo has shipped that defect twice.
+     */
+    val tunggakan: Tunggakan,
 ) {
+    /** The arrears destination's wiring. */
+    class Tunggakan(
+        val state: net.klinik.rental.ui.screens.tunggakan.TunggakanUiState,
+        val onSelect: (String) -> Unit,
+        val errorMessage: String? = null,
+        val onErrorDismiss: () -> Unit,
+    )
     /** The fleet destination's wiring. */
     class Kendaraan(
         val state: KendaraanUiState,

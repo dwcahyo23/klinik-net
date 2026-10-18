@@ -5,6 +5,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import com.composables.icons.lucide.CarFront
+import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.ClipboardList
 import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
@@ -71,6 +72,20 @@ enum class Destination(
      * to update and none to forget.
      */
     Pengaturan(route = "pengaturan", labelRes = R.string.nav_pengaturan),
+
+    /**
+     * The arrears list. `TunggakanScreen`.
+     *
+     * The fifth destination, and the one the owner opens most — the PRD calls it "layar yang
+     * paling sering dibuka" — while [`START`] stays on [Kendaraan]. That asymmetry is
+     * deliberate: Story 4.1's criteria do not ask for a different launch screen, and changing
+     * what every existing user sees on open is a decision somebody makes on purpose rather
+     * than one that rides along with a list.
+     *
+     * **Last** in the enum, and that ordering is the launch order: the fleet stays first
+     * because it is where the app opens, and this one is a step along the rail from it.
+     */
+    Tunggakan(route = "tunggakan", labelRes = R.string.nav_tunggakan),
     ;
 
     companion object {
@@ -140,4 +155,8 @@ private val Destination.icon: ImageVector
         Destination.Penyewa -> Lucide.Users
         Destination.Kontrak -> Lucide.ClipboardList
         Destination.Pengaturan -> Lucide.Landmark
+        // The alert glyph, and not a warning triangle: the list's job is to *show* the
+        // arrears rather than to alarm about them, and a triangle on every visit would make
+        // the icon decorative rather than informative.
+        Destination.Tunggakan -> Lucide.CircleAlert
     }

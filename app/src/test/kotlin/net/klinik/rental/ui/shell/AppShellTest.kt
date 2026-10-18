@@ -24,6 +24,7 @@ import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.setoran.SetoranUiState
+import net.klinik.rental.ui.screens.tunggakan.TunggakanUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -355,6 +356,10 @@ class AppShellTest {
         Destination.Penyewa -> "Penyewa"
         Destination.Kontrak -> "Kontrak"
         Destination.Pengaturan -> "Pengaturan"
+        // The fifth, added by Story 4.1. The `when` being non-exhaustive again is the
+        // mechanism this file documents: a destination whose label is not asserted here is a
+        // nav item that could be spelled anything.
+        Destination.Tunggakan -> "Tunggakan"
     }
 
     @Composable
@@ -465,6 +470,16 @@ class AppShellTest {
             onConfirmPreview = {},
             onDismissPreview = {},
             onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+        // Story 4.1's arrears wiring, the same no-op stance every other callback in these
+        // shell fixtures takes. `onSelect` is **required** on the real type and is written
+        // here for that reason: a defaulted handler would be a list whose rows select
+        // nothing, which reads as a broken screen rather than a missing lambda.
+        tunggakan = Screens.Tunggakan(
+            state = TunggakanUiState(),
+            onSelect = {},
+            errorMessage = null,
             onErrorDismiss = {},
         ),
     )

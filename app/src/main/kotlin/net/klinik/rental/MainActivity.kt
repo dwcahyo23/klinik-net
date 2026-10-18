@@ -27,6 +27,7 @@ import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
 import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
 import net.klinik.rental.ui.screens.setoran.SetoranViewModel
 import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
+import net.klinik.rental.ui.screens.tunggakan.TunggakanViewModel
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
@@ -105,6 +106,21 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * The arrears list's ViewModel — Story 4.1.
+     *
+     * A fifth instance rather than folded into `KontrakViewModel`: the list is its own
+     * destination, and a ViewModel per screen is what keeps each one's `combine` from
+     * growing a source the others have to carry.
+     */
+    private val tunggakanViewModel: TunggakanViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createTunggakanViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -124,6 +140,7 @@ class MainActivity : ComponentActivity() {
                     kontrak = kontrakViewModel,
                     pengaturan = pengaturanViewModel,
                     setoran = setoranViewModel,
+                    tunggakan = tunggakanViewModel,
                 )
             }
         }
@@ -260,6 +277,42 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
 }
 
 /**
+ * Builds the arrears list's ViewModel over the database singleton.
+ *
+ * ## Why it holds a `PaymentRepository` of its own
+ *
+ * Because the arrears **figures** live there and nowhere else — `PaymentRepository` owns the
+ * whole allocation chain, and `ContractRepository` writes one column. Building a third one
+ * over the same DAOs is deliberate and harmless: the repositories are stateless, so two
+ * instances read the same rows. What would *not* be harmless is a second place computing
+ * arrears, which is why this one reads `observeArrearsForAllContracts` rather than
+ * recomputing a figure from deposits.
+ *
+ * ## Why the clock is passed rather than read here
+ *
+ * Because an arrears figure depends on which billing period "today" falls in. Pinning it to
+ * `LocalDate.now()` would make the list untestable — a test that passes in October fails in
+ * November — and the epic context requires the single `Clock` abstraction.
+ */
+internal fun createTunggakanViewModel(context: Context): TunggakanViewModel {
+    val database = KlinikDatabase.get(context)
+    return TunggakanViewModel(
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            database = database,
+        ),
+        renterRepository = RenterRepository(database.renterDao()),
+        vehicleRepository = VehicleRepository(database.vehicleDao()),
+        strings = RStrings(context),
+        clock = Clock.systemDefaultZone(),
+    )
+}
+
+/**
  * The app shell: one graph, a rail in landscape and a bottom nav in portrait.
  *
  * Stateless by design — every screen is driven from its own `UiState` and every
@@ -290,6 +343,7 @@ private fun KlinikNetApp(
     kontrak: KontrakViewModel,
     pengaturan: PengaturanViewModel,
     setoran: SetoranViewModel,
+    tunggakan: TunggakanViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -304,6 +358,9 @@ private fun KlinikNetApp(
     val kontrakEndError by kontrak.endErrorMessage.collectAsStateWithLifecycle()
     // And Story 3.6's, the fourth window and the fourth slot.
     val kontrakSettleError by kontrak.settleErrorMessage.collectAsStateWithLifecycle()
+    // And Story 4.1's, which is a whole screen rather than a sheet — so its banner lives on
+    // the screen's own state and needs no separate slot here.
+    val tunggakanState by tunggakan.uiState.collectAsStateWithLifecycle()
     val renterOptions by kontrak.renterOptions.collectAsStateWithLifecycle()
     val vehicleOptions by kontrak.vehicleOptions.collectAsStateWithLifecycle()
     // Story 3.1's screen. It has no second window of its own beyond its form sheet, so one
@@ -422,6 +479,15 @@ private fun KlinikNetApp(
                     onDismissPreview = setoran::dismissPreview,
                     onSnackbarDismiss = setoran::consumeMessage,
                     onErrorDismiss = setoran::consumeError,
+                ),
+                // Story 4.1's arrears list. No route of its own beyond the destination —
+                // this is the whole of its wiring, which is the smallest block in `Screens`
+                // because the list has no sheets and one action.
+                tunggakan = Screens.Tunggakan(
+                    state = tunggakanState,
+                    onSelect = tunggakan::onSelect,
+                    errorMessage = tunggakanState.errorMessage,
+                    onErrorDismiss = tunggakan::consumeError,
                 ),
             ),
         )

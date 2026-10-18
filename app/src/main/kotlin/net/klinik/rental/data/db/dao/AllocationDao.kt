@@ -71,6 +71,17 @@ interface AllocationDao {
     @Query("SELECT * FROM allocation WHERE contractId = :contractId AND chargeDate IS NULL")
     suspend fun creditRowsFor(contractId: String): List<AllocationEntity>
 
+    /**
+     * Every contract id that has an allocation, as a [Flow].
+     *
+     * The allocation table's half of Story 4.1's invalidation triggers -- see
+     * `PaymentDao.observeContractIds` for why a flow over `contract` alone is not enough.
+     * A save writes `payment` and `allocation` in one transaction, so both must be named or
+     * the arrears list would go stale on the write it exists to reflect.
+     */
+    @Query("SELECT DISTINCT contractId FROM allocation")
+    fun observeContractIds(): Flow<List<String>>
+
     // ----------------------------------------------------------------- writes
 
     /**

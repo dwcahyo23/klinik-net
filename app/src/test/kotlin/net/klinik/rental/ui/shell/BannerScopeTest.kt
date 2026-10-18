@@ -195,6 +195,15 @@ class BannerScopeTest {
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),
+        // Story 4.1's arrears list. It draws its own banner over its own content — there is
+        // no sheet above it to swallow the message — so the wiring is stated here for the
+        // same reason every other screen's is.
+        tunggakan = Screens.Tunggakan(
+            state = net.klinik.rental.ui.screens.tunggakan.TunggakanUiState(),
+            onSelect = {},
+            errorMessage = null,
+            onErrorDismiss = {},
+        ),
     )
 
 }

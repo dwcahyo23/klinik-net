@@ -64,6 +64,7 @@ import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.setoran.SetoranUiState
+import net.klinik.rental.ui.screens.tunggakan.TunggakanUiState
 import net.klinik.rental.ui.shell.AppShell
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -757,6 +758,15 @@ class AccessibilityTest {
             onConfirmPreview = {},
             onDismissPreview = {},
             onSnackbarDismiss = {},
+            onErrorDismiss = {},
+        ),
+        // Story 4.1's arrears wiring, written out for the same reason the pairs above are:
+        // this fixture walks every interactive node the shell can draw, and the list's rows
+        // are the shell's new nav destination.
+        tunggakan = Screens.Tunggakan(
+            state = TunggakanUiState(),
+            onSelect = {},
+            errorMessage = null,
             onErrorDismiss = {},
         ),
     )

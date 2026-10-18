@@ -849,6 +849,85 @@
       the thing that is actually true, which is that there is nothing left to correct.
     -->
     <string name="deposito_error_not_found">Setoran ini sudah tidak ada, jadi tidak bisa dikoreksi.</string>
+
+    <!--
+      Story 4.1 — Tunggakan (the arrears list).
+
+      The `tunggakan_*` prefix matches `deposito_*` so a screen's whole copy set is findable
+      from its prefix, same rule the `kendaraan_*` and `penyewa_*` blocks follow.
+    -->
+    <!-- Nav label and top bar title: the same word, so the rail item and the bar name one screen. -->
+    <string name="nav_tunggakan">Tunggakan</string>
+    <string name="tunggakan_title">Tunggakan</string>
+    <!--
+      The count, as "3 penyewa" — counting **renters**, not rows, because one renter can
+      hold two ended contracts with a balance and the owner is asking "how many people owe
+      me", which is the question behind opening this screen.
+    -->
+    <string name="tunggakan_count">%1$d penyewa</string>
+
+    <!--
+      The row's figure line: the AC's exact shape, `Rp 750.000 · 3 hari`.
+
+      Both halves in ONE string rather than two composables placed beside each other, because
+      the AC makes them a single fact: "tidak pernah salah satu saja" — a row showing the
+      rupiah without the day count, or the reverse, is a defect rather than a partial answer.
+      The separator is a middot with spaces because it reads at a glance without competing
+      with either figure for attention.
+    -->
+    <string name="tunggakan_row_figure">%1$s · %2$s</string>
+    <!--
+      The day count on its own. "hari" is plural for every count including one, which is how
+      Indonesian reads it; "1 hari" is the correct form and "1 hari-hari" is not.
+    -->
+    <string name="tunggakan_row_days">%1$d hari</string>
+    <!--
+      The row's subtitle: the plate, so the owner can tell two rentals of one renter apart
+      without opening anything. `%1$s` is the plate.
+    -->
+    <string name="tunggakan_row_subtitle">%1$s</string>
+
+    <!-- The ended-contract marker. -->
+    <string name="tunggakan_row_ended">Selesai</string>
+
+    <!--
+      The risk level as a word, beside the day count that produced it.
+
+      Rendered because colour is never the only carrier of meaning (UX-DR9): a badge the
+      owner cannot read is a badge the owner cannot trust. These four words are the domain's
+      own `RiskLevel` names, so the label and the colour can never come from two ladders.
+    -->
+    <string name="tunggakan_risk_lancar">Lancar</string>
+    <string name="tunggakan_risk_ringan">Ringan</string>
+    <string name="tunggakan_risk_perhatian">Perhatian</string>
+    <string name="tunggakan_risk_kritis">Kritis</string>
+
+    <!--
+      The empty state. The body says what to do, per the epic context's rule that empty must
+      be an instruction rather than an absence — and "semua lunas" is the useful reading here,
+      because the common case for this screen being empty is that nobody owes anything.
+    -->
+    <string name="tunggakan_empty_title">Tidak ada tunggakan</string>
+    <string name="tunggakan_empty_body">Semua sewa sudah lunas. Kalau ada penyewa yang owe, tunggakannya muncul di sini setelah dicatat dari layar Kontrak.</string>
+
+    <!--
+      The detail pane, landscape. `%1$s` the renter's name, `%2$s` the plate.
+    -->
+    <string name="tunggakan_detail_title">Detail tunggakan</string>
+    <string name="tunggakan_detail_empty">Pilih salah satu baris untuk melihat detailnya.</string>
+    <string name="tunggakan_detail_label">%1$s · %2$s</string>
+    <!-- The detail's own figure lines, labelled so the same figure has two names on one screen. -->
+    <string name="tunggakan_detail_amount_label">Tunggakan</string>
+    <string name="tunggakan_detail_days_label">Hari menunggak</string>
+    <string name="tunggakan_detail_oldest_label">Hari tagih tertua</string>
+    <string name="tunggakan_detail_oldest_none">Tidak ada hari yang belum tertutup</string>
+
+    <!--
+      The failure banner. A read that cannot be completed says so rather than drawing an
+      empty list, because an empty arrears list reads as "everyone paid" and this app must
+      never show the owner a wrong number with confidence.
+    -->
+    <string name="tunggakan_error">Gagal menghitung tunggakan. Coba lagi.</string>
 </resources>
 
 

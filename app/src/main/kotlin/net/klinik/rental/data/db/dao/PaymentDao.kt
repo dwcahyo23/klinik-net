@@ -108,4 +108,22 @@ interface PaymentDao {
     /** One deposit by id, for the cancellation's own read. */
     @Query("SELECT * FROM payment WHERE id = :id")
     suspend fun findById(id: String): PaymentEntity?
+
+    /**
+     * Every contract id that has a deposit, as a [Flow].
+     *
+     * Added by Story 4.1 for the arrears list, and it exists because of a **Room
+     * invalidation** fact rather than any need for the data: a `Flow` built on
+     * `ContractDao.observeAll()` re-emits when the **contract** table is written and not
+     * when a deposit lands, because a deposit writes `payment` and `allocation` only. A
+     * list fed by that flow would show a stale figure after every save — which is exactly
+     * the "no manual refresh" rule failing while looking implemented.
+     *
+     * So the list combines this with the allocation and exception flows, which between them
+     * name every table the figure is derived from. The rows themselves are not used: this is
+     * a **table-level invalidation trigger**, and a query that reads a real column would be
+     * one more thing to keep in step for no benefit.
+     */
+    @Query("SELECT DISTINCT contractId FROM payment")
+    fun observeContractIds(): Flow<List<String>>
 }
