@@ -56,4 +56,24 @@ interface SettingDao {
      */
     @Upsert
     suspend fun putSetting(setting: SettingEntity)
+
+    /**
+     * Removes the row for [key], if there is one.
+     *
+     * Added by Story 4.4 and **not** by any earlier story, which is worth stating: until then
+     * every key written was permanent. A field the owner can set once and never change is not
+     * configuration, it is a constant — and the business address and phone are exactly the
+     * fields that change when the business moves.
+     *
+     * The distinction this preserves is between *absent* and *present but empty*. A row holding
+     * `""` would be a value the owner set to nothing, which reads back as "they filled this in
+     * and it is blank" rather than "they never touched it" — and the two are different facts
+     * about the same business.
+     *
+     * A `@Query` rather than Room's `@Delete` annotation, which matches on the **primary key**
+     * of an entity: there is no entity to hand it, and a delete-by-key is what a settings table
+     * actually means.
+     */
+    @Query("DELETE FROM settings WHERE key = :key")
+    suspend fun deleteSetting(key: String): Int
 }

@@ -8,8 +8,10 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -33,7 +35,9 @@ import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
+import net.klinik.rental.ui.theme.knRadii
 import net.klinik.rental.ui.theme.knSpacing
+import net.klinik.rental.ui.theme.knTypography
 
 /**
  * The settings screen: the business accounts transfers arrive at.
@@ -77,6 +81,12 @@ fun PengaturanScreen(
     onCloseForm: () -> Unit,
     onFormChange: ((AccountFormState) -> AccountFormState) -> Unit,
     onSave: () -> Unit,
+    // Story 4.4's identity sheet. Required for the same reason `onErrorDismiss` is: each of
+    // these renders a control, and a defaulted lambda is a control that does nothing.
+    onOpenIdentity: () -> Unit,
+    onCloseIdentity: () -> Unit,
+    onIdentityChange: ((IdentityFormState) -> IdentityFormState) -> Unit,
+    onSaveIdentity: () -> Unit,
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
     onSnackbarDismiss: () -> Unit = {},
@@ -120,6 +130,18 @@ fun PengaturanScreen(
                             modifier = Modifier.testTag(TAG_ADD_ACTION),
                         )
                     },
+                )
+
+                // Story 4.4's identity block, **above** the list and outside its `when`.
+                //
+                // Outside, because the list's four states are the *account list's*, and the
+                // identity is a separate thing whose visibility has nothing to do with how
+                // many accounts exist: a fresh install with no accounts still needs to be
+                // able to name its business. Putting it inside the `isEmpty` branch would
+                // hide the very form a first run most needs.
+                IdentitySection(
+                    name = state.identity?.name,
+                    onOpen = onOpenIdentity,
                 )
 
                 Box(Modifier.weight(1f)) {
@@ -168,7 +190,7 @@ fun PengaturanScreen(
             // While the form sheet is up both belong *inside* it: this banner is composed in
             // the screen's own window and a sheet is a separate window layered above, so a bar
             // drawn here would be invisible. Same rule as `KontrakScreen`'s three sheets.
-            val banner: Pair<String, KnBadgeTone>? = if (state.form != null) {
+            val banner: Pair<String, KnBadgeTone>? = if (state.form != null || state.identityForm != null) {
                 null
             } else {
                 state.errorMessage?.let { it to KnBadgeTone.Danger }
@@ -206,6 +228,100 @@ fun PengaturanScreen(
                 successMessage = snackbarMessage,
                 onDismissSuccess = onSnackbarDismiss,
                 onDismissError = onErrorDismiss,
+            )
+        }
+
+        // And the identity sheet beside it, never inside it: two `ModalBottomSheet` windows
+        // over one state is the defect Story 2.8's review found as its only `high`, and the
+        // account and identity forms are never open at once.
+        state.identityForm?.let { form ->
+            IdentityFormSheet(
+                state = form,
+                errorMessage = state.errorMessage,
+                onDismissRequest = onCloseIdentity,
+                onChange = onIdentityChange,
+                onSave = onSaveIdentity,
+                successMessage = snackbarMessage,
+                onDismissSuccess = onSnackbarDismiss,
+                onDismissError = onErrorDismiss,
+            )
+        }
+    }
+}
+
+/**
+ * Story 4.4's identity block: the business name, and the action that edits it.
+ *
+ * ## Why the name is shown and the address and phone are not
+ *
+ * Because the acceptance criterion says so twice, in the affirmative and then in the negative:
+ * *"kalau ternyata tidak dipakai di layar mana pun, keduanya tidak muncul di layar mana pun."*
+ * Only the name earns its place here — it is the value Story 4.2 quotes in a message a tenant
+ * reads. The other two are stored and available, and a screen that rendered them would be
+ * putting business contact details on a screen whose job is something else.
+ *
+ * ## Why the block is a card and not another top-bar action
+ *
+ * Because the top bar's one action is already "add an account", and two actions on a bar is a
+ * decision about which one the owner wants — on a screen where one of them is a first-run
+ * requirement and the other is occasional. A labelled block says what it is instead.
+ */
+@Composable
+private fun IdentitySection(
+    name: String?,
+    onOpen: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+
+    Surface(
+        modifier = modifier
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.lg)
+            .testTag(TAG_IDENTITY_SECTION),
+        color = MaterialTheme.knColors.bgCard,
+        contentColor = MaterialTheme.knColors.textPrimary,
+        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = stringResource(R.string.pengaturan_identity_section),
+                style = MaterialTheme.knTypography.label,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            Text(
+                // The stored name, or the default — `BusinessIdentityRepository.identity()`
+                // already applies it, so this screen never holds a second copy of it. Showing
+                // the default before anything is saved is deliberate: the owner should see
+                // what the message would quote rather than discover it after sending one.
+                text = name ?: stringResource(R.string.pengaturan_identity_section_body),
+                style = if (name != null) {
+                    MaterialTheme.knTypography.title
+                } else {
+                    MaterialTheme.knTypography.body
+                },
+                color = if (name != null) {
+                    MaterialTheme.knColors.textPrimary
+                } else {
+                    MaterialTheme.knColors.textSecondary
+                },
+                modifier = Modifier.testTag(TAG_IDENTITY_NAME),
+            )
+            KnButton(
+                label = stringResource(
+                    if (name != null) {
+                        R.string.pengaturan_identity_edit_action
+                    } else {
+                        R.string.pengaturan_identity_action
+                    },
+                ),
+                onClick = onOpen,
+                variant = KnButtonVariant.Secondary,
+                size = KnButtonSize.Small,
+                modifier = Modifier.testTag(TAG_IDENTITY_ACTION),
             )
         }
     }
@@ -286,6 +402,13 @@ internal const val TAG_ADD_ACTION = "pengaturan-add-action"
 internal const val TAG_EMPTY = "pengaturan-empty"
 internal const val TAG_BANNER = "pengaturan-banner"
 
+// Story 4.4's identity block and sheet. Distinct from the account row's tags: a shared tag
+// would let a test asserting "the empty state's action" silently resolve to the identity's
+// once an account exists — the trap `KontrakScreen` records.
+internal const val TAG_IDENTITY_SECTION = "pengaturan-identity-section"
+internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"
+internal const val TAG_IDENTITY_ACTION = "pengaturan-identity-action"
+
 /**
  * The preview, built through the **real** state types.
  *
@@ -323,6 +446,10 @@ private fun PengaturanScreenPreview() {
             onCloseForm = {},
             onFormChange = { it },
             onSave = {},
+            onOpenIdentity = {},
+            onCloseIdentity = {},
+            onIdentityChange = { it },
+            onSaveIdentity = {},
             onErrorDismiss = {},
         )
     }

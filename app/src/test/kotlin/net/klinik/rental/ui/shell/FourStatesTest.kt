@@ -496,6 +496,13 @@ class FourStatesTest {
             onCloseForm = {},
             onFormChange = { it },
             onSave = {},
+            // Story 4.4's identity callbacks. Required on the real wiring, stated here so this
+            // cross-screen fixture keeps naming every callback each screen renders a control
+            // for — a defaulted one would be a control this test cannot reach.
+            onOpenIdentity = {},
+            onCloseIdentity = {},
+            onIdentityChange = { it },
+            onSaveIdentity = {},
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},
             onErrorDismiss = {},

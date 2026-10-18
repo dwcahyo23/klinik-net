@@ -716,6 +716,33 @@
     <string name="pengaturan_account_saved">Rekening %1$s tersimpan</string>
 
     <!--
+      Story 4.4 — Identitas usaha (business identity).
+
+      The three fields the reminder message quotes, and the refusal on the only one that has a
+      rule. The address and phone have no "required" copy on purpose: they are free text the
+      owner types for outsiders, and a business with no address is a real business rather than a
+      half-filled form.
+    -->
+    <string name="pengaturan_identity_section">Identitas usaha</string>
+    <string name="pengaturan_identity_section_body">Nama usaha ini yang muncul di pesan pengingat ke penyewa.</string>
+    <string name="pengaturan_identity_action">Isi identitas</string>
+    <string name="pengaturan_identity_edit_action">Ubah identitas</string>
+    <string name="pengaturan_identity_title">Identitas usaha</string>
+    <string name="pengaturan_identity_field_name">Nama usaha</string>
+    <string name="pengaturan_identity_name_hint">Contoh: PT Klinik Net Rent Car</string>
+    <string name="pengaturan_identity_field_address">Alamat usaha</string>
+    <string name="pengaturan_identity_address_hint">Alamat lengkap untuk kop surat</string>
+    <string name="pengaturan_identity_field_phone">Telepon usaha</string>
+    <string name="pengaturan_identity_phone_hint">Nomor yang bisa dihubungi penyewa</string>
+    <!--
+      The blank-name refusal. It says what to write rather than only that the field is empty,
+      and it explains the consequence — this name is what the tenant reads — because a "wajib
+      diisi" beside a field the owner believes is already filled would be baffling.
+    -->
+    <string name="pengaturan_error_blank_identity_name">Isi nama usaha. Nama ini yang muncul di pesan pengingat ke penyewa.</string>
+    <string name="pengaturan_identity_saved">%1$s tersimpan sebagai identitas usaha</string>
+
+    <!--
       Story 3.2 — Setoran (deposits).
 
       The numpad's own copy is not here: `KnNumPad` ships its digits and its Save

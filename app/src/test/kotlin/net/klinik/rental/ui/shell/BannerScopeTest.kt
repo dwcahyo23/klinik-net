@@ -181,6 +181,13 @@ class BannerScopeTest {
             onCloseForm = {},
             onFormChange = { it },
             onSave = {},
+            // Story 4.4's identity callbacks, required on the real wiring. Named here because
+            // this fixture exists to walk every window that can draw a banner, and the identity
+            // sheet is one of them.
+            onOpenIdentity = {},
+            onCloseIdentity = {},
+            onIdentityChange = { it },
+            onSaveIdentity = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),

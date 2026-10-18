@@ -14,6 +14,7 @@ import kotlinx.coroutines.test.runTest
 import kotlinx.coroutines.test.setMain
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
+import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.ui.strings.RStrings
 import org.junit.After
 import org.junit.Assert.assertEquals
@@ -53,6 +54,7 @@ class PengaturanViewModelTest {
     private lateinit var context: Context
     private lateinit var database: KlinikDatabase
     private lateinit var repository: BusinessAccountRepository
+    private lateinit var identity: BusinessIdentityRepository
     private lateinit var strings: RStrings
 
     @Before
@@ -77,6 +79,10 @@ class PengaturanViewModelTest {
         // `runBlocking` and therefore a real background thread. This asymmetry is deliberate;
         // do not "fix" it by passing the database here.
         repository = BusinessAccountRepository(database.businessAccountDao())
+        // Story 4.4's identity, over the same DAO alone and for the same reason: passing the
+        // database would make `withTransaction` throw on the main thread under this
+        // dispatcher, and the account suite already covers the transaction path.
+        identity = BusinessIdentityRepository(database.settingDao())
         strings = RStrings(context)
     }
 
@@ -307,7 +313,7 @@ class PengaturanViewModelTest {
      */
     @Test
     fun `isLoading is true before the first emission and false after`() = runTest(dispatcher) {
-        val viewModel = PengaturanViewModel(repository, strings)
+        val viewModel = PengaturanViewModel(repository, identity, strings)
 
         assertTrue(
             "a cold open must not read as an empty account list",
@@ -334,7 +340,7 @@ class PengaturanViewModelTest {
      * collector cannot outlive the test or leak into the next one.
      */
     private fun TestScope.observingViewModel(): PengaturanViewModel {
-        val viewModel = PengaturanViewModel(repository, strings)
+        val viewModel = PengaturanViewModel(repository, identity, strings)
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
         return viewModel
     }

@@ -1,5 +1,7 @@
 package net.klinik.rental.ui.screens.pengaturan
 
+import net.klinik.rental.data.repository.BusinessIdentity
+import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.domain.model.BusinessAccount
 
 /**
@@ -41,6 +43,9 @@ data class AccountRow(
 data class PengaturanUiState(
     val rows: List<AccountRow> = emptyList(),
     val form: AccountFormState? = null,
+    /** The business identity as stored, or the default. Story 4.4's section header reads it. */
+    val identity: IdentityRow? = null,
+    val identityForm: IdentityFormState? = null,
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
@@ -55,6 +60,15 @@ data class PengaturanUiState(
 
     /** The subtitle on the top bar: how many accounts are stored. */
     val accountCount: Int get() = rows.size
+
+    /**
+     * Whether the identity section's action should read "edit" rather than "add".
+     *
+     * Derived from whether the section already shows a name, not from a separate flag — the two
+     * would be able to disagree, and a section offering to add an identity that is already
+     * stored is the same defect an `isEditing` boolean causes elsewhere.
+     */
+    val hasIdentity: Boolean get() = identity != null
 }
 
 /**
@@ -191,6 +205,98 @@ fun AccountFormState.toBusinessAccount(id: String): BusinessAccount? {
         id = this.id ?: id,
         bankName = bankName,
         number = number,
+    )
+}
+
+// ---------------------------------------------------------------- Story 4.4
+
+/**
+ * The identity the message quotes, as the screen shows it.
+ *
+ * Read from storage rather than compiled in — the prototype's three hardcoded copies of the
+ * business name are exactly what this replaces, so the screen reads one default from one
+ * constant rather than repeating it.
+ */
+data class IdentityRow(
+    /** The business name as stored, or the default when nothing has been saved yet. */
+    val name: String,
+)
+
+/**
+ * The business-identity form's own state, held by the ViewModel.
+ *
+ * ## Why this is a second form and not three fields on the account form
+ *
+ * Because they are saved as **one block**: a name with no address is an identity the owner did
+ * not enter, and the message would quote half of it. A second state beside `AccountFormState`
+ * is therefore not a convenience — it is what makes "all three or none" expressible. One form
+ * per sheet is also the rule every other screen in this app follows.
+ *
+ * ## Why the name opens pre-filled and the other two do not
+ *
+ * Because the name has a default the owner is *expected* to accept or replace — it is the
+ * prototype's own, and a blank field would invite an empty business name in every outgoing
+ * message. The address and phone have no default worth inventing: a blank one invites the owner
+ * to type a placeholder, and `openAddForm`'s KDoc gives the same reason for leaving the account
+ * bank field empty.
+ *
+ * @param nameError the last refusal's message for the name field, or `null`. `null` means
+ *   "validation has not run" and renders no error row.
+ */
+data class IdentityFormState(
+    val name: String = BusinessIdentityRepository.DEFAULT_NAME,
+    val address: String = "",
+    val phone: String = "",
+    val nameError: String? = null,
+)
+
+/**
+ * Applies a name edit, clearing its own error.
+ *
+ * Clears because the edit **is** the fix — the same rule `setBankName` gives, and the reason
+ * an error surviving a correction accuses the owner of a field they are mid-way through.
+ */
+fun IdentityFormState.setIdentityName(name: String): IdentityFormState = copy(
+    name = name,
+    nameError = null,
+)
+
+/** Applies an address edit. No error slot, because an address is never refused. */
+fun IdentityFormState.setIdentityAddress(address: String): IdentityFormState = copy(
+    address = address,
+)
+
+/** Applies a phone edit. No error slot, for the same reason. */
+fun IdentityFormState.setIdentityPhone(phone: String): IdentityFormState = copy(
+    phone = phone,
+)
+
+/**
+ * Whether Save is allowed.
+ *
+ * The name alone, because it is the only field with a rule. The address and phone are free text
+ * the owner types for outsiders, and a completeness gate over them would refuse a business with
+ * no address — which is a real business, not a half-filled form.
+ */
+val IdentityFormState.canSaveIdentity: Boolean
+    get() = name.isNotBlank()
+
+/**
+ * Builds the identity this form describes, or `null` when the name is blank.
+ *
+ * `null` rather than throwing, for the reason `toBusinessAccount` gives: an incomplete form is
+ * a state the caller already knows how to report, so the message lands on the field instead of
+ * arriving as an exception about an identity the owner never finished building.
+ *
+ * The address and phone stay **nullable** all the way down — a blank one is "not filled in", and
+ * storing `""` would make the two indistinguishable to the next reader.
+ */
+fun IdentityFormState.toBusinessIdentity(): BusinessIdentity? {
+    if (name.isBlank()) return null
+    return BusinessIdentity(
+        name = name.trim(),
+        address = address.trim().takeIf { it.isNotBlank() },
+        phone = phone.trim().takeIf { it.isNotBlank() },
     )
 }
 

@@ -284,10 +284,11 @@ internal class Screens(
     /**
      * The settings destination's wiring.
      *
-     * Seven callbacks, all required, for the reason the three destinations above give: a
+     * Eleven callbacks, all required, for the reason the three destinations above give: a
      * defaulted lambda produces a control that renders and silently does nothing, and this
-     * screen's only verb is adding or editing an account. The screen also mounts its own form
-     * sheet, so nothing is composed here — the same asymmetry `KontrakRoute` documents.
+     * screen's only verbs are adding or editing an account and filling in the business
+     * identity. The screen also mounts its own form sheets, so nothing is composed here — the
+     * same asymmetry `KontrakRoute` documents.
      */
     class Pengaturan(
         val state: PengaturanUiState,
@@ -298,6 +299,14 @@ internal class Screens(
         val onFormChange:
             ((net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> net.klinik.rental.ui.screens.pengaturan.AccountFormState) -> Unit,
         val onSave: () -> Unit,
+        // Story 4.4's identity sheet. Required like the rest, for the same reason — and
+        // defaulted, these four would be the "control exists, wired to nothing" defect this
+        // repo has shipped twice.
+        val onOpenIdentity: () -> Unit,
+        val onCloseIdentity: () -> Unit,
+        val onIdentityChange:
+            ((net.klinik.rental.ui.screens.pengaturan.IdentityFormState) -> net.klinik.rental.ui.screens.pengaturan.IdentityFormState) -> Unit,
+        val onSaveIdentity: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
     )
@@ -477,6 +486,13 @@ private fun PengaturanRoute(wiring: Screens.Pengaturan) {
         onCloseForm = wiring.onCloseForm,
         onFormChange = wiring.onFormChange,
         onSave = wiring.onSave,
+        // Story 4.4's four, forwarded for the same reason the account sheet's are: the screen
+        // owns its sheet, so a callback this route dropped would be a control that renders and
+        // reaches nothing.
+        onOpenIdentity = wiring.onOpenIdentity,
+        onCloseIdentity = wiring.onCloseIdentity,
+        onIdentityChange = wiring.onIdentityChange,
+        onSaveIdentity = wiring.onSaveIdentity,
         snackbarMessage = wiring.snackbarMessage,
         onSnackbarDismiss = wiring.onSnackbarDismiss,
         onErrorDismiss = wiring.onErrorDismiss,

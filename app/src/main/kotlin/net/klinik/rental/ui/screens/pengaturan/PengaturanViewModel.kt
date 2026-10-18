@@ -14,6 +14,9 @@ import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.BusinessAccountRepository
+import net.klinik.rental.data.repository.BusinessIdentity
+import net.klinik.rental.data.repository.BusinessIdentityRepository
+import net.klinik.rental.data.repository.BlankIdentityNameException
 import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.validation.InvalidAccountNumberException
 import net.klinik.rental.ui.strings.RStrings
@@ -44,11 +47,32 @@ import net.klinik.rental.ui.strings.RStrings
  */
 class PengaturanViewModel(
     private val repository: BusinessAccountRepository,
+    private val identity: BusinessIdentityRepository,
     private val strings: RStrings,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
     private val form = MutableStateFlow<AccountFormState?>(null)
+
+    /**
+     * The business-identity form — Story 4.4's, beside the account one rather than inside it.
+     *
+     * A separate flow because it is a separate sheet with a separate lifetime: collapsing the
+     * two would mean closing the account sheet also discarded a half-typed business name, which
+     * is the defect `SetoranViewModel` keeps three flows apart to avoid.
+     */
+    private val identityForm = MutableStateFlow<IdentityFormState?>(null)
+
+    /**
+     * The stored identity, read once and refreshed after a save.
+     *
+     * A `StateFlow` rather than a `Flow` from the DAO because `settings` has **no** read
+     * notification to observe: Room re-emits a flow for the tables its query names, and a
+     * key/value read names one key, so a write to `businessPhone` would not re-emit a query for
+     * `businessName`. Refreshing after the write is therefore the honest mechanism, and it is
+     * also the only one that exists until this table has a `Flow` query of its own.
+     */
+    private val storedIdentity = MutableStateFlow<IdentityRow?>(null)
 
     /** A transient confirmation. Success does not change screen state. */
     private val message = MutableStateFlow<String?>(null)
@@ -95,12 +119,17 @@ class PengaturanViewModel(
     val uiState: StateFlow<PengaturanUiState> = combine(
         accountsWithLoadFlag(),
         combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) },
-    ) { (accounts, hasEmitted), formSnapshot ->
+        combine(identityForm, storedIdentity) { form, stored ->
+            IdentitySnapshot(form, stored)
+        },
+    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot ->
         PengaturanUiState(
             // The projection to a row happens here, once per emission, so the screen renders
             // what it is handed and no composable formats a value.
             rows = accounts.map { it.toRow() },
             form = formSnapshot.form,
+            identity = identitySnapshot.stored,
+            identityForm = identitySnapshot.form,
             errorMessage = formSnapshot.error,
             isLoading = !hasEmitted,
         )
@@ -128,6 +157,28 @@ class PengaturanViewModel(
         val form: AccountFormState?,
         val error: String?,
     )
+
+    /**
+     * The identity half of the screen, as one value.
+     *
+     * Nested rather than folded into [FormSnapshot] because the two forms are never open at
+     * once and are never written together: pairing them would let a dismissal of one clear the
+     * other's state, which is the defect `SetoranViewModel.onCancelChange` is kept apart from
+     * `onFormChange` to prevent.
+     */
+    private data class IdentitySnapshot(
+        val form: IdentityFormState?,
+        val stored: IdentityRow?,
+    )
+
+    init {
+        // Read once on construction rather than per screen-open: the name is pre-filled into
+        // the form from here, so a read on open would leave the field empty for the frame
+        // between the tap and the answer.
+        viewModelScope.launch {
+            storedIdentity.value = identity.identity().toRow()
+        }
+    }
 
     // ------------------------------------------------------------------- form
 
@@ -267,6 +318,112 @@ class PengaturanViewModel(
     fun consumeMessage() {
         message.value = null
     }
+
+    // ------------------------------------------------------------ Story 4.4
+
+    /**
+     * Opens the identity form, pre-filled with what is stored.
+     *
+     * Pre-filled on **both** halves — the name and the address — because an edit is *about*
+     * the stored values, which is the same argument `openEditForm` gives. The name additionally
+     * arrives with the default when nothing has been saved, so a first run opens on something
+     * the owner can accept rather than a blank field that would end up in a message.
+     */
+    fun openIdentityForm() {
+        errorMessage.value = null
+        val stored = storedIdentity.value
+        identityForm.value = IdentityFormState(
+            name = stored?.name ?: BusinessIdentityRepository.DEFAULT_NAME,
+        )
+    }
+
+    /**
+     * Closes the identity form, clearing its own banner with it.
+     *
+     * The account form's banner goes with it rather than being left behind: a refusal raised
+     * while this sheet was up must not survive onto the list, where it would read as a current
+     * failure about an account with nothing left to explain it.
+     */
+    fun dismissIdentity() {
+        errorMessage.value = null
+        identityForm.value = null
+    }
+
+    /** Applies an identity edit. Pure and hoisted, like [onFormChange]. */
+    fun onIdentityChange(transform: (IdentityFormState) -> IdentityFormState) {
+        identityForm.value = identityForm.value?.let(transform)
+    }
+
+    /**
+     * Saves the identity as one block.
+     *
+     * ## Where the blank-name rule is enforced, twice
+     *
+     * 1. Here — so the message lands on the field the owner is looking at, rather than coming
+     *    back from the repository as a refusal about an identity they never finished building
+     * 2. In `BusinessIdentityRepository.save` — so a second screen, or a caller holding three
+     *    strings and no model, cannot pass the check this one has
+     *
+     * Step 1 is a courtesy; the repository's is the rule. Neither is dead: the form holds
+     * `String`s and is built independently of the model, so the check here runs first and
+     * names a field, and the repository's runs for every other caller.
+     *
+     * ## Why the stored identity is re-read after the write
+     *
+     * Because the section's header reads it, and a header still showing the old name beside a
+     * form that just saved a new one is a screen contradicting itself. `settings` has no read
+     * notification to observe — see [storedIdentity] — so the re-read is the mechanism rather
+     * than a workaround.
+     */
+    fun saveIdentity() {
+        if (!saving.compareAndSet(false, true)) return
+
+        val current = identityForm.value
+        if (current == null) {
+            saving.set(false)
+            return
+        }
+
+        val identity = current.toBusinessIdentity()
+        if (identity == null) {
+            identityForm.value = current.copy(
+                nameError = strings.pengaturanErrorBlankIdentityName(),
+            )
+            saving.set(false)
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                this@PengaturanViewModel.identity.save(
+                    identity.name,
+                    identity.address,
+                    identity.phone,
+                )
+                // Identity only, for the reason `saveForm`'s close carries: the reference is
+                // what distinguishes "the sheet I submitted" from "a sheet opened since".
+                val live = identityForm.value
+                if (live != null && live === current) identityForm.value = null
+                storedIdentity.value = this@PengaturanViewModel.identity.identity().toRow()
+                errorMessage.value = null
+                message.value = strings.pengaturanIdentitySaved(identity.name)
+            } catch (e: BlankIdentityNameException) {
+                val live = identityForm.value ?: current
+                identityForm.value = live.copy(
+                    nameError = strings.pengaturanErrorBlankIdentityName(),
+                )
+            } catch (e: CancellationException) {
+                throw e
+            } catch (e: Exception) {
+                errorMessage.value = strings.pengaturanErrorUnexpected()
+            } finally {
+                saving.set(false)
+            }
+        }
+    }
+
+    /** Projects the stored identity onto its row. The name is already resolved. */
+    private fun BusinessIdentity.toRow() = IdentityRow(name = name)
 
     fun consumeError() {
         errorMessage.value = null

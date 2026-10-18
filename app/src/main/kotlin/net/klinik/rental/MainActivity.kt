@@ -18,6 +18,7 @@ import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
+import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
@@ -227,6 +228,9 @@ internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
     val database = KlinikDatabase.get(context)
     return PengaturanViewModel(
         repository = BusinessAccountRepository(database.businessAccountDao(), database),
+        // Story 4.4's identity. The database handle is passed because `save` writes three
+        // keys as one block and a half-written identity is one the owner did not enter.
+        identity = BusinessIdentityRepository(database.settingDao(), database),
         strings = RStrings(context),
     )
 }
@@ -463,6 +467,13 @@ private fun KlinikNetApp(
                     onCloseForm = pengaturan::closeForm,
                     onFormChange = pengaturan::onFormChange,
                     onSave = pengaturan::saveForm,
+                    // Story 4.4's identity sheet, beside the account one rather than inside
+                    // it: two sheets over one state is the defect Story 2.8's review found as
+                    // its only `high`.
+                    onOpenIdentity = pengaturan::openIdentityForm,
+                    onCloseIdentity = pengaturan::dismissIdentity,
+                    onIdentityChange = pengaturan::onIdentityChange,
+                    onSaveIdentity = pengaturan::saveIdentity,
                     onSnackbarDismiss = pengaturan::consumeMessage,
                     onErrorDismiss = pengaturan::consumeError,
                 ),

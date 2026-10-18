@@ -744,6 +744,14 @@ class AccessibilityTest {
             onCloseForm = {},
             onFormChange = { it },
             onSave = {},
+            // Story 4.4's identity callbacks. Required on the real wiring and stated here for
+            // the same reason the account sheet's are: this fixture walks every interactive
+            // node the shell can draw, and a callback omitted here would leave the identity
+            // block's action unmeasured.
+            onOpenIdentity = {},
+            onCloseIdentity = {},
+            onIdentityChange = { it },
+            onSaveIdentity = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
         ),

@@ -535,6 +535,62 @@ class RStrings(private val context: Context) {
     fun pengaturanErrorUnexpected(): String =
         context.getString(R.string.pengaturan_error_unexpected)
 
+    // -------------------------------------------------------------- Story 4.4
+
+    /**
+     * The identity section's heading and its body.
+     *
+     * The body exists because the section answers a question the owner did not ask: *why is
+     * my business name on this settings screen at all*. "This is the name the reminder message
+     * quotes" is the sentence that makes the field worth filling in.
+     */
+    fun pengaturanIdentitySection(): String =
+        context.getString(R.string.pengaturan_identity_section)
+
+    fun pengaturanIdentitySectionBody(): String =
+        context.getString(R.string.pengaturan_identity_section_body)
+
+    /** The section's action, which reads "edit" once an identity is stored. */
+    fun pengaturanIdentityAction(): String =
+        context.getString(R.string.pengaturan_identity_action)
+
+    fun pengaturanIdentityEditAction(): String =
+        context.getString(R.string.pengaturan_identity_edit_action)
+
+    /** The sheet's title, and its three field labels. */
+    fun pengaturanIdentityTitle(): String =
+        context.getString(R.string.pengaturan_identity_title)
+
+    fun pengaturanIdentityFieldName(): String =
+        context.getString(R.string.pengaturan_identity_field_name)
+
+    fun pengaturanIdentityFieldAddress(): String =
+        context.getString(R.string.pengaturan_identity_field_address)
+
+    fun pengaturanIdentityFieldPhone(): String =
+        context.getString(R.string.pengaturan_identity_field_phone)
+
+    /**
+     * The blank-name refusal.
+     *
+     * Says what to write **and** what the name is for, for the reason every other refusal here
+     * does: "wajib diisi" beside a field the owner believes is already filled is baffling, and
+     * this one matters because the value ends up in a message a tenant reads.
+     */
+    fun pengaturanErrorBlankIdentityName(): String =
+        context.getString(R.string.pengaturan_error_blank_identity_name)
+
+    /**
+     * The confirmation, naming the identity that was saved.
+     *
+     * Takes an **already-formatted** name, for the reason every other money-or-name accessor
+     * here does: the confirmation the owner reads and the name on the section header must be
+     * the same string, or the screen contradicts itself within one glance — the header would
+     * still show the old name while the snackbar named the new one.
+     */
+    fun pengaturanIdentitySaved(name: String): String =
+        context.getString(R.string.pengaturan_identity_saved, name)
+
     // -------------------------------------------------------------- Story 3.2
 
     /**

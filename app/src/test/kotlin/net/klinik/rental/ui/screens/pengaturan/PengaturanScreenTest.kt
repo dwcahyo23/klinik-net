@@ -298,6 +298,15 @@ class PengaturanScreenTest {
         snackbarMessage: String? = null,
         onSnackbarDismiss: () -> Unit = {},
         onErrorDismiss: () -> Unit = {},
+        // Story 4.4's four. Defaulted **here** on purpose, unlike the production parameters
+        // they forward to: this helper is the fixture every existing test uses, and forcing
+        // nine unrelated tests to name four callbacks they do not exercise would make the file
+        // harder to read without testing anything more. The new `IdentityFormTest` passes
+        // them explicitly and drives them.
+        onOpenIdentity: () -> Unit = {},
+        onCloseIdentity: () -> Unit = {},
+        onIdentityChange: ((IdentityFormState) -> IdentityFormState) -> Unit = {},
+        onSaveIdentity: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -309,6 +318,10 @@ class PengaturanScreenTest {
             snackbarMessage = snackbarMessage,
             onSnackbarDismiss = onSnackbarDismiss,
             onErrorDismiss = onErrorDismiss,
+            onOpenIdentity = onOpenIdentity,
+            onCloseIdentity = onCloseIdentity,
+            onIdentityChange = onIdentityChange,
+            onSaveIdentity = onSaveIdentity,
         )
     }
 
