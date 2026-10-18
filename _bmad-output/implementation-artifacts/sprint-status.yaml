@@ -29,7 +29,7 @@
 # - Dev moves story to 'review', then runs code-review (fresh context, different LLM recommended)
 # - Retrospective appends its action items to action_items; the status view surfaces open ones
 generated: 10-13-2026 12:57
-last_updated: 10-18-2026
+last_updated: 10-19-2026
 project: dev.klinik.net
 project_key: NOKEY
 tracking_system: file-system
@@ -64,23 +64,30 @@ development_status:
   3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: done
   epic-3-retrospective: optional # all 6 stories done. Two open carry-overs: Story 3.4's `requestCancel` and Story 3.5's `openEditDeposit` are both implemented and tested but have no production caller — no deposit history list exists until Epic 4.1, so neither is mountable yet. Both are recorded in their specs' `deferred` frontmatter.
 
-  epic-4: in-progress
+  epic-4: done
   4-1-daftar-tunggakan-yang-langsung-terbaca: done
   4-2-mengirim-pengingat-whatsapp-dengan-angka-yang-benar: done
   4-3-ringkasan-pagi-di-beranda: done
   4-4-identitas-usaha-untuk-pesan-pengingat: done
   4-5-laporan-periode-bulanan: done
   4-6-pencarian-global: done
-  epic-4-retrospective: optional
+  epic-4-retrospective: optional # all 6 stories done and the two Epic 3 carry-overs they were waiting on closed (spec-riwayat-setoran). One open item: the rail re-order UX-DR17 named as a deferral landed under spec-setoran-screen rather than here
 
-  epic-5: backlog
-  5-1-mengekspor-seluruh-data-ke-satu-berkas: backlog
-  5-2-memulihkan-data-dari-cadangan: backlog
+  epic-5: in-progress
+  5-1-mengekspor-seluruh-data-ke-satu-berkas: done # 8 tables (not the AC's 5), allocations copied not re-derived, PIN deny-list shipped before the rows exist. Manifest still declares zero permissions, now asserted by ExportPermissionTest
+  5-2-memulihkan-data-dari-cadangan: in-progress # spec written, not yet implemented. Strict org.json reader: `optJSONArray` appears nowhere, because a missing key read as an empty array turns a corrupt file into a successful wipe
   5-3-mengunci-aplikasi-dengan-pin-dan-kode-pemulihan: backlog
   5-4-mengubah-tanggal-cutoff-dengan-melihat-dampaknya: backlog
   5-5-mengingat-kalau-backup-belum-dibuat: backlog
   5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
   epic-5-retrospective: optional
+
+  # Two records outside the epic story list, because they are not stories:
+  #   - spec-setoran-screen-dua-tab-urutan-rail (Setoran became a screen; rail reordered to
+  #     UX-DR17's eight entries) — closed Epic 4's last UX-DR17 deferral
+  #   - spec-riwayat-setoran-menutup-deferral-epic-3 — closed Epic 3's two deferrals
+  # Epic 5 also gained epic-5-context.md, which did not exist and which spec 5.1 already
+  # referenced.
 
 
 
