@@ -23,6 +23,7 @@ import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.BusinessIdentity
 import net.klinik.rental.data.repository.BusinessIdentityRepository
+import net.klinik.rental.data.repository.PinLockRepository
 import net.klinik.rental.data.repository.BlankIdentityNameException
 import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.validation.InvalidAccountNumberException
@@ -76,6 +77,14 @@ class PengaturanViewModel(
      * the database handle.
      */
     private val restorer: BackupRestorer? = null,
+    /**
+     * Story 5.3's lock, optional on the same argument.
+     *
+     * Optional so every existing test that builds a settings ViewModel without a lock keeps
+     * compiling — and so the security card simply does not appear when there is no lock to
+     * configure, rather than drawing a switch wired to nothing.
+     */
+    private val pinLock: PinLockRepository? = null,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
@@ -175,6 +184,26 @@ class PengaturanViewModel(
     private val restoreErrorMessage = MutableStateFlow<String?>(null)
 
     /**
+     * Story 5.3's lock state, re-read after every write rather than derived from the flow.
+     *
+     * `null` until the first read lands, so the card cannot draw the switch in the wrong position
+     * for a frame — see `PengaturanUiState.pin`.
+     */
+    private val pinSettings = MutableStateFlow<PinSettingsUi?>(null)
+
+    /** The setup flow, or `null` when closed. */
+    private val pinSetup = MutableStateFlow<PinSetupUi?>(null)
+
+    /**
+     * The digits typed so far in each setup step — **never** in the flow's state.
+     *
+     * Same rule as the lock screen's: a `UiState` is a bundle-able object, and a PIN in one is a
+     * PIN in a log. The state carries only how many dots are filled.
+     */
+    private var setupPin = ""
+    private var setupConfirm = ""
+
+    /**
      * The accounts plus "has the read happened yet", as one flow.
      *
      * A derived flag rather than a separate `MutableStateFlow<Boolean>`: a flag set in the
@@ -202,10 +231,17 @@ class PengaturanViewModel(
             IdentitySnapshot(form, stored, error)
         },
         combine(exporting, exportErrorMessage) { busy, failure -> ExportSnapshot(busy, failure) },
-        combine(pendingRestore, restoring, restoreErrorMessage) { pending, busy, failure ->
-            RestoreSnapshot(pending?.preview?.toUi(), busy, failure)
-        },
-    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot, restoreSnapshot ->
+        // The last three nested into one source: `combine` has typed overloads up to five, and a
+        // sixth falls through to the `vararg` one whose lambda takes an `Array<Any?>` — which is
+        // exactly the untyped shape `PenyewaViewModel`'s KDoc warns about. Nesting keeps every
+        // source typed.
+        combine(
+            combine(pendingRestore, restoring, restoreErrorMessage) { pending, busy, failure ->
+                RestoreSnapshot(pending?.preview?.toUi(), busy, failure)
+            },
+            combine(pinSettings, pinSetup) { pin, setup -> PinSnapshot(pin, setup) },
+        ) { restore, pin -> restore to pin },
+    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot, (restoreSnapshot, pinSnapshot) ->
         PengaturanUiState(
             // The projection to a row happens here, once per emission, so the screen renders
             // what it is handed and no composable formats a value.
@@ -224,6 +260,8 @@ class PengaturanViewModel(
             restorePreview = restoreSnapshot.preview,
             isRestoring = restoreSnapshot.busy,
             restoreErrorMessage = restoreSnapshot.failure,
+            pin = pinSnapshot.settings,
+            pinSetup = pinSnapshot.setup,
             isLoading = !hasEmitted,
         )
     }
@@ -284,6 +322,12 @@ class PengaturanViewModel(
         val failure: String?,
     )
 
+    /** Story 5.3's half: the card's figures and the setup flow, which are read together. */
+    private data class PinSnapshot(
+        val settings: PinSettingsUi?,
+        val setup: PinSetupUi?,
+    )
+
     init {
         // Read once on construction rather than per screen-open: the name is pre-filled into
         // the form from here, so a read on open would leave the field empty for the frame
@@ -293,6 +337,19 @@ class PengaturanViewModel(
             identityLoadError.value = null
         }.invokeOnCompletion { cause ->
             if (cause != null) identityLoadError.value = strings.pengaturanErrorUnexpected()
+        }
+
+        // Story 5.3's card, read once on construction. Read here rather than per screen-open for
+        // the same reason the identity is: the switch must show its real position on the first
+        // frame, and a read on open would draw it off for one frame — a switch in the wrong
+        // position is a switch the owner flips the wrong way.
+        viewModelScope.launch {
+            pinLock?.let { lock ->
+                pinSettings.value = PinSettingsUi(
+                    enabled = lock.isEnabled(),
+                    autoLockMinutes = lock.autoLockMinutes(),
+                )
+            }
         }
     }
 
@@ -773,6 +830,199 @@ class PengaturanViewModel(
             // so the copy can say so instead of printing "1 Jan 1970" and looking broken.
             ?: strings.pengaturanRestorePeriodEmpty(),
     )
+
+/**
+     * Story 5.3's setup flow: choose a PIN, confirm it, then show the recovery code once.
+     *
+     * ## Why nothing is written until the code is confirmed
+     *
+     * Because the AC says the flow is not finished before that confirmation. A lock written at the
+     * PIN step would leave the owner with a PIN they know and an escape hatch they dismissed —
+     * which is the exact state the recovery code exists to prevent.
+     *
+     * ## Why the PIN is entered twice
+     *
+     * Because a mistyped PIN on a lock with no way in is unrecoverable, and the recovery code is
+     * the only way out. Typing it twice costs two seconds; getting it wrong costs the records.
+     */
+    fun openPinSetup() {
+        setupPin = ""
+        setupConfirm = ""
+        pinSetup.value = PinSetupUi(step = PinSetupStep.EnterPin)
+    }
+
+    /** Closes the setup flow. Nothing has been written, so there is nothing to undo. */
+    fun dismissPinSetup() {
+        setupPin = ""
+        setupConfirm = ""
+        pinSetup.value = null
+    }
+
+    /** One key of the setup grid. */
+    fun onSetupDigit(digit: Char) {
+        val current = pinSetup.value ?: return
+        when (current.step) {
+            PinSetupStep.EnterPin -> {
+                if (setupPin.length >= PinLockRepository.PIN_LENGTH) return
+                setupPin += digit
+                if (setupPin.length == PinLockRepository.PIN_LENGTH) {
+                    // Straight to the confirmation: there is no Enter key on the grid, and the
+                    // second entry is the check.
+                    pinSetup.value = current.copy(
+                        step = PinSetupStep.ConfirmPin,
+                        firstDigits = setupPin.length,
+                        errorMessage = null,
+                    )
+                } else {
+                    pinSetup.value = current.copy(firstDigits = setupPin.length)
+                }
+            }
+
+            PinSetupStep.ConfirmPin -> {
+                if (setupConfirm.length >= PinLockRepository.PIN_LENGTH) return
+                setupConfirm += digit
+                if (setupConfirm.length == PinLockRepository.PIN_LENGTH) {
+                    confirmSetupPin()
+                } else {
+                    pinSetup.value = current.copy(secondDigits = setupConfirm.length)
+                }
+            }
+
+            PinSetupStep.ShowCode -> Unit
+        }
+    }
+
+    /** The setup grid's backspace, on whichever step is showing. */
+    fun onSetupDelete() {
+        val current = pinSetup.value ?: return
+        when (current.step) {
+            PinSetupStep.EnterPin -> {
+                setupPin = setupPin.dropLast(1)
+                pinSetup.value = current.copy(firstDigits = setupPin.length)
+            }
+
+            PinSetupStep.ConfirmPin -> {
+                // Backing out of the confirmation returns to the first entry rather than editing
+                // the second: the two must agree, and an edit to the second alone can only
+                // produce a mismatch.
+                if (setupConfirm.isEmpty()) {
+                    setupPin = ""
+                    pinSetup.value = current.copy(
+                        step = PinSetupStep.EnterPin,
+                        firstDigits = 0,
+                        secondDigits = 0,
+                    )
+                } else {
+                    setupConfirm = setupConfirm.dropLast(1)
+                    pinSetup.value = current.copy(secondDigits = setupConfirm.length)
+                }
+            }
+
+            PinSetupStep.ShowCode -> Unit
+        }
+    }
+
+    /**
+     * Compares the two entries, then generates the code **without writing anything**.
+     *
+     * The code is generated here and held in [PinSetupUi.issuedCode] until the owner confirms. The
+     * write happens in [confirmPinCodeWritten], which is the AC's "flow is not finished" clause.
+     */
+    private fun confirmSetupPin() {
+        val current = pinSetup.value ?: return
+        if (setupPin != setupConfirm) {
+            setupPin = ""
+            setupConfirm = ""
+            pinSetup.value = current.copy(
+                step = PinSetupStep.EnterPin,
+                firstDigits = 0,
+                secondDigits = 0,
+                errorMessage = strings.pinSetupMismatchBody(),
+            )
+            return
+        }
+
+        val lock = pinLock
+        if (lock == null) {
+            pinSetup.value = null
+            return
+        }
+        // Generated, not written. `enable` is called only from the confirm below.
+        pinSetup.value = current.copy(
+            step = PinSetupStep.ShowCode,
+            issuedCode = lock.newRecoveryCode(),
+            errorMessage = null,
+        )
+    }
+
+    /**
+     * Writes the lock — the confirmation the AC requires.
+     *
+     * Only here does anything reach the database, and only here does the code become the stored
+     * one. Backing out before this leaves no lock at all.
+     */
+    fun confirmPinCodeWritten() {
+        val current = pinSetup.value ?: return
+        val code = current.issuedCode ?: return
+        val lock = pinLock ?: return
+        val pin = setupPin
+
+        viewModelScope.launch {
+            try {
+                lock.enable(pin, code)
+                pinSettings.value = PinSettingsUi(
+                    enabled = true,
+                    autoLockMinutes = lock.autoLockMinutes(),
+                )
+                // The PIN and the code are dropped the moment they are written: the code is shown
+                // once by contract, and a value left in a flow state can be re-rendered.
+                setupPin = ""
+                setupConfirm = ""
+                pinSetup.value = null
+                message.value = strings.pinEnabledMessage()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                pinSetup.value = current.copy(errorMessage = strings.pinErrorUnavailable())
+            }
+        }
+    }
+
+    /** Turns the lock off. The secrets go with it. */
+    fun disablePin() {
+        val lock = pinLock ?: return
+        viewModelScope.launch {
+            try {
+                lock.disable()
+                pinSettings.value = PinSettingsUi(
+                    enabled = false,
+                    autoLockMinutes = lock.autoLockMinutes(),
+                )
+                message.value = strings.pinDisabledMessage()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The card keeps showing what it showed: a switch that flips without the write
+                // succeeding is a switch that lies about the lock.
+            }
+        }
+    }
+
+    /** Changes the auto-lock duration. */
+    fun setAutoLockMinutes(minutes: Int) {
+        val lock = pinLock ?: return
+        viewModelScope.launch {
+            try {
+                lock.setAutoLockMinutes(minutes)
+                pinSettings.value = pinSettings.value?.copy(autoLockMinutes = minutes)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Same as `disablePin`: the card keeps its value rather than showing a preference
+                // that was not stored.
+            }
+        }
+    }
 
     /**
      * Puts a blank-field refusal on the field it belongs to.

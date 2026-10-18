@@ -68,15 +68,37 @@ object BackupJson {
     /**
      * `settings` keys that must never reach a backup file.
      *
-     * Empty of effect today and load-bearing tomorrow. `pinHash` and `recoveryHash` are the
-     * names Story 5.3 will use, named here so that story cannot pick different ones without
-     * this list being visibly wrong.
+     * ## Why this is every PIN key and not just the two hashes
+     *
+     * Story 5.1 shipped two keys as a placeholder, before Story 5.3 wrote any of them. Story 5.3
+     * writes **eight**, and leaving any of the others out has a failure mode that is worse than a
+     * leaked hash: a backup taken with the PIN on would restore `pinEnabled = true` onto a device
+     * that has **no hash** — a lock nobody can open, holding the owner's records, on the day they
+     * restored a backup because they had lost a phone.
+     *
+     * So the list covers every key the lock owns, and `BackupJsonTest` asserts the exclusion
+     * **per key** rather than for "the hashes". Adding a ninth key to the lock without adding it
+     * here is the one change this list cannot survive silently, which is why the test is a loop.
      *
      * Matched **exactly**, never by prefix: a prefix match would also swallow a future
-     * `businessName`-adjacent key or a `pinEnabled` flag that is a boolean rather than a hash,
-     * and silently dropping a setting the owner configured is its own kind of data loss.
+     * `businessName`-adjacent key or a boolean that merely shares a stem, and silently dropping a
+     * setting the owner configured is its own kind of data loss.
      */
-    val NEVER_EXPORTED: Set<String> = setOf("pinHash", "recoveryHash")
+    val NEVER_EXPORTED: Set<String> = setOf(
+        // The two secrets. NFR-5 and AD-7 forbid either reaching a file.
+        "pinHash",
+        "recoveryHash",
+        // Their salts: useless without the hashes, and pointless to carry.
+        "pinSalt",
+        "recoverySalt",
+        // And the state, which is the dangerous half. Restoring `pinEnabled = true` without a
+        // hash produces a lock that can never be opened.
+        "pinEnabled",
+        "pinAttempts",
+        "pinLockoutUntil",
+        "autoLockMinutes",
+        "pinBackgroundedAt",
+    )
 
     /** The JSON object for one table's rows, already sorted by primary key. */
     fun build(

@@ -93,6 +93,16 @@ data class PengaturanUiState(
      * a dismissal of one clear the other's message.
      */
     val restoreErrorMessage: String? = null,
+    /**
+     * Story 5.3's lock state, or `null` before the first read.
+     *
+     * `null` rather than a defaulted `false`: the security card must not draw "PIN mati" for the
+     * frame before the read lands, because a switch showing the wrong position is a switch the
+     * owner flips the wrong way.
+     */
+    val pin: PinSettingsUi? = null,
+    /** The PIN setup flow, or `null` when it is closed. */
+    val pinSetup: PinSetupUi? = null,
     val isLoading: Boolean = false,
 ) {
     /**
@@ -115,6 +125,49 @@ data class PengaturanUiState(
      * stored is the same defect an `isEditing` boolean causes elsewhere.
      */
     val hasIdentity: Boolean get() = identity != null
+}
+
+/**
+ * The security card's figures, read once and re-read after every write.
+ *
+ * @property enabled whether a PIN is set.
+ * @property autoLockMinutes the duration, one of `PinLockRepository.AUTO_LOCK_CHOICES`.
+ */
+data class PinSettingsUi(
+    val enabled: Boolean,
+    val autoLockMinutes: Int,
+)
+
+/**
+ * The PIN setup flow's step.
+ *
+ * Three steps, and the third is the one the AC makes load-bearing: the code is shown **once** and
+ * the flow is not finished until the owner confirms they wrote it down. Nothing is written to the
+ * database before that confirmation, so backing out leaves the lock exactly as it was.
+ *
+ * @property firstDigits how many digits of the first entry are filled. The digits themselves never
+ *   leave the ViewModel — a PIN in a `UiState` is a PIN in a saved-state bundle.
+ * @property secondDigits likewise for the confirmation.
+ * @property issuedCode the code, present only at [PinSetupStep.ShowCode]. Shown once, never stored.
+ */
+data class PinSetupUi(
+    val step: PinSetupStep,
+    val firstDigits: Int = 0,
+    val secondDigits: Int = 0,
+    val issuedCode: String? = null,
+    val errorMessage: String? = null,
+)
+
+/** Which question the setup dialog is asking. */
+enum class PinSetupStep {
+    /** Choose the PIN. */
+    EnterPin,
+
+    /** Type it again — a mistyped PIN on a lock with no way in is unrecoverable. */
+    ConfirmPin,
+
+    /** The recovery code, shown once, with the confirmation that it was written down. */
+    ShowCode,
 }
 
 /**

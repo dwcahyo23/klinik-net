@@ -658,6 +658,41 @@ class RStrings(private val context: Context) {
     fun pengaturanRestoreUnreadable(): String =
         context.getString(R.string.pengaturan_restore_error_unreadable)
 
+    // -------------------------------------------------------------- Story 5.3
+
+    /** A wrong PIN. */
+    fun pinErrorWrong(): String = context.getString(R.string.pin_error_wrong)
+
+    /** The countdown, while input is refused. */
+    fun pinErrorLockedOut(seconds: Int): String =
+        context.getString(R.string.pin_error_locked_out, seconds)
+
+    /**
+     * The check could not run.
+     *
+     * Deliberately distinct from [pinErrorWrong]: an owner told "wrong PIN" when the read failed
+     * will keep retyping a correct code, which is the one behaviour that cannot help.
+     */
+    fun pinErrorUnavailable(): String = context.getString(R.string.pin_error_unavailable)
+
+    /** A wrong recovery code. */
+    fun pinErrorWrongCode(): String = context.getString(R.string.pin_error_wrong_code)
+
+    /** The new PIN is not four digits. */
+    fun pinErrorBadNewPin(): String = context.getString(R.string.pin_error_bad_new_pin)
+
+    /** The setup flow's one-time code, shown before the PIN is written. */
+    fun pinSetupCodeBody(): String = context.getString(R.string.pin_setup_code_body)
+
+    /** The setup flow's mismatch refusal. */
+    fun pinSetupMismatchBody(): String = context.getString(R.string.pin_setup_mismatch_body)
+
+    /** The lock was turned on. */
+    fun pinEnabledMessage(): String = context.getString(R.string.pin_enabled_message)
+
+    /** The lock was turned off. */
+    fun pinDisabledMessage(): String = context.getString(R.string.pin_disabled_message)
+
     // -------------------------------------------------------------- Story 3.2
 
     /**

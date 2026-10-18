@@ -891,6 +891,13 @@ class AppShellTest {
             onConfirmRestore = {},
             onDismissRestore = {},
             onRestoreErrorDismiss = {},
+            onOpenPinSetup = {},
+            onDisablePin = {},
+            onAutoLockChange = {},
+            onPinSetupDigit = {},
+            onPinSetupDelete = {},
+            onConfirmPinCodeWritten = {},
+            onDismissPinSetup = {},
         ),
         deposito = Screens.Deposito(
             state = depositoState,

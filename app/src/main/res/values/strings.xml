@@ -70,6 +70,73 @@
     <string name="pin_dot_filled">terisi</string>
     <string name="pin_dot_empty">kosong</string>
 
+    <!--
+      Story 5.3 — the lock. FR-17 spends more words on what this lock is NOT than on what it is,
+      and the prototype's own lock screen carries the sentence that must not be reused:
+      "Data tersimpan lokal & terenkripsi di perangkat ini". The database is a plain SQLite file,
+      so that sentence is false, and an owner who believes it hands the tablet to a customer with
+      more confidence than the truth allows. The subtitle below says the barrier and stops.
+    -->
+    <string name="pin_lock_title">Masuk dengan PIN</string>
+    <string name="pin_lock_subtitle">Aplikasi ini dikunci dengan PIN. Ini penghalang layar, bukan enkripsi.</string>
+    <string name="pin_error_wrong">PIN salah, coba lagi</string>
+    <string name="pin_error_locked_out">Terlalu banyak percobaan. Coba lagi dalam %1$d detik.</string>
+    <string name="pin_error_unavailable">PIN tidak bisa diperiksa sekarang. Coba lagi.</string>
+    <string name="pin_error_wrong_code">Kode pemulihan salah, coba lagi.</string>
+    <string name="pin_error_bad_new_pin">PIN harus tepat 4 angka.</string>
+
+    <!--
+      The recovery flow. The code cannot be shown again — the hash cannot be reversed and storing
+      the plaintext to re-show it would put the escape hatch back in the database the lock protects.
+      "Sekali" is the load-bearing word in the warning.
+    -->
+    <string name="pin_recovery_action">Lupa PIN?</string>
+    <string name="pin_recovery_title_code">Pakai kode pemulihan</string>
+    <string name="pin_recovery_title_new_pin">PIN baru</string>
+    <string name="pin_recovery_title_new_code">Kode pemulihan baru</string>
+    <string name="pin_recovery_code_body">Masukkan kode pemulihan yang Anda catat saat mengatur PIN.</string>
+    <string name="pin_recovery_code_field">Kode pemulihan</string>
+    <string name="pin_recovery_code_hint">20 karakter huruf dan angka</string>
+    <string name="pin_recovery_check">Periksa kode</string>
+    <string name="pin_recovery_new_pin_body">Pilih PIN 4 angka yang baru. Kode pemulihan baru akan dibuat setelah ini.</string>
+    <string name="pin_new_field">PIN baru</string>
+    <string name="pin_new_hint">4 angka</string>
+    <string name="pin_recovery_set_pin">Simpan PIN baru</string>
+    <string name="pin_recovery_new_code_body">Simpan kode ini di luar aplikasi. Kode ini menggantikan kode lama dan tidak bisa ditampilkan lagi.</string>
+    <string name="pin_recovery_code_once">Kode ini hanya ditampilkan sekali. Kode lama tidak berlaku lagi.</string>
+    <string name="pin_recovery_written">Saya sudah mencatatnya</string>
+    <string name="pin_recovery_cancel">Batal</string>
+
+    <!--
+      The setup flow. The PIN is entered twice because a mistyped PIN on a lock with no way in is
+      the data loss this epic exists to prevent.
+    -->
+    <string name="pin_setup_code_title">Kode pemulihan Anda</string>
+    <string name="pin_setup_code_body">Catat kode ini di luar aplikasi. Kode ini satu-satunya jalan masuk kalau PIN Anda lupa.</string>
+    <string name="pin_setup_mismatch_title">PIN tidak sama</string>
+    <string name="pin_setup_mismatch_body">Kedua PIN yang Anda masukkan berbeda. Ulangi pengaturan PIN.</string>
+    <string name="pin_setup_mismatch_retry">Ulangi</string>
+    <string name="pin_setup_mismatch_cancel">Batal</string>
+
+    <!--
+      The security card in Pengaturan. The body states what the lock does and does not do, because
+      FR-17 forbids any claim larger than "barrier" — and because an owner deciding whether to turn
+      it on needs to know what it protects against.
+    -->
+    <string name="pengaturan_security_section">Keamanan</string>
+    <string name="pengaturan_security_section_body">PIN meminta kode 4 angka setiap aplikasi dibuka. Ini penghalang layar, bukan enkripsi data.</string>
+    <string name="pengaturan_pin_switch">Kunci aplikasi dengan PIN</string>
+    <string name="pengaturan_autolock_label">Kunci otomatis setelah</string>
+    <string name="pengaturan_autolock_option">%1$d menit</string>
+    <string name="pin_enabled_message">Kunci PIN aktif</string>
+    <string name="pin_disabled_message">Kunci PIN dimatikan</string>
+    <string name="pengaturan_pin_enable_action">Aktifkan PIN</string>
+    <string name="pengaturan_pin_disable_action">Matikan PIN</string>
+    <string name="pin_setup_title_enter">Buat PIN</string>
+    <string name="pin_setup_title_confirm">Ulangi PIN</string>
+    <string name="pin_setup_body_enter">Pilih PIN 4 angka. PIN ini diminta setiap aplikasi dibuka.</string>
+    <string name="pin_setup_body_confirm">Masukkan PIN yang sama sekali lagi, supaya tidak salah ketik.</string>
+
     <!-- Logo / iconography -->
     <string name="logo_lockup_description">Klinik.Net</string>
     <string name="logo_mono_description">Klinik.Net</string>
@@ -801,14 +868,6 @@
     <string name="pengaturan_export_exporting">Menyimpan…</string>
     <string name="pengaturan_export_saved">Cadangan tersimpan: %1$s</string>
     <string name="pengaturan_error_export_failed">Cadangan gagal disimpan. Periksa ruang penyimpanan dan coba lagi.</string>
-    <!--
-      Why the restore is absent. Story 5.2 builds it; until then the section says so in words
-      rather than drawing a disabled button, which is the "renders and is wired to nothing"
-      defect this repo has shipped repeatedly. Removing this string should coincide with the
-      restore control appearing.
-    -->
-    <string name="pengaturan_backup_restore_pending">Pemulihan dari cadangan belum tersedia di versi ini.</string>
-
     <!--
       Story 5.2 — restore. The preview is the acceptance criterion's own shape:
       "18 mobil · 14 penyewa · 312 setoran" and "Periode terakhir: 24 Mar 2026".

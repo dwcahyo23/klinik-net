@@ -676,6 +676,14 @@ class PengaturanScreenTest {
         onConfirmRestore: () -> Unit = {},
         onDismissRestore: () -> Unit = {},
         onRestoreErrorDismiss: () -> Unit = {},
+        // Story 5.3's seven, defaulted on the same argument.
+        onOpenPinSetup: () -> Unit = {},
+        onDisablePin: () -> Unit = {},
+        onAutoLockChange: (Int) -> Unit = {},
+        onPinSetupDigit: (Char) -> Unit = {},
+        onPinSetupDelete: () -> Unit = {},
+        onConfirmPinCodeWritten: () -> Unit = {},
+        onDismissPinSetup: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -698,6 +706,13 @@ class PengaturanScreenTest {
             onConfirmRestore = onConfirmRestore,
             onDismissRestore = onDismissRestore,
             onRestoreErrorDismiss = onRestoreErrorDismiss,
+            onOpenPinSetup = onOpenPinSetup,
+            onDisablePin = onDisablePin,
+            onAutoLockChange = onAutoLockChange,
+            onPinSetupDigit = onPinSetupDigit,
+            onPinSetupDelete = onPinSetupDelete,
+            onConfirmPinCodeWritten = onConfirmPinCodeWritten,
+            onDismissPinSetup = onDismissPinSetup,
         )
     }
 

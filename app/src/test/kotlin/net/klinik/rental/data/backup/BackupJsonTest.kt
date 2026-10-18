@@ -172,28 +172,76 @@ class BackupJsonTest {
     /**
      * `pinHash` never reaches the file, even when the table holds one.
      *
-     * Story 5.3 adds the row; this test inserts it **before that story exists**, so the
+     * Story 5.3 adds the rows; this test inserts them **before that story exists**, so the
      * exclusion is proved by the deny-list rather than by remembering to add the skip later. NFR-5
      * and AD-7 both forbid a hash reaching a backup, and a backup is a file the owner emails to
      * themselves.
      */
+/**
+     * **Every** key the lock owns is excluded, not just the two hashes.
+     *
+     * ## Why this is a loop and not two assertions
+     *
+     * Because the failure mode of leaving one out is not a leaked hash — it is `pinEnabled = true`
+     * restored onto a device with **no hash**, which is a lock nobody can open, holding the
+     * owner's records, on the day they restored a backup because they had lost a phone.
+     *
+     * Story 5.1 shipped two keys as a placeholder. Story 5.3 wrote eight. The loop is what makes
+     * a ninth impossible to add silently: the list and the keys are asserted together, so a new
+     * key fails here rather than bricking a restore six months later.
+     */
     @Test
-    fun `the pin hash is excluded even when a row for it exists`() {
+    fun `every pin key is excluded from the file`() {
+        val pinKeys = listOf(
+            "pinEnabled",
+            "pinHash",
+            "pinSalt",
+            "recoveryHash",
+            "recoverySalt",
+            "pinAttempts",
+            "pinLockoutUntil",
+            "autoLockMinutes",
+            "pinBackgroundedAt",
+        )
+
+        // The list and the constant are the same set, so neither can drift from the other.
+        assertEquals(
+            "BackupJson.NEVER_EXPORTED must list every PIN key",
+            pinKeys.toSet(),
+            BackupJson.NEVER_EXPORTED,
+        )
+
+        val json = build(
+            settings = pinKeys.map { SettingEntity(key = it, value = "value-of-$it") } +
+                SettingEntity(key = "businessName", value = "Klinik Net"),
+        )
+
+        pinKeys.forEach { key ->
+            assertFalse("\"$key\" must be absent", json.contains("\"$key\""))
+            assertFalse("and its value must not leak", json.contains("value-of-$key"))
+        }
+        assertTrue(
+            "while every other setting still exports — the list excludes nine keys, not the table",
+            json.contains("businessName"),
+        )
+    }
+
+    /** A restored lock must be off — the row that would say otherwise never travels. */
+    @Test
+    fun `the enabled flag never travels, so a restore cannot produce a lock without a hash`() {
         val json = build(
             settings = listOf(
+                SettingEntity(key = "pinEnabled", value = "true"),
                 SettingEntity(key = "businessName", value = "Klinik Net"),
-                SettingEntity(key = "pinHash", value = "s3cr3t-hash-value"),
-                SettingEntity(key = "recoveryHash", value = "another-hash"),
             ),
         )
 
-        assertFalse("the PIN hash is absent", json.contains("pinHash"))
-        assertFalse("the recovery hash is absent", json.contains("recoveryHash"))
-        assertFalse("and neither value leaked under another key", json.contains("s3cr3t-hash-value"))
-        assertTrue(
-            "while every other setting still exports — the list excludes two keys, not the table",
-            json.contains("businessName"),
+        assertFalse(
+            "restoring this row without its hash would lock the owner out of a device they just " +
+                "restored",
+            json.contains("pinEnabled"),
         )
+        assertTrue(json.contains("businessName"))
     }
 
     /** Money travels as a JSON number, never as a formatted string. */

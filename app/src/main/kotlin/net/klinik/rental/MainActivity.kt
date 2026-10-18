@@ -16,10 +16,17 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.viewmodel.compose.viewModel
+import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.launch
+import net.klinik.rental.ui.lock.LockScreen
+import net.klinik.rental.ui.lock.PinLockViewModel
 import net.klinik.rental.data.backup.BackupRepository
 import net.klinik.rental.data.backup.BackupRestorer
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
+import net.klinik.rental.data.repository.PinLockRepository
 import net.klinik.rental.data.repository.DepositHistoryRepository
 import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.ContractRepository
@@ -170,6 +177,35 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+/**
+     * Whether the app is showing the lock rather than the shell.
+     *
+     * **`true` until the first read says otherwise.** The lock is on screen for the frame before
+     * the database answers, which is the only safe default: a start that assumed "unlocked" and
+     * corrected itself would flash the owner's records on every cold start with the PIN on. The
+     * opposite mistake — a frame of lock screen for an owner with no PIN — is invisible, because
+     * the shell replaces it as soon as the read lands.
+     */
+    private val locked = MutableStateFlow(true)
+
+    /**
+     * Whether this **process** has already come to the foreground once.
+     *
+     * The AC's cold-start clause: *"proses mati atau restart → terkunci lagi"*. `onStop` never ran
+     * if the process was killed in the foreground, so there is no timestamp to compare — and the
+     * case where the app cannot know what happened is the case where it must lock. Every `onStart`
+     * after the first compares the persisted timestamp instead.
+     */
+    private var foregroundedOnce = false
+
+    private val pinLock: PinLockRepository by lazy {
+        PinLockRepository(
+            dao = KlinikDatabase.get(applicationContext).settingDao(),
+            clock = Clock.systemDefaultZone(),
+            database = KlinikDatabase.get(applicationContext),
+        )
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -183,25 +219,96 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             KlinikNetTheme(darkTheme = isSystemInDarkTheme()) {
-                KlinikNetApp(
-                    kendaraan = kendaraanViewModel,
-                    penyewa = penyewaViewModel,
-                    kontrak = kontrakViewModel,
-                    pengaturan = pengaturanViewModel,
-                    setoran = setoranViewModel,
-                    tunggakan = tunggakanViewModel,
-                    beranda = berandaViewModel,
-                    laporan = laporanViewModel,
-                    search = searchViewModel,
-                    // Story 5.1's export, built here from the same singleton the settings
-                    // ViewModel reads — the route needs it for the picker's filename, and a
-                    // repository rather than a ViewModel because it holds no state.
-                    backups = createBackupRepository(
-                        database = KlinikDatabase.get(applicationContext),
-                        clock = Clock.systemDefaultZone(),
-                    ),
-                )
+                val isLocked by locked.collectAsStateWithLifecycle()
+
+                // **Either** the lock **or** the shell — never both.
+                //
+                // An overlay would leave the destination composed underneath, so a screenshot, a
+                // screen reader traversal, or a rendering bug would expose the books behind a
+                // lock. Not composing the shell at all is the only version where "locked" means
+                // the content is not on screen.
+                if (isLocked) {
+                    val lockViewModel: PinLockViewModel = viewModel(
+                        factory = lockViewModelFactory(),
+                    )
+                    val lockState by lockViewModel.uiState.collectAsStateWithLifecycle()
+                    LockScreen(
+                        state = lockState,
+                        onDigit = lockViewModel::onDigit,
+                        onDelete = lockViewModel::onDelete,
+                        onRecovery = lockViewModel::openRecovery,
+                        onTick = lockViewModel::refreshLockout,
+                        shakeKey = lockState.shakeKey,
+                    )
+                } else {
+                    KlinikNetApp(
+                        kendaraan = kendaraanViewModel,
+                        penyewa = penyewaViewModel,
+                        kontrak = kontrakViewModel,
+                        pengaturan = pengaturanViewModel,
+                        setoran = setoranViewModel,
+                        tunggakan = tunggakanViewModel,
+                        beranda = berandaViewModel,
+                        laporan = laporanViewModel,
+                        search = searchViewModel,
+                        // Story 5.1's export, built here from the same singleton the settings
+                        // ViewModel reads — the route needs it for the picker's filename, and a
+                        // repository rather than a ViewModel because it holds no state.
+                        backups = createBackupRepository(
+                            database = KlinikDatabase.get(applicationContext),
+                            clock = Clock.systemDefaultZone(),
+                        ),
+                    )
+                }
             }
+        }
+    }
+
+    /**
+     * The lock screen's ViewModel, whose `onUnlocked` is this Activity's.
+     *
+     * A factory rather than `by viewModels` because the callback closes over [locked], which is
+     * created with the Activity — and the ViewModel must be created only when the lock is actually
+     * shown, so an unlocked app never constructs one.
+     */
+    private fun lockViewModelFactory(): ViewModelProvider.Factory =
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                PinLockViewModel(
+                    lock = pinLock,
+                    strings = RStrings(applicationContext),
+                    onUnlocked = { locked.value = false },
+                ) as T
+        }
+
+    /**
+     * Decides whether to lock, on every return to the foreground.
+     *
+     * The first `onStart` of a process always locks when the PIN is on — see [foregroundedOnce].
+     * Every later one compares the timestamp persisted at the previous `onStop`, which is the
+     * AC's *"timestamp absolut … bukan counter yang reset"*.
+     */
+    override fun onStart() {
+        super.onStart()
+        val coldStart = !foregroundedOnce
+        foregroundedOnce = true
+
+        // The read is on the main thread's coroutine scope rather than a ViewModel's, because the
+        // lock gate is the Activity's — a ViewModel scoped to a destination would be destroyed
+        // when the owner navigates, taking the gate with it.
+        lifecycleScope.launch {
+            locked.value = pinLock.shouldLock(coldStart = coldStart)
+        }
+    }
+
+    /** Records the instant the app left the foreground, for the next [onStart] to compare against. */
+    override fun onStop() {
+        super.onStop()
+        // Only meaningful while the lock is on; recording it always would write a row for owners
+        // who never enabled a PIN.
+        lifecycleScope.launch {
+            if (pinLock.isEnabled()) pinLock.recordBackgrounded()
         }
     }
 }
@@ -311,6 +418,13 @@ internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
         // keys as one block and a half-written identity is one the owner did not enter.
         identity = BusinessIdentityRepository(database.settingDao(), database),
         strings = RStrings(context),
+        // Story 5.3's lock. The database handle is needed because enabling writes six rows as one
+        // block, and a half-written lock is a PIN with no salt.
+        pinLock = PinLockRepository(
+            dao = database.settingDao(),
+            clock = clock,
+            database = database,
+        ),
         // Story 5.1's export, over the same singleton — eight readers, no writer. It is built
         // here rather than in `KlinikNetApp` because the filename the picker is offered needs
         // the same [Clock] the rest of the app's dates use, and a second clock is a second
@@ -731,6 +845,15 @@ private fun KlinikNetApp(
                     onConfirmRestore = pengaturan::confirmRestore,
                     onDismissRestore = pengaturan::dismissRestore,
                     onRestoreErrorDismiss = pengaturan::consumeRestoreError,
+                    // Story 5.3's lock, configured here. The lock *screen* is not this screen's
+                    // business: it is mounted by the Activity above the shell.
+                    onOpenPinSetup = pengaturan::openPinSetup,
+                    onDisablePin = pengaturan::disablePin,
+                    onAutoLockChange = pengaturan::setAutoLockMinutes,
+                    onPinSetupDigit = pengaturan::onSetupDigit,
+                    onPinSetupDelete = pengaturan::onSetupDelete,
+                    onConfirmPinCodeWritten = pengaturan::confirmPinCodeWritten,
+                    onDismissPinSetup = pengaturan::dismissPinSetup,
                 ),
                 // Story 3.2's deposit sheet. No route — the shell mounts it over
                 // whichever destination is showing, because a deposit is a quick

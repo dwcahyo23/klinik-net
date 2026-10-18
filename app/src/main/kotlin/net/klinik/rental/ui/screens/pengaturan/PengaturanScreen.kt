@@ -1,5 +1,7 @@
 package net.klinik.rental.ui.screens.pengaturan
 
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -22,14 +24,17 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Landmark
+import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.Upload
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
+import net.klinik.rental.data.repository.PinLockRepository
 import net.klinik.rental.ui.components.KnAvatar
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSkeletonList
@@ -112,6 +117,16 @@ fun PengaturanScreen(
     onConfirmRestore: () -> Unit,
     onDismissRestore: () -> Unit,
     onRestoreErrorDismiss: () -> Unit,
+    // Story 5.3's four. Required, not defaulted, for the reason every callback here gives — and
+    // the sharpest is `onOpenPinSetup`: a defaulted lambda would be a lock the owner can see and
+    // cannot turn on, on the screen where they go to protect their records.
+    onOpenPinSetup: () -> Unit,
+    onDisablePin: () -> Unit,
+    onAutoLockChange: (Int) -> Unit,
+    onPinSetupDigit: (Char) -> Unit,
+    onPinSetupDelete: () -> Unit,
+    onConfirmPinCodeWritten: () -> Unit,
+    onDismissPinSetup: () -> Unit,
     // Required, not defaulted. A defaulted lambda produces a control that renders and
     // silently does nothing — the failure the required-parameter rule exists to prevent, and
     // it has caught unwired call sites in five test files across two stories.
@@ -187,6 +202,17 @@ fun PengaturanScreen(
                         onExport = onExport,
                         onRestore = onRestore,
                     )
+
+                    // Story 5.3's security card. Rendered only when the lock state has been read:
+                    // a switch drawn in a guessed position is a switch the owner flips the wrong
+                    // way, and `null` is how this state says "not read yet".
+                    state.pin?.let { pin ->
+                        SecuritySection(
+                            state = pin,
+                            onToggle = if (pin.enabled) onDisablePin else onOpenPinSetup,
+                            onAutoLockChange = onAutoLockChange,
+                        )
+                    }
 
                     when {
                         state.isLoading -> KnSkeletonList(
@@ -330,6 +356,18 @@ fun PengaturanScreen(
                 preview = preview,
                 onConfirm = onConfirmRestore,
                 onDismiss = onDismissRestore,
+            )
+        }
+
+        // Story 5.3's setup flow. Mounted from this file like the sheets, for the same reason: it
+        // is a window over this screen's state, and the PIN it writes is this screen's setting.
+        state.pinSetup?.let { setup ->
+            PinSetupDialog(
+                state = setup,
+                onDigit = onPinSetupDigit,
+                onDelete = onPinSetupDelete,
+                onConfirmWritten = onConfirmPinCodeWritten,
+                onDismiss = onDismissPinSetup,
             )
         }
     }
@@ -511,6 +549,104 @@ private fun BackupSection(
     }
 }
 
+/**
+ * Story 5.3's security card: the lock switch and the auto-lock duration.
+ *
+ * ## Why the copy says "penghalang layar, bukan enkripsi"
+ *
+ * Because FR-17 forbids any claim larger than the truth, and the prototype's own settings card
+ * says *"Perlindungan data lokal di perangkat"* above a lock that encrypts nothing. An owner
+ * deciding whether to turn this on needs to know what it actually buys: a screen someone has to
+ * get past, not a file someone cannot read.
+ *
+ * ## Why there is no "change PIN" control
+ *
+ * Because changing a PIN needs the **current** PIN or the recovery code, and both of those paths
+ * already exist: the lock screen has "Lupa PIN?", and turning the switch off and on again is the
+ * change flow. A third path would be a third place the old code has to be checked, and one of them
+ * would be the one that forgot.
+ *
+ * ## Why the duration is a row of chips rather than a dropdown
+ *
+ * Because the app has no dropdown anywhere and the four choices fit. `KnChip` is the established
+ * control for "pick one of a few", and it is already used by the fleet filter and the Setoran tabs.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun SecuritySection(
+    state: PinSettingsUi,
+    onToggle: () -> Unit,
+    onAutoLockChange: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+
+    Surface(
+        modifier = modifier
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.lg)
+            .testTag(TAG_SECURITY_SECTION),
+        color = MaterialTheme.knColors.bgCard,
+        contentColor = MaterialTheme.knColors.textPrimary,
+        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = stringResource(R.string.pengaturan_security_section),
+                style = MaterialTheme.knTypography.label,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            // The honest sentence — see the KDoc.
+            Text(
+                text = stringResource(R.string.pengaturan_security_section_body),
+                style = MaterialTheme.knTypography.body,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            KnButton(
+                label = stringResource(
+                    if (state.enabled) {
+                        R.string.pengaturan_pin_disable_action
+                    } else {
+                        R.string.pengaturan_pin_enable_action
+                    },
+                ),
+                onClick = onToggle,
+                variant = if (state.enabled) KnButtonVariant.Secondary else KnButtonVariant.Primary,
+                size = KnButtonSize.Small,
+                icon = Lucide.Lock,
+                modifier = Modifier.testTag(TAG_PIN_TOGGLE),
+            )
+
+            // The duration only means something while the lock is on: a row of chips beside a
+            // disabled lock would be a control configuring nothing.
+            if (state.enabled) {
+                Text(
+                    text = stringResource(R.string.pengaturan_autolock_label),
+                    style = MaterialTheme.knTypography.body,
+                    color = MaterialTheme.knColors.textSecondary,
+                    modifier = Modifier.padding(top = spacing.xs),
+                )
+                FlowRow(
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    PinLockRepository.AUTO_LOCK_CHOICES.sorted().forEach { minutes ->
+                        KnChip(
+                            text = stringResource(R.string.pengaturan_autolock_option, minutes),
+                            selected = minutes == state.autoLockMinutes,
+                            onClick = { onAutoLockChange(minutes) },
+                            modifier = Modifier.testTag(autoLockTag(minutes)),
+                        )
+                    }
+                }
+            }
+        }
+    }
+}
+
 /** One account: the bank as the title, the number beneath it. */
 @Composable
 private fun AccountListRow(
@@ -605,6 +741,11 @@ internal const val TAG_EXPORT_ERROR = "pengaturan-export-error"
 /** Story 5.2's restore control and its refusal banner. */
 internal const val TAG_RESTORE_ACTION = "pengaturan-restore-action"
 internal const val TAG_RESTORE_ERROR = "pengaturan-restore-error"
+
+/** Story 5.3's security card. */
+internal const val TAG_SECURITY_SECTION = "pengaturan-security-section"
+internal const val TAG_PIN_TOGGLE = "pengaturan-pin-toggle"
+internal fun autoLockTag(minutes: Int): String = "pengaturan-autolock-$minutes"
 internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"
 internal const val TAG_IDENTITY_ACTION = "pengaturan-identity-action"
 
@@ -656,6 +797,13 @@ private fun PengaturanScreenPreview() {
             onConfirmRestore = {},
             onDismissRestore = {},
             onRestoreErrorDismiss = {},
+            onOpenPinSetup = {},
+            onDisablePin = {},
+            onAutoLockChange = {},
+            onPinSetupDigit = {},
+            onPinSetupDelete = {},
+            onConfirmPinCodeWritten = {},
+            onDismissPinSetup = {},
             onErrorDismiss = {},
         )
     }

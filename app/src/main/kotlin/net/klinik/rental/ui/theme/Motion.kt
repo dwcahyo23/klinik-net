@@ -13,16 +13,19 @@ import androidx.compose.material3.MaterialTheme
  * Motion from `shared.css` lines 75-77: one easing, three durations, tuned for
  * the 90Hz panel.
  *
- * ## The 420ms PIN shake is deliberately absent
+ * ## The 420ms PIN shake is a **named exception**, and this is where it lives
  *
- * The story's acceptance criteria name "shake 420ms untuk PIN wrong", but that
- * is the only motion outside this scale and it fires from the PIN entry flow
- * Story 5.3 owns. Defining a `Motion.shake` token here would ship an unused
- * constant that later invites reuse outside its one legal home. [PinGrid] here
- * is layout and input only. Story 5.3 adds the duration together with the flow
- * that triggers it.
+ * The UX doc's rule is "no motion longer than 300ms", and it carves out exactly
+ * one case by name: *"Shake untuk PIN salah — 420ms, sekali, hanya saat
+ * benar-benar salah."* [shakeMillis] is that case.
  *
- * Nothing in this file loops, bounces or overshoots. The easing is a single
+ * It is **not** added to [allowedMillis], so [tween] still refuses 420ms. That
+ * guard is worth keeping exactly as it is: it is what stops a `tween(500)`
+ * appearing on some future screen because one component was allowed to reach
+ * past the scale. The lock screen builds `tween(KnMotion.shakeMillis)` directly,
+ * and the one call site is greppable.
+ *
+ * Nothing else in this file loops, bounces or overshoots. The easing is a single
  * monotone curve, so a transition that accidentally reuses it cannot surprise
  * anyone.
  */
@@ -34,6 +37,13 @@ data class KnMotion(
     val baseMillis: Int,
     /** `--t-slow` */
     val slowMillis: Int,
+    /**
+     * The PIN-failure shake. Outside [allowedMillis] **on purpose** — see the class KDoc.
+     *
+     * A field rather than a top-level constant so a screen reaches it through the theme it already
+     * has, and so the value stays in the file that explains why it exists.
+     */
+    val shakeMillis: Int,
     /** `cubic-bezier(.2,.8,.2,1)` — the one curve. */
     val easing: Easing,
 ) {
@@ -59,6 +69,9 @@ data class KnMotion(
             fastMillis = 140,
             baseMillis = 220,
             slowMillis = 300,
+            // The one exception to the 300ms ceiling, named in the UX doc. Not in
+            // `allowedMillis` — see the class KDoc.
+            shakeMillis = 420,
             easing = CubicBezierEasing(0.2f, 0.8f, 0.2f, 1f),
         )
     }

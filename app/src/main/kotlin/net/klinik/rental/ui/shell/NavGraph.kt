@@ -629,6 +629,20 @@ internal class Screens(
         val onDismissRestore: () -> Unit,
         /** Dismisses a refusal. Its own slot, so it cannot clear the form's message. */
         val onRestoreErrorDismiss: () -> Unit,
+        /** Opens Story 5.3's setup flow. */
+        val onOpenPinSetup: () -> Unit,
+        /** Turns the lock off, removing both secrets. */
+        val onDisablePin: () -> Unit,
+        /** Changes the auto-lock duration, one of `PinLockRepository.AUTO_LOCK_CHOICES`. */
+        val onAutoLockChange: (Int) -> Unit,
+        /** One key of the setup grid. */
+        val onPinSetupDigit: (Char) -> Unit,
+        /** The setup grid's backspace. */
+        val onPinSetupDelete: () -> Unit,
+        /** Writes the lock — the confirmation the AC requires before the flow finishes. */
+        val onConfirmPinCodeWritten: () -> Unit,
+        /** Closes the setup flow without writing anything. */
+        val onDismissPinSetup: () -> Unit,
     )
 
     /**
@@ -897,6 +911,15 @@ private fun PengaturanRoute(
         onConfirmRestore = wiring.onConfirmRestore,
         onDismissRestore = wiring.onDismissRestore,
         onRestoreErrorDismiss = wiring.onRestoreErrorDismiss,
+        // Story 5.3's four. The verbs forward to the ViewModel; the setup dialog is the screen's
+        // own window, so nothing is mounted here — the same asymmetry the account sheet documents.
+        onOpenPinSetup = wiring.onOpenPinSetup,
+        onDisablePin = wiring.onDisablePin,
+        onAutoLockChange = wiring.onAutoLockChange,
+        onPinSetupDigit = wiring.onPinSetupDigit,
+        onPinSetupDelete = wiring.onPinSetupDelete,
+        onConfirmPinCodeWritten = wiring.onConfirmPinCodeWritten,
+        onDismissPinSetup = wiring.onDismissPinSetup,
     )
 }
 

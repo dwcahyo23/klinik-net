@@ -521,6 +521,13 @@ class FourStatesTest {
             onConfirmRestore = {},
             onDismissRestore = {},
             onRestoreErrorDismiss = {},
+            onOpenPinSetup = {},
+            onDisablePin = {},
+            onAutoLockChange = {},
+            onPinSetupDigit = {},
+            onPinSetupDelete = {},
+            onConfirmPinCodeWritten = {},
+            onDismissPinSetup = {},
         )
     }
 
