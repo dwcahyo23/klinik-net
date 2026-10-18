@@ -887,6 +887,10 @@ class AppShellTest {
             onExportErrorDismiss = {},
             onExportGranted = {},
             backupFilename = { "klinik-net-backup-2026-10-19.json" },
+            onRestoreFileChosen = {},
+            onConfirmRestore = {},
+            onDismissRestore = {},
+            onRestoreErrorDismiss = {},
         ),
         deposito = Screens.Deposito(
             state = depositoState,

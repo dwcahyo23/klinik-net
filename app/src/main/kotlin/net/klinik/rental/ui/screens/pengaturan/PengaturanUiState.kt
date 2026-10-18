@@ -75,6 +75,24 @@ data class PengaturanUiState(
      * failure is about money the owner believed was safe, so it has to be readable.
      */
     val exportErrorMessage: String? = null,
+    /**
+     * Story 5.2's preview, when a file has been parsed and the owner has not decided yet.
+     *
+     * Non-null is what makes the dialog visible, and it is the **parsed file** rather than a
+     * summary — the confirm writes exactly what this value describes, so a preview computed from
+     * one read and a restore from another cannot disagree.
+     */
+    val restorePreview: RestorePreviewUi? = null,
+    /** A restore in flight. Rendered, so a second confirm cannot start a second replacement. */
+    val isRestoring: Boolean = false,
+    /**
+     * A refused or failed restore, or `null`.
+     *
+     * Its own slot beside [exportErrorMessage] rather than shared with it: the two failures
+     * arrive from different actions and carry different next steps, and a single slot would let
+     * a dismissal of one clear the other's message.
+     */
+    val restoreErrorMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
     /**

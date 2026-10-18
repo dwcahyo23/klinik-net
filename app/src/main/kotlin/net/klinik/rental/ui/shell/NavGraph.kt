@@ -7,6 +7,7 @@ import androidx.compose.ui.Modifier
 import android.net.Uri
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -28,6 +29,7 @@ import net.klinik.rental.ui.screens.pengaturan.AccountRow
 import net.klinik.rental.ui.screens.pengaturan.PengaturanScreen
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.setoran.DepositSheet
+import net.klinik.rental.ui.backup.BackupFileReader
 import net.klinik.rental.ui.screens.setoran.SetoranScreen
 import net.klinik.rental.ui.screens.tunggakan.TunggakanScreen
 
@@ -81,6 +83,11 @@ internal fun AppNavGraph(
         // `AppShellTest`, because a route composed but absent from the enum is invisible in
         // the nav and one present in the enum but not composed lands on a blank screen.
         composable(Destination.Pengaturan.route) {
+            // The read half of Story 5.2's file access. Taken here rather than in the ViewModel
+            // because a `ContentResolver` needs a `Context` and the ViewModel deliberately holds
+            // none — the same division `BackupFileWriter` documents on the write side.
+            val context = LocalContext.current
+
             // Story 5.1's launcher, declared here because a `rememberLauncherForActivityResult`
             // needs a `ComponentActivity` and this is the one place in the graph that has one.
             // The destination is the **route** rather than the whole app because an export is
@@ -95,9 +102,30 @@ internal fun AppNavGraph(
                 // something untrue.
                 if (uri != null) screens.pengaturan.onExportGranted(uri)
             }
+
+            // Story 5.2's launcher, beside it. `OpenDocument` rather than `GetContent`: the two
+            // differ in what the picker offers, and only `OpenDocument` filters by MIME type —
+            // which is what stops the owner choosing a photo of a receipt and getting a parse
+            // error instead of a picker that never showed him the photo.
+            //
+            // The array is a `vararg` of MIME types and a single-element array is deliberate:
+            // `arrayOf(MIME_JSON)` offers exactly the JSON files, where the catch-all would
+            // offer everything the provider can open.
+            val restoreLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.OpenDocument(),
+            ) { uri ->
+                // Null means the owner backed out. Same reasoning as the export: no message,
+                // because nothing failed.
+                if (uri != null) {
+                    val json = BackupFileReader.read(context, uri)
+                    screens.pengaturan.onRestoreFileChosen(json)
+                }
+            }
+
             PengaturanRoute(
                 wiring = screens.pengaturan,
                 onExport = { launcher.launch(screens.pengaturan.backupFilename()) },
+                onRestore = { restoreLauncher.launch(arrayOf(MIME_JSON)) },
             )
         }
         // The fifth, added by Story 4.1 — and the first with **no** sheet of its own, so
@@ -587,6 +615,20 @@ internal class Screens(
          * across midnight would otherwise offer yesterday's name.
          */
         val backupFilename: () -> String,
+        /**
+         * Story 5.2's restore: the file the owner chose, already read to text.
+         *
+         * `String?` rather than a `Uri`, because reading the file is the **route's** job — it
+         * holds the `ContentResolver` and the granted `Uri`, and `data/` must not see either.
+         * `null` means the read failed, which is a different message from "wrong file".
+         */
+        val onRestoreFileChosen: (String?) -> Unit,
+        /** Confirms the preview, replacing the whole database. */
+        val onConfirmRestore: () -> Unit,
+        /** Closes the preview without writing anything. */
+        val onDismissRestore: () -> Unit,
+        /** Dismisses a refusal. Its own slot, so it cannot clear the form's message. */
+        val onRestoreErrorDismiss: () -> Unit,
     )
 
     /**
@@ -821,7 +863,11 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
  * property of the screens, not an oversight.
  */
 @Composable
-private fun PengaturanRoute(wiring: Screens.Pengaturan, onExport: () -> Unit) {
+private fun PengaturanRoute(
+    wiring: Screens.Pengaturan,
+    onExport: () -> Unit,
+    onRestore: () -> Unit,
+) {
     PengaturanScreen(
         state = wiring.state,
         onAdd = wiring.onAdd,
@@ -845,6 +891,12 @@ private fun PengaturanRoute(wiring: Screens.Pengaturan, onExport: () -> Unit) {
         // in the graph that already has one.
         onExport = onExport,
         onExportErrorDismiss = wiring.onExportErrorDismiss,
+        // Story 5.2's. The two **verbs** forward to the ViewModel; the picker is the route's,
+        // for the same reason the export's is.
+        onRestore = onRestore,
+        onConfirmRestore = wiring.onConfirmRestore,
+        onDismissRestore = wiring.onDismissRestore,
+        onRestoreErrorDismiss = wiring.onRestoreErrorDismiss,
     )
 }
 

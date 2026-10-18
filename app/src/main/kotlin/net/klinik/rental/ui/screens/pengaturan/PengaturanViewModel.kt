@@ -14,7 +14,12 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.klinik.rental.data.backup.BackupJsonReader
 import net.klinik.rental.data.backup.BackupRepository
+import net.klinik.rental.data.backup.BackupRestorer
+import net.klinik.rental.data.backup.RestorePreview
+import net.klinik.rental.data.backup.RestoreRejected
+import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.BusinessIdentity
 import net.klinik.rental.data.repository.BusinessIdentityRepository
@@ -62,6 +67,15 @@ class PengaturanViewModel(
      * so the missing case is a **message**, not a silently dead button.
      */
     private val backups: BackupRepository? = null,
+    /**
+     * Story 5.2's restore, optional on the same argument as [backups].
+     *
+     * A separate parameter rather than folded into [backups] because the two have different
+     * lifetimes and different failure surfaces: an export reads eight tables, a restore reads a
+     * file *and* replaces eight tables, and the only object that can do the second is one holding
+     * the database handle.
+     */
+    private val restorer: BackupRestorer? = null,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
@@ -147,6 +161,20 @@ class PengaturanViewModel(
     private val exportErrorMessage = MutableStateFlow<String?>(null)
 
     /**
+     * The parsed file awaiting the owner's decision — the dialog's visibility **and** its content.
+     *
+     * Holding the parsed `Restore` rather than only a formatted preview is the property that makes
+     * the preview honest: [confirmRestore] writes this exact object, so what the owner saw and what
+     * lands in the database cannot be two different reads of the file.
+     */
+    private val pendingRestore = MutableStateFlow<BackupJsonReader.Restore?>(null)
+
+    /** A restore in flight — rendered, so a second confirm cannot start a second replacement. */
+    private val restoring = MutableStateFlow(false)
+
+    private val restoreErrorMessage = MutableStateFlow<String?>(null)
+
+    /**
      * The accounts plus "has the read happened yet", as one flow.
      *
      * A derived flag rather than a separate `MutableStateFlow<Boolean>`: a flag set in the
@@ -174,7 +202,10 @@ class PengaturanViewModel(
             IdentitySnapshot(form, stored, error)
         },
         combine(exporting, exportErrorMessage) { busy, failure -> ExportSnapshot(busy, failure) },
-    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot ->
+        combine(pendingRestore, restoring, restoreErrorMessage) { pending, busy, failure ->
+            RestoreSnapshot(pending?.preview?.toUi(), busy, failure)
+        },
+    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot, restoreSnapshot ->
         PengaturanUiState(
             // The projection to a row happens here, once per emission, so the screen renders
             // what it is handed and no composable formats a value.
@@ -190,6 +221,9 @@ class PengaturanViewModel(
             errorMessage = formSnapshot.error,
             isExporting = exportSnapshot.busy,
             exportErrorMessage = exportSnapshot.failure,
+            restorePreview = restoreSnapshot.preview,
+            isRestoring = restoreSnapshot.busy,
+            restoreErrorMessage = restoreSnapshot.failure,
             isLoading = !hasEmitted,
         )
     }
@@ -239,6 +273,13 @@ class PengaturanViewModel(
      * failure — which is the defect the screen's banner suppression makes visible.
      */
     private data class ExportSnapshot(
+        val busy: Boolean,
+        val failure: String?,
+    )
+
+    /** Story 5.2's half: the preview (which is also the dialog's visibility) and its own failure. */
+    private data class RestoreSnapshot(
+        val preview: RestorePreviewUi?,
         val busy: Boolean,
         val failure: String?,
     )
@@ -624,6 +665,114 @@ class PengaturanViewModel(
     fun consumeExportError() {
         exportErrorMessage.value = null
     }
+
+    /**
+     * Parses [json] and, if it is a file this build can restore, shows the preview.
+     *
+     * ## Why parsing happens here and not when the owner confirms
+     *
+     * Because the preview **is** the decision. A flow that confirmed first and parsed after would
+     * be asking the owner to approve a file nobody had read, and the AC's whole point is that the
+     * counts appear before anything is replaced.
+     *
+     * ## Why a refusal clears nothing
+     *
+     * Because a refused file has not touched the database — the parse is the only thing that ran.
+     * The banner explains why, the owner keeps their data, and the dialog never appears.
+     */
+    fun onRestoreFileChosen(json: String?) {
+        if (json == null) {
+            // The file could not be opened at all. A different next action from "wrong file", so
+            // a different sentence — the owner may be able to fix a permission and retry.
+            restoreErrorMessage.value = strings.pengaturanRestoreUnreadable()
+            return
+        }
+        if (restorer == null) {
+            restoreErrorMessage.value = strings.pengaturanRestoreUnreadable()
+            return
+        }
+        restoreErrorMessage.value = null
+        try {
+            pendingRestore.value = restorer.parse(json)
+        } catch (e: RestoreRejected) {
+            // The reader's own reason, turned into a sentence by one `when`. A generic message
+            // here would throw away the only information that helps: which of "wrong file",
+            // "wrong version" and "corrupt file" this is.
+            restoreErrorMessage.value = strings.pengaturanRestoreRefused(
+                reason = e.reason,
+                fileVersion = e.fileVersion,
+                appVersion = SCHEMA_VERSION,
+            )
+        }
+    }
+
+    /** Closes the preview without writing anything. */
+    fun dismissRestore() {
+        pendingRestore.value = null
+    }
+
+    /**
+     * Replaces the whole database with the file the owner just approved.
+     *
+     * ## Why the guard is set synchronously
+     *
+     * The same reason [exportTo]'s is: a second tap arriving before the coroutine starts would
+     * otherwise see `false` and start a second replacement. Two restores racing over one database
+     * is not a UI defect — it is two transactions clearing and writing the same tables.
+     */
+    fun confirmRestore() {
+        val restore = pendingRestore.value ?: return
+        val restorer = restorer ?: return
+        if (restoring.value) return
+        restoring.value = true
+
+        viewModelScope.launch {
+            try {
+                restorer.apply(restore)
+                // Cleared only on success: a failed restore must leave the dialog up with its
+                // banner, so the owner can see the file they chose is still the one on screen.
+                pendingRestore.value = null
+                message.value = strings.pengaturanRestoreDone()
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // The transaction rolled back, so the old data is intact — and saying so is the
+                // difference between "nothing happened" and "your records are gone".
+                restoreErrorMessage.value = strings.pengaturanRestoreRefused(
+                    reason = BackupJsonReader.REASON_BAD_ROW,
+                    fileVersion = null,
+                    appVersion = SCHEMA_VERSION,
+                )
+            } finally {
+                restoring.value = false
+            }
+        }
+    }
+
+    /** Dismisses the restore's banner. */
+    fun consumeRestoreError() {
+        restoreErrorMessage.value = null
+    }
+
+    /**
+     * The preview the dialog draws, or `null` when nothing is pending.
+     *
+     * Formatted here rather than in the dialog for the reason every `*Ui` type in this app gives:
+     * a figure assembled in a composable is assembled per recomposition, and the counts line is
+     * three numbers and three nouns in one sentence.
+     */
+    private fun RestorePreview.toUi(): RestorePreviewUi = RestorePreviewUi(
+        countsLine = strings.pengaturanRestoreCounts(
+            vehicles = vehicleCount,
+            renters = renterCount,
+            payments = paymentCount,
+        ),
+        periodLine = lastPaymentDate
+            ?.let { strings.pengaturanRestorePeriod(strings.formatExceptionDate(it)) }
+            // The file has no deposits. `maxOfOrNull` gave us `null` rather than an epoch date,
+            // so the copy can say so instead of printing "1 Jan 1970" and looking broken.
+            ?: strings.pengaturanRestorePeriodEmpty(),
+    )
 
     /**
      * Puts a blank-field refusal on the field it belongs to.

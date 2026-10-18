@@ -2,7 +2,7 @@
 title: 'Story 5.2 — Memulihkan data dari cadangan'
 type: 'feature'
 created: '2026-10-19'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '201c9ed9e61a936f2b60f9da2daa14f99086baad'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -168,22 +168,25 @@ transaction.
 **Execution:**
 - [x] `app/.../data/backup/BackupJsonReader.kt` — strict parse of all eight tables, `schemaVersion`,
       `RestorePreview`, `RestoreRejected`.
-- [ ] `app/.../data/backup/BackupRestorer.kt` — the version gate, `clearAllTables()`, the FK-ordered
+- [x] `app/.../data/backup/BackupRestorer.kt` — the version gate, `clearAllTables()`, the FK-ordered
       inserts, one transaction.
-- [ ] `app/.../ui/backup/BackupFileReader.kt` — `ContentResolver.openInputStream`.
-- [ ] `app/.../ui/screens/pengaturan/RestorePreviewDialog.kt` — counts, last period, confirm.
-- [ ] `app/.../ui/screens/pengaturan/*` — the action, the state, the callbacks.
-- [ ] `app/.../ui/shell/NavGraph.kt`, `MainActivity.kt`, `strings.xml`, `RStrings.kt`.
+- [x] `app/.../ui/backup/BackupFileReader.kt` — `ContentResolver.openInputStream`.
+- [x] `app/.../ui/screens/pengaturan/RestorePreviewDialog.kt` — counts, last period, confirm.
+- [x] `app/.../ui/screens/pengaturan/*` — the action, the state, the callbacks.
+- [x] `app/.../ui/shell/NavGraph.kt`, `MainActivity.kt`, `strings.xml`, `RStrings.kt`.
 - [x] `app/src/test/.../backup/BackupJsonReaderTest.kt` — **new, 13 cases**: every table key required,
       an empty table *not* refused (the two are opposite facts and the suite proves it), newer and
       older versions refused, a malformed row refused naming its table, a row the entity guards
       reject refused rather than repaired, `pinHash` dropped on read.
-- [ ] `app/src/test/.../backup/BackupRestorerTest.kt` — **new, against a real Room database**: the
-      whole matrix, `Σ allocation == amount` after a restore, the PIN key ignored.
-- [ ] `app/src/test/.../backup/ExportRestoreRoundTripTest.kt` — **new**: build a database, export it,
-      restore it into a second one, and assert the two are identical. The test that proves the two
-      halves of FR-16 agree, which neither can prove alone.
-- [ ] `app/src/test/.../pengaturan/PengaturanScreenTest.kt` — the preview, the confirm, the cancel.
+- [x] `app/src/test/.../backup/BackupRestorerTest.kt` — **new, 9 cases against a real Room
+      database**: the whole file, replacement rather than merge, allocation sums, the PIN key, an
+      empty file, a cancelled row, a corrupt file leaving data untouched, an ended contract, and
+      the **rollback** when an insert fails partway.
+- [x] `app/src/test/.../backup/ExportRestoreRoundTripTest.kt` — **new, 4 cases**: a realistic
+      database exported and restored into a **second** database, compared table by table.
+- [x] `app/src/test/.../pengaturan/PengaturanScreenTest.kt` — eight new cases: the wiring, the
+      preview's numbers, confirm, cancel, the absent dialog, the refusal banner, the disabled
+      state, and the touch floor.
 
 **Acceptance Criteria:**
 - Given the restore action is tapped, then the system file picker opens, filtered to JSON
@@ -244,6 +247,51 @@ in the spec's Design Notes instead of in a method that must not be called twice.
 ## Review Triage Log
 
 ## Auto Run Result
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `data/backup/BackupJsonReader.kt` | **new** — strict `org.json` parse, `Restore`, `RestorePreview`, `RestoreRejected`, the five refusal reasons |
+| `data/backup/BackupRestorer.kt` | **new** — `parse` + `apply`, one transaction, FK-ordered inserts |
+| `ui/backup/BackupFileReader.kt` | **new** — the one `ContentResolver` read |
+| `ui/screens/pengaturan/RestorePreviewDialog.kt` | **new** — counts, period, the overwrite warning |
+| `ui/screens/pengaturan/*` | `restorePreview`/`isRestoring`/`restoreErrorMessage`, `onRestoreFileChosen`/`confirmRestore`/`dismissRestore`/`consumeRestoreError`, the second button |
+| `ui/shell/NavGraph.kt` | the `OpenDocument` launcher on the settings route; four new `Screens.Pengaturan` members |
+| `MainActivity.kt` | `BackupRestorer` construction and the wiring |
+| `strings.xml`, `RStrings.kt` | nine strings, five accessors, the refusal `when` |
+
+### Verification
+
+- `./gradlew :domain:test` -- **SUCCESS** (203)
+- `./gradlew :app:testDebugUnitTest` -- **SUCCESS** (1002, 0 failures)
+- `./gradlew :app:assembleDebug` -- **SUCCESS**
+- `git grep -c "optJSONArray" app/src/main` -- **0** outside the KDoc that explains why
+
+### Mutation checks, each reverted
+
+| Broken | Failed |
+|---|---|
+| `getJSONArray` → `optJSONArray ?: JSONArray()` | `a file missing a table key is refused`, `every table key is required` |
+| `withTransaction` → `run` | seven of the nine restorer tests |
+
+The second is the more interesting one: without the transaction, **seven** tests failed, not
+just the rollback test — because `clearAllTables()` inside a bare `run {}` leaves the database
+empty when a later insert throws, and every test that then read a table found nothing. That is
+what "a half-restored database reads as data loss" looks like from the outside.
+
+### Residual risks
+
+- **`BackupFileReader` and `BackupFileWriter` have no tests.** Both are three-line
+  `ContentResolver` calls whose only failure mode is `null`/`false`, which the ViewModel already
+  renders as a message. Faking a `ContentResolver` under Robolectric is a pattern this repo has
+  never used and writing the first one was judged more risk than the untested lines were worth.
+  Known gap, not a considered omission.
+- **No device run.** The picker, the preview and a restore against a real file system were not
+  exercised; there is no device here.
+- **`RestoreRejected` has no `REASON_NO_VERSION` test on the restorer path** — it is covered in
+  `BackupJsonReaderTest`, but the restorer's `parse` is a one-line delegation, so there is no
+  second behaviour to test.
 
 ## Design Notes
 

@@ -810,6 +810,42 @@
     <string name="pengaturan_backup_restore_pending">Pemulihan dari cadangan belum tersedia di versi ini.</string>
 
     <!--
+      Story 5.2 — restore. The preview is the acceptance criterion's own shape:
+      "18 mobil · 14 penyewa · 312 setoran" and "Periode terakhir: 24 Mar 2026".
+
+      The counts use %1$d placeholders rather than a formatted sentence per case, so the number
+      and its noun are one string and cannot drift apart. The period line has a second form for a
+      file with no deposits, because "Periode terakhir: 1 Jan 1970" is what a `sorted().last()`
+      would print and it is not true of any backup.
+    -->
+    <string name="pengaturan_restore_action">Pulihkan dari cadangan</string>
+    <string name="pengaturan_restore_title">Pulihkan dari cadangan</string>
+    <string name="pengaturan_restore_counts">%1$d mobil · %2$d penyewa · %3$d setoran</string>
+    <string name="pengaturan_restore_period">Periode terakhir: %1$s</string>
+    <string name="pengaturan_restore_period_empty">Berkas ini belum berisi setoran.</string>
+    <!--
+      The cost, in the same window as the button that charges it. "Semua" is the load-bearing
+      word: a restore is not a merge, and a label that only named the benefit would hide that.
+    -->
+    <string name="pengaturan_restore_overwrites">Semua data yang ada sekarang akan diganti.</string>
+    <string name="pengaturan_restore_confirm">Ganti semua data</string>
+    <string name="pengaturan_restore_cancel">Batal</string>
+    <string name="pengaturan_restore_done">Data dipulihkan dari cadangan</string>
+    <string name="pengaturan_restore_restoring">Memulihkan…</string>
+
+    <!--
+      The refusals, one per reason the reader raises. Each names what the owner can do next rather
+      than what went wrong inside the app — the rule NFR-6 sets for every error here. The version
+      message names both numbers because "this file is from a newer app" without saying which is
+      a message the owner cannot act on.
+    -->
+    <string name="pengaturan_restore_error_not_json">Berkas ini bukan cadangan Klinik Net. Pilih berkas JSON yang dibuat lewat menu Ekspor data.</string>
+    <string name="pengaturan_restore_error_version">Cadangan ini dibuat oleh versi aplikasi yang berbeda (versi berkas %1$d, aplikasi ini %2$d). Data yang ada tidak diubah.</string>
+    <string name="pengaturan_restore_error_missing_table">Berkas cadangan tidak lengkap — ada bagian yang hilang. Data yang ada tidak diubah.</string>
+    <string name="pengaturan_restore_error_bad_row">Berkas cadangan berisi data yang tidak bisa dibaca. Data yang ada tidak diubah.</string>
+    <string name="pengaturan_restore_error_unreadable">Berkas tidak bisa dibuka. Periksa izin berkas lalu coba lagi.</string>
+
+    <!--
       Story 3.2 — Setoran (deposits).
 
       The numpad's own copy is not here: `KnNumPad` ships its digits and its Save

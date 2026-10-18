@@ -22,6 +22,7 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Landmark
+import com.composables.icons.lucide.Upload
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnAvatar
@@ -104,6 +105,13 @@ fun PengaturanScreen(
     // the thing being guarded against.
     onExport: () -> Unit,
     onExportErrorDismiss: () -> Unit,
+    // Story 5.2's three. Required, not defaulted, for the reason every callback here gives — and
+    // with the sharpest edge on the screen: a defaulted `onConfirmRestore` would be a button that
+    // promises to replace the owner's data and does nothing.
+    onRestore: () -> Unit,
+    onConfirmRestore: () -> Unit,
+    onDismissRestore: () -> Unit,
+    onRestoreErrorDismiss: () -> Unit,
     // Required, not defaulted. A defaulted lambda produces a control that renders and
     // silently does nothing — the failure the required-parameter rule exists to prevent, and
     // it has caught unwired call sites in five test files across two stories.
@@ -175,7 +183,9 @@ fun PengaturanScreen(
                     // moment the owner most wants it, before there is anything to lose.
                     BackupSection(
                         isExporting = state.isExporting,
+                        isRestoring = state.isRestoring,
                         onExport = onExport,
+                        onRestore = onRestore,
                     )
 
                     when {
@@ -232,8 +242,11 @@ fun PengaturanScreen(
                 // The export's failure joins the same single banner rather than getting its own.
                 // Two `BottomCenter` bars with the same padding stack on the same pixels — the
                 // reason this is one pair and not two — and the export's failure is the more
-                // urgent of the two, so it goes first.
-                state.exportErrorMessage?.let { it to KnBadgeTone.Danger }
+                // urgent of the two, so it goes first. The restore's failure joins them for the
+                // same reason, and goes ahead of both: a refused restore is the one message that
+                // tells the owner their data is still there.
+                state.restoreErrorMessage?.let { it to KnBadgeTone.Danger }
+                    ?: state.exportErrorMessage?.let { it to KnBadgeTone.Danger }
                     ?: state.errorMessage?.let { it to KnBadgeTone.Danger }
                     ?: snackbarMessage?.let { it to KnBadgeTone.Success }
             }
@@ -245,17 +258,20 @@ fun PengaturanScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(spacing.lg)
-                        // The export failure carries its own tag so a test can assert *that*
-                        // banner rather than "a banner" — the three sources share one slot, and
-                        // only the source distinguishes which failure the owner is being shown.
+                        // The three failure sources share one slot, so the tag is what
+                        // distinguishes them — and the dismiss callback follows the tag, not
+                        // the tone, because clearing the restore's failure must not also clear
+                        // the form's.
                         .testTag(
-                            if (state.exportErrorMessage != null) TAG_EXPORT_ERROR else TAG_BANNER,
+                            when {
+                                state.restoreErrorMessage != null -> TAG_RESTORE_ERROR
+                                state.exportErrorMessage != null -> TAG_EXPORT_ERROR
+                                else -> TAG_BANNER
+                            },
                         ),
                     onDismiss = {
-                        // Branch on the tone rather than on `state.errorMessage`, because the
-                        // tone is what was actually *drawn*. Reading the state instead would be
-                        // a second thing to keep in step with the first.
                         when {
+                            state.restoreErrorMessage != null -> onRestoreErrorDismiss()
                             state.exportErrorMessage != null -> onExportErrorDismiss()
                             tone == KnBadgeTone.Danger -> onErrorDismiss()
                             else -> onSnackbarDismiss()
@@ -299,6 +315,21 @@ fun PengaturanScreen(
                 successMessage = state.identitySuccessMessage,
                 onDismissSuccess = onSnackbarDismiss,
                 onDismissError = onIdentityErrorDismiss,
+            )
+        }
+
+        // Story 5.2's preview, mounted from this file like the two sheets above and for the same
+        // reason: it is a window over this screen's state, and a restore that replaced the
+        // database while its own dialog lived in a different composition would be a window
+        // describing a screen that no longer exists.
+        //
+        // It is a `KnModal` rather than a `ModalBottomSheet` because it carries a decision, not a
+        // form: there is nothing to type, and the two buttons are the whole content.
+        state.restorePreview?.let { preview ->
+            RestorePreviewDialog(
+                preview = preview,
+                onConfirm = onConfirmRestore,
+                onDismiss = onDismissRestore,
             )
         }
     }
@@ -387,7 +418,7 @@ private fun IdentitySection(
 }
 
 /**
- * Story 5.1's backup control: where the data lives, and the one button that copies it out.
+ * Story 5.1's backup control and Story 5.2's restore, in one card.
  *
  * ## Why the section says **nothing** about encryption
  *
@@ -396,23 +427,27 @@ private fun IdentitySection(
  * copy states the two facts the owner is really asking when they back up: the data is on this
  * device, and nothing is sent anywhere. Those are both true.
  *
- * ## Why there is **no restore button**
+ * ## Why the restore button is now here, and what changed
  *
- * Because restoration is Story 5.2 and a disabled one would be the "renders and is wired to
- * nothing" defect in its purest form — a control the owner can see, tap, and get nothing from,
- * on the screen where they most expect the feature. The section says in words that it is not
- * here yet, and that line should disappear when the control appears.
+ * Story 5.1 shipped this card **without** one, and with a line saying restore was not available
+ * yet. That line existed so a control the owner could see and tap would not do nothing — the
+ * "renders and is wired to nothing" defect. Story 5.2 supplies the other half, so the line goes
+ * and the button arrives in the same change. A disabled button in the interim would have been the
+ * same defect with a grey tint.
  *
- * ## Why [isExporting] disables rather than hides
+ * ## Why restore is `Secondary` and export is `Secondary` too
  *
- * Because the export is a system file picker followed by a write, and a button that vanishes
- * mid-tap leaves the owner wondering whether they pressed it. Disabling with a label that says
- * what is happening is the same rule `KnNumPad`'s Save follows.
+ * Neither is the primary action of a settings screen — both are occasional, and the primary thing
+ * on this screen is still adding an account. The **destructive** part is not the button but the
+ * confirmation behind it, which names what it replaces; colouring the entry point red would warn
+ * about the wrong moment.
  */
 @Composable
 private fun BackupSection(
     isExporting: Boolean,
+    isRestoring: Boolean,
     onExport: () -> Unit,
+    onRestore: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -457,11 +492,20 @@ private fun BackupSection(
                 enabled = !isExporting,
                 modifier = Modifier.testTag(TAG_EXPORT_ACTION),
             )
-            // The absent restore, stated rather than drawn. See the class KDoc.
-            Text(
-                text = stringResource(R.string.pengaturan_backup_restore_pending),
-                style = MaterialTheme.knTypography.body,
-                color = MaterialTheme.knColors.textTertiary,
+            KnButton(
+                label = stringResource(
+                    if (isRestoring) {
+                        R.string.pengaturan_restore_restoring
+                    } else {
+                        R.string.pengaturan_restore_action
+                    },
+                ),
+                onClick = onRestore,
+                variant = KnButtonVariant.Secondary,
+                size = KnButtonSize.Small,
+                icon = Lucide.Upload,
+                enabled = !isRestoring,
+                modifier = Modifier.testTag(TAG_RESTORE_ACTION),
             )
         }
     }
@@ -557,6 +601,10 @@ internal const val TAG_IDENTITY_SECTION = "pengaturan-identity-section"
 internal const val TAG_BACKUP_SECTION = "pengaturan-backup-section"
 internal const val TAG_EXPORT_ACTION = "pengaturan-export-action"
 internal const val TAG_EXPORT_ERROR = "pengaturan-export-error"
+
+/** Story 5.2's restore control and its refusal banner. */
+internal const val TAG_RESTORE_ACTION = "pengaturan-restore-action"
+internal const val TAG_RESTORE_ERROR = "pengaturan-restore-error"
 internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"
 internal const val TAG_IDENTITY_ACTION = "pengaturan-identity-action"
 
@@ -604,6 +652,10 @@ private fun PengaturanScreenPreview() {
             onIdentityErrorDismiss = {},
             onExport = {},
             onExportErrorDismiss = {},
+            onRestore = {},
+            onConfirmRestore = {},
+            onDismissRestore = {},
+            onRestoreErrorDismiss = {},
             onErrorDismiss = {},
         )
     }

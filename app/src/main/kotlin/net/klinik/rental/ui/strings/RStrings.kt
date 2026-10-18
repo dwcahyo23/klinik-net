@@ -3,6 +3,7 @@ package net.klinik.rental.ui.strings
 import android.content.Context
 import androidx.annotation.StringRes
 import net.klinik.rental.R
+import net.klinik.rental.data.backup.BackupJsonReader
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.format.formatTanggalBulan
 
@@ -600,6 +601,62 @@ class RStrings(private val context: Context) {
      */
     fun pengaturanErrorExportFailed(): String =
         context.getString(R.string.pengaturan_error_export_failed)
+
+    // -------------------------------------------------------------- Story 5.2
+
+    /**
+     * The preview's first line: `18 mobil · 14 penyewa · 312 setoran`.
+     *
+     * Assembled in the ViewModel rather than the dialog because it is three numbers and three
+     * nouns in one sentence, and a composable that built it would rebuild the pluralisation on
+     * every recomposition.
+     */
+    fun pengaturanRestoreCounts(vehicles: Int, renters: Int, payments: Int): String =
+        context.getString(R.string.pengaturan_restore_counts, vehicles, renters, payments)
+
+    /** `Periode terakhir: 24 Mar 2026`. */
+    fun pengaturanRestorePeriod(date: String): String =
+        context.getString(R.string.pengaturan_restore_period, date)
+
+    /** The sentence for a file with no deposits — not an epoch date. */
+    fun pengaturanRestorePeriodEmpty(): String =
+        context.getString(R.string.pengaturan_restore_period_empty)
+
+    /** The restore succeeded. */
+    fun pengaturanRestoreDone(): String = context.getString(R.string.pengaturan_restore_done)
+
+    /**
+     * A refusal, chosen from the reader's own reason.
+     *
+     * ## Why this is one function with a `when` rather than five accessors
+     *
+     * Because the caller holds a [RestoreRejected], not a decision — the ViewModel catches the
+     * exception and asks "what does this mean to the owner". Five call sites would each have to
+     * remember which reason maps to which sentence, and adding a sixth reason would add a sixth
+     * call site rather than a compile error in one `when`.
+     */
+    fun pengaturanRestoreRefused(reason: String, fileVersion: Int?, appVersion: Int): String =
+        when (reason) {
+            // The version message is the only one that names figures, because it is the only
+            // refusal whose cause the owner can see for themselves.
+            BackupJsonReader.REASON_VERSION -> context.getString(
+                R.string.pengaturan_restore_error_version,
+                fileVersion ?: 0,
+                appVersion,
+            )
+            BackupJsonReader.REASON_MISSING_TABLE ->
+                context.getString(R.string.pengaturan_restore_error_missing_table)
+            BackupJsonReader.REASON_BAD_ROW ->
+                context.getString(R.string.pengaturan_restore_error_bad_row)
+            // NOT_JSON and NO_VERSION share a sentence: from the owner's side "this is not JSON"
+            // and "this JSON has no version" are the same next action — pick another file — and
+            // two messages that differ only in a word the owner cannot act on are noise.
+            else -> context.getString(R.string.pengaturan_restore_error_not_json)
+        }
+
+    /** The file could not be opened at all, which is a different next action from "wrong file". */
+    fun pengaturanRestoreUnreadable(): String =
+        context.getString(R.string.pengaturan_restore_error_unreadable)
 
     // -------------------------------------------------------------- Story 3.2
 

@@ -17,6 +17,7 @@ import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import net.klinik.rental.data.backup.BackupRepository
+import net.klinik.rental.data.backup.BackupRestorer
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.DepositHistoryRepository
@@ -315,6 +316,19 @@ internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
         // the same [Clock] the rest of the app's dates use, and a second clock is a second
         // "today".
         backups = createBackupRepository(database, clock),
+        // Story 5.2's restore. The database handle is the difference from the exporter: this one
+        // clears and writes, so it cannot be built without it.
+        restorer = BackupRestorer(
+            database = database,
+            vehicleDao = database.vehicleDao(),
+            renterDao = database.renterDao(),
+            contractDao = database.contractDao(),
+            serviceExceptionDao = database.serviceExceptionDao(),
+            businessAccountDao = database.businessAccountDao(),
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            settingDao = database.settingDao(),
+        ),
     )
 }
 
@@ -710,6 +724,13 @@ private fun KlinikNetApp(
                     onExportErrorDismiss = pengaturan::consumeExportError,
                     onExportGranted = pengaturan::exportTo,
                     backupFilename = { backups.filenameFor(LocalDate.now(Clock.systemDefaultZone())) },
+                    // Story 5.2's restore. The parse happens in the ViewModel because the
+                    // preview **is** the decision; the file read happened in the route, which
+                    // holds the granted `Uri`.
+                    onRestoreFileChosen = pengaturan::onRestoreFileChosen,
+                    onConfirmRestore = pengaturan::confirmRestore,
+                    onDismissRestore = pengaturan::dismissRestore,
+                    onRestoreErrorDismiss = pengaturan::consumeRestoreError,
                 ),
                 // Story 3.2's deposit sheet. No route — the shell mounts it over
                 // whichever destination is showing, because a deposit is a quick

@@ -443,7 +443,200 @@ class PengaturanScreenTest {
         compose.onNodeWithTag(TAG_EXPORT_ACTION).assertIsEnabled()
     }
 
+    // ----------------------------------------------------- Story 5.2's restore
+
+    /**
+     * The restore control exists and reaches its handler.
+     *
+     * A restore button that draws and reaches nothing is the worst instance of this repo's most
+     * repeated defect: the owner would believe they had a way to put their records back, on the
+     * screen where they would go looking for it after losing a device.
+     */
+    @Test
+    fun `tapping restore reaches its handler`() {
+        var restored = 0
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onRestore = { restored = restored + 1 })
+            }
+        }
+
+        compose.onNodeWithTag(TAG_RESTORE_ACTION).performClick()
+        compose.waitForIdle()
+
+        assertEquals("the file picker is launched", 1, restored)
+    }
+
+    /**
+     * The preview shows the **file's** counts and period before anything is written.
+     *
+     * The criterion's own shape: `18 mobil · 14 penyewa · 312 setoran` and the last period. The
+     * assertions name the strings rather than counting nodes, because the numbers are the content
+     * — a dialog that rendered "0 mobil · 0 penyewa · 0 setoran" would pass a presence check and
+     * tell the owner to cancel a perfectly good backup.
+     */
+    @Test
+    fun `the preview shows the file's counts and last period`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        restorePreview = RestorePreviewUi(
+                            countsLine = "18 mobil · 14 penyewa · 312 setoran",
+                            periodLine = "Periode terakhir: 24 Mar 2026",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_RESTORE_DIALOG).assertExists()
+        compose.onNodeWithTag(TAG_RESTORE_COUNTS).assertExists()
+        compose.onNodeWithText("18 mobil · 14 penyewa · 312 setoran").assertExists()
+        compose.onNodeWithText("Periode terakhir: 24 Mar 2026").assertExists()
+        // And the cost, in the same window as the button that charges it.
+        compose.onNodeWithText("Semua data yang ada sekarang akan diganti.").assertExists()
+    }
+
+    /** Confirming reaches the handler that replaces the database. */
+    @Test
+    fun `confirming the preview reaches its handler`() {
+        var confirmed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(restorePreview = preview()),
+                    onConfirmRestore = { confirmed = confirmed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Ganti semua data").performClick()
+        compose.waitForIdle()
+
+        assertEquals(1, confirmed)
+    }
+
+    /**
+     * **Cancelling writes nothing and closes the window.**
+     *
+     * The criterion's `HIST_CANCEL` equivalent for restore: *"saya bisa membatalkan tanpa efek
+     * samping"*. Asserted as both the handler firing **and** the dialog going away, because a
+     * cancel that fires the handler but leaves the preview up would invite the owner to press the
+     * confirm by mistake next.
+     */
+    @Test
+    fun `cancelling the preview reaches its handler and closes the dialog`() {
+        var dismissed = 0
+        var confirmed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(restorePreview = preview()),
+                    onDismissRestore = { dismissed = dismissed + 1 },
+                    onConfirmRestore = { confirmed = confirmed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Batal").performClick()
+        compose.waitForIdle()
+
+        assertEquals("the cancel reaches its own handler", 1, dismissed)
+        assertEquals("and never the confirm's", 0, confirmed)
+    }
+
+    /**
+     * No preview means no dialog — a closed state that leaves a window up would block the screen.
+     *
+     * `KnModal` unmounts when not visible, so `assertDoesNotExist` is the assertion that the
+     * screen is usable again rather than showing an empty modal.
+     */
+    @Test
+    fun `no preview means no dialog`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag(TAG_RESTORE_DIALOG).assertDoesNotExist()
+    }
+
+    /**
+     * A refused restore raises **its own** banner and dismisses through its own channel.
+     *
+     * Three failure sources share the screen's single banner slot, so the tag is what says which
+     * one the owner is looking at — and the dismiss callback is what stops clearing a refusal
+     * from also clearing an account-form error.
+     */
+    @Test
+    fun `a refused restore raises its own banner`() {
+        var restoreDismissed = 0
+        var formDismissed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        restoreErrorMessage = "Berkas cadangan tidak lengkap — ada bagian yang hilang. " +
+                            "Data yang ada tidak diubah.",
+                    ),
+                    onRestoreErrorDismiss = { restoreDismissed = restoreDismissed + 1 },
+                    onErrorDismiss = { formDismissed = formDismissed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_RESTORE_ERROR).assertExists()
+        compose.onNodeWithTag(TAG_BANNER).assertDoesNotExist()
+        compose.onNodeWithText(
+            "Berkas cadangan tidak lengkap — ada bagian yang hilang. Data yang ada tidak diubah.",
+        ).assertExists()
+
+        compose.onNodeWithContentDescription("Tutup").performClick()
+        compose.waitForIdle()
+
+        assertEquals("the restore's own channel", 1, restoreDismissed)
+        assertEquals("and not the form's", 0, formDismissed)
+    }
+
+    /**
+     * The restore button is disabled while a restore is in flight.
+     *
+     * A second tap would open a second picker, and a second confirm would replace the database
+     * again — the only operation here where a double tap is destructive rather than untidy.
+     */
+    @Test
+    fun `the restore action is disabled while restoring`() {
+        var restored = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(isRestoring = true),
+                    onRestore = { restored = restored + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_RESTORE_ACTION).assertIsNotEnabled()
+        compose.onNodeWithText("Memulihkan…").assertExists()
+
+        compose.onNodeWithTag(TAG_RESTORE_ACTION).performClick()
+        compose.waitForIdle()
+        assertEquals(0, restored)
+    }
+
+    /** And the restore action clears the 48dp floor, like the export action beside it. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the restore action clears the touch floor`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag(TAG_RESTORE_ACTION).assertAtLeast(MIN_TARGET, "restore action")
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    private fun preview() = RestorePreviewUi(
+        countsLine = "18 mobil · 14 penyewa · 312 setoran",
+        periodLine = "Periode terakhir: 24 Mar 2026",
+    )
 
     @Composable
     private fun theme(content: @Composable () -> Unit) {
@@ -477,6 +670,12 @@ class PengaturanScreenTest {
         // required; this helper is the fixture every test in the file shares.
         onExport: () -> Unit = {},
         onExportErrorDismiss: () -> Unit = {},
+        // Story 5.2's four, defaulted on the same argument — this helper is the fixture every
+        // test in the file shares; the production parameters are required.
+        onRestore: () -> Unit = {},
+        onConfirmRestore: () -> Unit = {},
+        onDismissRestore: () -> Unit = {},
+        onRestoreErrorDismiss: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -495,6 +694,10 @@ class PengaturanScreenTest {
             onIdentityErrorDismiss = onIdentityErrorDismiss,
             onExport = onExport,
             onExportErrorDismiss = onExportErrorDismiss,
+            onRestore = onRestore,
+            onConfirmRestore = onConfirmRestore,
+            onDismissRestore = onDismissRestore,
+            onRestoreErrorDismiss = onRestoreErrorDismiss,
         )
     }
 

@@ -517,6 +517,10 @@ class FourStatesTest {
             // export button is one.
             onExport = {},
             onExportErrorDismiss = {},
+            onRestore = {},
+            onConfirmRestore = {},
+            onDismissRestore = {},
+            onRestoreErrorDismiss = {},
         )
     }
 
