@@ -10,6 +10,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.PaymentRepository
+import net.klinik.rental.data.repository.SettlementAlreadySettledException
 import net.klinik.rental.data.repository.SettlementBeforeStartException
 import net.klinik.rental.domain.model.Payment
 import net.klinik.rental.data.repository.UnknownContractException
@@ -438,6 +439,73 @@ class SettleContractTest {
         )
         assertEquals("and the end is recorded", LocalDate.of(2026, 10, 20), stored.endDate)
         assertNull("with the active pair released by the end", stored.activeVehicleId)
+    }
+
+    /**
+     * A settlement dated **earlier** than one the contract already carries is refused.
+     *
+     * The dangerous case, and the reason it is checked at this layer rather than in the
+     * sheet: a backwards write does not fail inertly like a before-start date — it
+     * **reopens** every day between the two, turning days the owner declared paid back into
+     * arrears they believed were gone. FR-9b gives no undo and no audit trail, so the
+     * recovery is hand-editing a row in a database file.
+     *
+     * The UI hides the verb once a contract carries a marker, which is why this is
+     * reachable only from here. That is a convenience, not the rule: a second caller would
+     * never consult a composable, and the repository is the layer that owns it.
+     */
+    @Test
+    fun `settling back behind an existing settlement is refused`() = runBlocking {
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+
+        assertThrows(SettlementAlreadySettledException::class.java) {
+            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5)) }
+        }
+
+        val stored = database.contractDao().findById(CONTRACT_ID)!!
+        assertEquals(
+            "the marker stands — nothing was reopened",
+            LocalDate.of(2026, 10, 20),
+            stored.settledThroughDate,
+        )
+        assertEquals(
+            "and the days it covers are still closed",
+            0,
+            payments.currentArrears(CONTRACT_ID, LocalDate.of(2026, 10, 20)),
+        )
+    }
+
+    /** The refusal carries **both** dates, so the message can name what it already covers. */
+    @Test
+    fun `the backwards refusal carries both dates`() = runBlocking {
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+
+        val refused = assertThrows(SettlementAlreadySettledException::class.java) {
+            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5)) }
+        }
+
+        assertEquals("what the contract already covers", LocalDate.of(2026, 10, 20), refused.settledThroughDate)
+        assertEquals("and what was asked for", LocalDate.of(2026, 10, 5), refused.attemptedDate)
+        assertEquals(CONTRACT_ID, refused.contractId)
+    }
+
+    /** Re-settling the **same** day is idempotent, and moving forward closes more days. */
+    @Test
+    fun `settling the same day again or later is accepted`() = runBlocking {
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        assertEquals(
+            "re-settling the same day changes nothing",
+            LocalDate.of(2026, 10, 10),
+            database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate,
+        )
+
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 15))
+        assertEquals(
+            "moving the marker forward is the direction the owner can always mean",
+            LocalDate.of(2026, 10, 15),
+            database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate,
+        )
     }
 
     // ------------------------------------------------------------------ fixtures

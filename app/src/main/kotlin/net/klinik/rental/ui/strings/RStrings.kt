@@ -414,6 +414,19 @@ class RStrings(private val context: Context) {
             formatExceptionDate(startDate),
         )
 
+    /**
+     * A settlement dated earlier than one the contract already carries.
+     *
+     * Takes the **existing** date, not the rejected one: the rejected date is still in the
+     * field the owner picked it into, and the existing marker is nowhere on screen. So the
+     * date this message needs is the one they cannot see.
+     *
+     * Takes an already-formatted string like the sibling refusals — the ViewModel has no
+     * composition, and a date spelled in two places is one that can differ in two places.
+     */
+    fun kontrakErrorSettleAlreadySettled(existing: String): String =
+        context.getString(R.string.kontrak_error_settle_already_settled, existing)
+
     /** A settlement date never chosen. */
     fun kontrakErrorSettleBlankDate(): String =
         context.getString(R.string.kontrak_error_settle_blank_date)

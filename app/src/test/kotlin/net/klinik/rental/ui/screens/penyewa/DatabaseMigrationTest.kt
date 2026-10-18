@@ -209,7 +209,7 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
-            KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_7_8,
             )
             .build()
         database = fresh
@@ -389,7 +389,7 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
-            KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_7_8,
             )
                 .build()
                 .openHelper
@@ -1712,7 +1712,7 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_4_5,
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
-            KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_7_8,
             )
             .build()
         database = opened

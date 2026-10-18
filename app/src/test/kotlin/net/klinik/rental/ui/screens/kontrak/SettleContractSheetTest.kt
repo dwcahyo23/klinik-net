@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -259,6 +260,59 @@ class SettleContractSheetTest {
         compose.onNodeWithTag(TAG_SETTLE_CLOSE).assertAtLeast(MIN_TARGET, "settle close")
     }
 
+    /**
+ * The error banner's close reaches its own dismiss handler.
+ *
+ * The defect this exists against is the sheet defaulting `onDismissError` to `{}`: the
+ * message renders and there is no way to clear it, so a single refusal becomes permanent on
+ * an action the owner must be able to retry. Both dismiss handlers are **required**
+ * parameters on the sheet now.
+ *
+ * Addressed through the close glyph rather than the banner's own tag, because
+ * `KnSnackbar` puts `onDismiss` on a trailing affordance *inside* the bar — the container
+ * carries no click of its own, so clicking the tag would fail on a missing `OnClick`.
+ */
+@Test
+    fun `the error banner's close reaches its own dismiss`() {
+        var dismissed = false
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = sheet(),
+                    errorMessage = "Gagal menandai kontrak lunas. Coba lagi.",
+                    onDismissError = { dismissed = true },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Tutup")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertTrue("a banner that cannot be cleared is permanent", dismissed)
+    }
+
+    /** And the confirmation's close reaches its own, separate handler. */
+    @Test
+    fun `the success banner's close reaches its own dismiss`() {
+        var dismissed = false
+        compose.setContent {
+            theme {
+                Sheet(
+                    state = sheet(),
+                    successMessage = "17 hari ditandai lunas sampai 24 Okt",
+                    onDismissSuccess = { dismissed = true },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Tutup")
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertTrue("the confirmation must be dismissible too", dismissed)
+    }
+
     // ------------------------------------------------------------------ helpers
 
     @Composable
@@ -274,6 +328,8 @@ class SettleContractSheetTest {
         onConfirmSettle: () -> Unit = {},
         errorMessage: String? = null,
         successMessage: String? = null,
+        onDismissError: () -> Unit = {},
+        onDismissSuccess: () -> Unit = {},
     ) {
         SettleContractSheet(
             state = state,
@@ -281,7 +337,9 @@ class SettleContractSheetTest {
             onChange = onChange,
             onConfirmSettle = onConfirmSettle,
             errorMessage = errorMessage,
+            onDismissError = onDismissError,
             successMessage = successMessage,
+            onDismissSuccess = onDismissSuccess,
         )
     }
 

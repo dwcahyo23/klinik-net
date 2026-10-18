@@ -16,6 +16,7 @@ import kotlinx.coroutines.launch
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
+import net.klinik.rental.data.repository.SettlementAlreadySettledException
 import net.klinik.rental.data.repository.SettlementBeforeStartException
 import net.klinik.rental.data.repository.UnknownContractException
 import net.klinik.rental.data.repository.VehicleRepository
@@ -1115,6 +1116,19 @@ class KontrakViewModel(
                     )
                 } else {
                     settleError.value = strings.kontrakErrorSettleBeforeStart(e.startDate)
+                }
+            } catch (e: SettlementAlreadySettledException) {
+                // Named on the **date field**, not the banner: the fix is a different day,
+                // and the field is where the owner picks one. The message carries both dates
+                // so they can tell which of the two is the mistake.
+                val live = settleSheet.value
+                val message = strings.kontrakErrorSettleAlreadySettled(
+                    existing = strings.formatExceptionDate(e.settledThroughDate),
+                )
+                if (live != null) {
+                    settleSheet.value = live.copy(dateError = message)
+                } else {
+                    settleError.value = message
                 }
             } catch (e: UnknownContractException) {
                 // The contract is gone, so the sheet is about a row that no longer

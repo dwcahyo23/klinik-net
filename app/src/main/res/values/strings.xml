@@ -620,6 +620,14 @@
       knowing which day that was.
     -->
     <string name="kontrak_error_settle_before_start">Kontrak dimulai %1$s, jadi tidak bisa ditandai lunas sebelum tanggal itu.</string>
+    <!--
+      The backwards-settlement refusal. Names the day the contract **already** covers
+      rather than the rejected one, because that is the one the owner cannot see — the
+      rejected date is still in the field they picked it into, while the existing marker is
+      not on this screen at all. FR-9b has no undo, so the message has to make the state
+      plain rather than merely refusing.
+    -->
+    <string name="kontrak_error_settle_already_settled">Kontrak sudah ditandai lunas sampai %1$s. Menandai mundur akan membuka kembali hari-hari itu, jadi tidak bisa.</string>
     <string name="kontrak_error_settle_blank_date">Pilih tanggal terakhir yang sudah lunas sebelum kirim.</string>
     <string name="kontrak_error_settle_unexpected">Gagal menandai kontrak lunas. Coba lagi.</string>
     <!-- Confirmation. A snackbar, and it names the day so a later audit can place it. -->

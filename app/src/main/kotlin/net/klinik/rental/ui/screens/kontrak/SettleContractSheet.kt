@@ -69,9 +69,14 @@ fun SettleContractSheet(
     onConfirmSettle: () -> Unit,
     modifier: Modifier = Modifier,
     errorMessage: String? = null,
-    onDismissError: () -> Unit = {},
+    // Both dismiss handlers are **required**, and the default is the reason. `{}` makes
+    // the banner unreachable while looking complete: the caller passes a message, it
+    // renders, and there is no way to clear it — a permanent refusal on an action the
+    // owner must be able to retry. `ExceptionFormSheet`'s own rule, for the same reason
+    // `Screens.Kontrak` does not default `onEndErrorDismiss`.
+    onDismissError: () -> Unit,
     successMessage: String? = null,
-    onDismissSuccess: () -> Unit = {},
+    onDismissSuccess: () -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
     val sheetState = rememberModalBottomSheetState(skipPartiallyExpanded = true)

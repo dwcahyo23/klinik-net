@@ -89,9 +89,12 @@ data class Contract(
      * ## Why Epic 3's deferral ends here
      *
      * This model deliberately carried no settlement date while nothing wrote one. Now
-     * something does, and the arithmetic needs it: `ChargeSchedule` reads a contract's
-     * settled-through day to narrow the day list, and a calculation that cannot see the
-     * marker cannot honour it. So it moves from "Epic 3 owns it" to a field here.
+     * something does, and the arithmetic needs it: `PaymentRepository.previewAllocation`
+     * narrows a contract's charge-day list through
+     * [net.klinik.rental.domain.calculate.settledDays] before anything counts it, and a
+     * calculation that cannot see the marker cannot honour it. `ChargeSchedule` does **not**
+     * read this field — the narrowing happens one layer out, in the repository that owns
+     * the read chain. So it moves from "Epic 3 owns it" to a field here.
      *
      * It is **not** folded into [endDate]. They answer different questions — "when
      * did the car come back" and "when were the days paid elsewhere" — and a contract

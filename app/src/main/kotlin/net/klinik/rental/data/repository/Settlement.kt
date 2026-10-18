@@ -23,6 +23,34 @@ class SettlementBeforeStartException(
 )
 
 /**
+ * A settlement dated **earlier** than one the contract already carries.
+ *
+ * The dangerous one, and the reason it carries *both* dates rather than just the stored
+ * one: unlike a before-start date, which is inert, a backwards settlement **actively
+ * reopens** every day between the two — turning days the owner declared paid back into
+ * arrears they believed were gone. FR-9b gives no undo and no audit trail, so the recovery
+ * is editing a row in a database file.
+ *
+ * Both dates are on the exception so the message can say what the contract already covers
+ * and what was asked for: the owner cannot tell which of the two dates is the mistake
+ * without being shown both, and the field they typed the rejected date into still holds it.
+ *
+ * The UI hides the settlement verb once a contract carries a marker, so this is not
+ * reachable through the sheet. It is here because this layer owns the rule, and a second
+ * caller would never consult a composable.
+ */
+class SettlementAlreadySettledException(
+    val contractId: String,
+    /** What the contract is already settled through. */
+    val settledThroughDate: LocalDate,
+    /** What this write tried to settle through, and was refused. */
+    val attemptedDate: LocalDate,
+) : IllegalStateException(
+    "contract $contractId is already settled through $settledThroughDate, " +
+        "so it cannot be settled back to $attemptedDate",
+)
+
+/**
  * What a settlement would remove, and what would remain — Story 3.6.
  *
  * ## Why both halves

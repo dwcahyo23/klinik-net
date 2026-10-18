@@ -359,8 +359,21 @@ class ContractRepository(
      * the read chain — this class deliberately takes no second repository, so the two
      * stories' halves stay separate rather than one calling the other.
      *
+     * ## Why a backwards date is refused
+     *
+     * Because FR-9b has no undo, and a backwards write is the one that silently does damage:
+     * it would **reopen** every day between the two dates, turning days the owner declared
+     * paid back into arrears they thought were gone — with no message, no trace and no way
+     * back except hand-editing a row in a database file.
+     *
+     * The UI hides the settlement verb once a contract carries a marker, so this cannot be
+     * reached by the sheet; that is a convenience, not the rule. The rule lives here, because
+     * this is the layer that owns it and a second caller would not consult the sheet.
+     *
      * @throws SettlementBeforeStartException when [date] precedes the contract's own
      *   start date. Nothing is written.
+     * @throws SettlementAlreadySettledException when [date] precedes a settlement this
+     *   contract already carries. Nothing is written.
      * @throws UnknownContractException when nobody holds that id. Deliberately **not**
      *   [ContractNotOpenException]: that type reads "this contract has ended", which is
      *   the one state this write accepts — an ended contract with days paid elsewhere is
@@ -373,6 +386,17 @@ class ContractRepository(
                 throw SettlementBeforeStartException(
                     contractId = contractId,
                     startDate = stored.startDate,
+                )
+            }
+            // Equal or later is accepted: re-settling the same day is idempotent, and
+            // moving the marker forward closes more days, which is the direction the
+            // owner can always mean.
+            val existing = stored.settledThroughDate
+            if (existing != null && date.isBefore(existing)) {
+                throw SettlementAlreadySettledException(
+                    contractId = contractId,
+                    settledThroughDate = existing,
+                    attemptedDate = date,
                 )
             }
             // `copy`, so every other column keeps the value the owner already has —
