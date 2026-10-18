@@ -2,7 +2,8 @@
 title: 'Story 4.1 — Daftar tunggakan yang langsung terbaca'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-review'
+status: 'done'
+followup_review_recommended: false
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_revision: 'a734af3a21289a883d2597c78f8d8d750d592ca9'
@@ -124,6 +125,35 @@ landscape the list and a per-contract detail sit side by side; in portrait the d
   `:app:assembleDebug` all pass
 
 ## Implementation Notes
+
+**The failure path took three attempts, and the third is the one that is right.** The original
+wrote `errorMessage.value` inside `catch`; `errorMessage` was not one of the `combine`'s inputs,
+so the write re-rendered nothing and a failed read sat on a skeleton forever. The fix made the
+failure a `Source.Failed` value — but the first version still re-threw after emitting, which
+terminates the flow, and under `stateIn(WhileSubscribed)` that completes the sharing coroutine
+before the emitted value is delivered. Same class of bug one level down: a value that never
+arrives. `retryWhen { _, _ -> true }` was rejected as the next answer because a source that
+fails immediately fails again immediately, and re-subscribing in a tight loop spins the CPU
+while showing a banner. What ships is `catch { emit(Source.Failed) }` — the flow completes
+normally — plus an `arrearsRetry` counter that `consumeError` bumps to re-subscribe. A dismissal
+is therefore a *retry*: it either recovers and hides the banner, or it fails again and brings the
+banner back. There is no state where the banner is gone and no figures behind it.
+
+**KDoc that claimed more than the code did, twice.** `PaymentDao.observeContractIds` claimed the
+combine named "the allocation and exception flows" — there was no exception flow, so an owner
+marking a service day saw the figure stay stale. `TunggakanViewModel` claimed `asOf` was read
+"once per emission" when it was frozen at construction, so an app left open across midnight
+showed yesterday's figure. Both were found by two reviewers each, independently.
+
+**`AccessibilityTest` earned its keep on the fifth destination.** Adding a fifth nav item made
+the rail's `weight(1f)` column bounded, which compresses children below their own
+`minTouchTarget()`: `Tunggakan` measured 38dp. The rail's KDoc had already promised
+`overflow-y: auto` — the scroll was simply never written. It is now, and the promise is
+load-bearing.
+
+**Rail scroll and the 48dp floor are the same story.** Four destinations fit a landscape tablet;
+five do not. Nothing warned of this and no build error mentions it — only a test that measures
+what the owner can actually touch.
 
 ## Spec Change Log
 
