@@ -64,11 +64,11 @@ development_status:
   3-6-menandai-kontrak-lunas-sampai-tanggal-tertentu: done
   epic-3-retrospective: optional # all 6 stories done. Two open carry-overs: Story 3.4's `requestCancel` and Story 3.5's `openEditDeposit` are both implemented and tested but have no production caller — no deposit history list exists until Epic 4.1, so neither is mountable yet. Both are recorded in their specs' `deferred` frontmatter.
 
-  epic-4: backlog
-  4-1-daftar-tunggakan-yang-langsung-terbaca: backlog
+  epic-4: in-progress
+  4-1-daftar-tunggakan-yang-langsung-terbaca: done
   4-2-mengirim-pengingat-whatsapp-dengan-angka-yang-benar: backlog
   4-3-ringkasan-pagi-di-beranda: backlog
-  4-4-identitas-usaha-untuk-pesan-pengingat: backlog
+  4-4-identitas-usaha-untuk-pesan-pengingat: done
   4-5-laporan-periode-bulanan: backlog
   4-6-pencarian-global: backlog
   epic-4-retrospective: optional
