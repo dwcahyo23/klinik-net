@@ -2,7 +2,8 @@
 title: 'Story 4.2 — Mengirim pengingat WhatsApp dengan angka yang benar'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-review'
+status: 'done'
+followup_review_recommended: false
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_revision: '2721e729620293c4b131a6f05e7d8c469312570f'
@@ -139,25 +140,54 @@ nothing else.
 
 ## Implementation Notes
 
+**The join Story 4.4 handed over was not made — it was proven.** 4.4 proved the name is stored;
+this story proves a message quotes a name; nothing proved they were the same name, and three of
+four review layers found that independently. The test now writes through the repository and reads
+back through it, so the seam that matters is exercised rather than stubbed. The seam also became
+**non-nullable** — the nullable one was what let `businessName?.invoke().orEmpty()` compose
+"ini pengingat dari ." and send it to a tenant, so a blank name now opens the dialog with a
+**visible refusal** instead of a malformed sentence.
+
+**A number that names no country is refused, not passed through.** `wa.me` reads a bare digit
+string as international, so a stored `812…` resolves as a Japanese number and the message goes to
+a stranger. `international` returns `null` there and the link is never built. Passing it unchanged
+invents a recipient just as effectively as guessing a country code — and more silently, because
+it looks like it worked.
+
+**The dismiss race is the same defect Story 3.5 fixed in `saveCorrection`, one story later.**
+`openReminder` launched, awaited the name read, and assigned the dialog unconditionally — dismiss
+during that suspend and it reopened. A request token is now recorded *before* the suspend,
+because the dialog's own state is still null on a first open and cannot carry the token itself.
+
+**The clipboard and the Intent chain are both exercised now.** `MSG_COPY`'s own wording — "when the
+clipboard is read" — had no assertion behind it until a Robolectric test read `ClipboardManager`
+back. And `LaunchedEffect → startActivity → onReminderLinkOpened()` ran on nothing before; a test
+now passes a real link and asserts it is consumed **exactly once**, because dropping the consume
+call would launch on every recomposition and nothing else would notice.
+
+**A claim in my own Design Notes was false and is now corrected.** It said the amount, the day
+count *and the two names* are "already a consistent snapshot". The figures come from one
+`ContractArrears` emission; the name, plate and phone come from `observeRenters()` and
+`observeVehicles()` — separate `combine` inputs. The epic context names exactly that shape as
+forbidden. The numbers that leave the app are snapshot-consistent; the names are joined.
+
 **The link carries the renter's number, which contradicted my first draft.** I first built
 `wa.me/?text=` with no recipient, arguing that a normalised number could address a stranger. The
 matrix row `MSG_COMPOSE` says the link targets the row's renter phone, and the frozen block wins:
 the row names one tenant and one figure, so opening a contact chooser would let the owner send
-Budi's arrears to whoever they tapped next. The phone is on `ArrearsRow` and
-`ReminderMessage.international` normalises `08…` to `628…` for `wa.me` — link formatting, not a
-re-derivation, since no stored value changes.
+Budi's arrears to whoever they tapped next. The phone is on `ArrearsRow`, and
+`ReminderMessage.international` is link formatting rather than a re-derivation — no stored value
+changes.
 
-**One matrix row is not satisfied as written, and this is the honest record of it.**
-`MSG_UNKNOWN_CONTRACT` expects `UnknownContractException` when the row's contract vanished between
-render and tap. The observable behaviour matches — nothing opens, and `opening a reminder for an
-unknown row opens nothing` pins it — but no exception is thrown, because `openReminder` reads the
-row from `uiState` and a throw from a UI callback would crash the screen rather than refuse. The
-row's intent ("refused; nothing is opened") is met; its stated mechanism is not. Flagged for
-review rather than silently claimed.
+**`MSG_UNKNOWN_CONTRACT` was my error, and the matrix row is amended rather than the code bent.**
+It asked for an `UnknownContractException`, which is an `IllegalStateException`; throwing it from
+a UI callback would crash the screen rather than refuse. The row now requires a **visible**
+refusal, which is what "refused" actually means to an owner who just tapped and saw nothing
+happen.
 
 **`performTextReplacement` cannot reach a `KnField` by tag alone.** `KnField` puts the tag on the
-container while the input is a descendant, so the first version of the edit test failed with "Failed
-to perform text input". The repo already had the answer in `IdentityFormTest` and
+container while the input is a descendant, so the first version of the edit test failed with
+"Failed to perform text input". The repo already had the answer in `IdentityFormTest` and
 `RenterFormTest`: `hasSetTextAction() and hasAnyAncestor(hasTestTag(...))`.
 
 **`AccessibilityTest` does not measure the new row button**, because its fixture passes an empty
