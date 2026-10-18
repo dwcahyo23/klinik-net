@@ -32,6 +32,7 @@ import net.klinik.rental.ui.screens.setoran.SetoranViewModel
 import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
 import net.klinik.rental.ui.screens.tunggakan.TunggakanViewModel
 import net.klinik.rental.ui.shell.AppShell
+import net.klinik.rental.ui.shell.GlobalSearchViewModel
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -153,6 +154,19 @@ class MainActivity : ComponentActivity() {
         }
     }
 
+    /**
+     * Story 4.6's global search. Its own lifetime for the reason every other ViewModel here has
+     * one: the query must survive a rotation, and a field that emptied itself on every
+     * configuration change is a search the owner retypes each time they turn the tablet.
+     */
+    private val searchViewModel: GlobalSearchViewModel by viewModels {
+        object : ViewModelProvider.Factory {
+            @Suppress("UNCHECKED_CAST")
+            override fun <T : ViewModel> create(modelClass: Class<T>): T =
+                createGlobalSearchViewModel(applicationContext) as T
+        }
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -175,6 +189,7 @@ class MainActivity : ComponentActivity() {
                     tunggakan = tunggakanViewModel,
                     beranda = berandaViewModel,
                     laporan = laporanViewModel,
+                    search = searchViewModel,
                 )
             }
         }
@@ -205,6 +220,22 @@ internal fun createPenyewaViewModel(context: Context): PenyewaViewModel {
         // nothing uses.
         repository = RenterRepository(database.renterDao()),
         strings = RStrings(context),
+    )
+}
+
+/**
+ * Story 4.6's global search, over the two repositories it reads.
+ *
+ * Both are **existing** ones, and that is the design rather than a shortcut: the field searches
+ * the same two lists the renters and fleet screens show, through Room's own invalidation flows.
+ * A search-specific query would be a second place the matching rule lives — and a second answer
+ * to "does this renter match", which is exactly what `matchesRenterQuery`'s KDoc warns about.
+ */
+internal fun createGlobalSearchViewModel(context: Context): GlobalSearchViewModel {
+    val database = KlinikDatabase.get(context)
+    return GlobalSearchViewModel(
+        renterRepository = RenterRepository(database.renterDao()),
+        vehicleRepository = VehicleRepository(database.vehicleDao()),
     )
 }
 
@@ -447,6 +478,7 @@ private fun KlinikNetApp(
     tunggakan: TunggakanViewModel,
     beranda: BerandaViewModel,
     laporan: LaporanViewModel,
+    search: GlobalSearchViewModel,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -482,6 +514,8 @@ private fun KlinikNetApp(
     // picker is its own flow so a chip appearing does not recompose the four tiles.
     val laporanState by laporan.uiState.collectAsStateWithLifecycle()
     val laporanPeriods by laporan.periodOptions.collectAsStateWithLifecycle()
+    // Story 4.6's global search field, mounted by the shell above every destination.
+    val searchState by search.uiState.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -637,6 +671,14 @@ private fun KlinikNetApp(
                     state = laporanState,
                     periodOptions = laporanPeriods,
                     onSelectPeriod = laporan::selectPeriod,
+                ),
+                // Story 4.6's search field. No `onSelect` here: choosing a result is a
+                // navigation, and the nav controller lives in the shell — see
+                // `Screens.Search`'s KDoc.
+                search = Screens.Search(
+                    state = searchState,
+                    onQueryChange = search::onQueryChange,
+                    onClear = search::clearQuery,
                 ),
             ),
         )

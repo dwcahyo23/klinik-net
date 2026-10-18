@@ -66,6 +66,7 @@ import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.screens.tunggakan.TunggakanUiState
 import net.klinik.rental.ui.shell.AppShell
+import net.klinik.rental.ui.shell.GlobalSearchUiState
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knTypography
@@ -798,6 +799,13 @@ class AccessibilityTest {
             state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
             periodOptions = listOf("25 Sep - 24 Okt 2026"),
             onSelectPeriod = {},
+        ),
+        // Story 4.6's field: its search input and clear button are exactly the kind of
+        // interactive node this walk exists to measure, so it is supplied rather than omitted.
+        search = Screens.Search(
+            state = GlobalSearchUiState(),
+            onQueryChange = {},
+            onClear = {},
         ),
     )
 

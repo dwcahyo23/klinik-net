@@ -1,6 +1,8 @@
 package net.klinik.rental.ui.screens.kendaraan
 
 import net.klinik.rental.domain.model.Vehicle
+import net.klinik.rental.ui.asSearchNeedle
+import net.klinik.rental.ui.matchesSearch
 
 /**
  * The three fleet statuses, derived — never stored on the vehicle.
@@ -174,14 +176,13 @@ data class VehicleFormState(
  * Pure, so the `SEARCH_QUERY` matrix rows are testable without a device.
  */
 fun matchesQuery(rows: List<VehicleRow>, query: String): List<VehicleRow> {
-    val needle = query.trim().lowercase()
+    val needle = query.asSearchNeedle()
     if (needle.isEmpty()) return rows
-    return rows.filter { row ->
-        row.vehicle.plate.lowercase().contains(needle) ||
-            row.vehicle.brand.lowercase().contains(needle) ||
-            row.vehicle.model.lowercase().contains(needle) ||
-            row.vehicle.color?.lowercase()?.contains(needle) == true
-    }
+    // Composed from `Vehicle.matchesSearch` rather than repeating the four-way predicate —
+    // Story 4.6 moved it to `ui/SearchMatch.kt` because the shell's global search must find
+    // the same cars this list does. One implementation, two callers, exactly the arrangement
+    // `filterByQuery`'s own KDoc argues for on the renter side.
+    return rows.filter { row -> row.vehicle.matchesSearch(needle) }
 }
 
 /**

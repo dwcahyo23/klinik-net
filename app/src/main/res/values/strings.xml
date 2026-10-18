@@ -44,6 +44,23 @@
     <string name="search_hint">Cari</string>
     <string name="search_clear">Hapus pencarian</string>
 
+    <!--
+      Story 4.6 — the shell's global search.
+
+      The placeholder names **both** kinds, because a field that only said "Cari" leaves the
+      owner guessing whether this one searches cars too. The two group headings reuse each
+      screen's own name for its subject, so the results read like the destinations they open.
+
+      The empty state explains what ran and what deliberately did not. The epic is explicit
+      that notes, transaction references and deposit numbers are not searched — saying so is
+      what stops "nothing found" from reading as "the app is broken".
+    -->
+    <string name="search_global_placeholder">Cari penyewa atau plat</string>
+    <string name="search_group_renters">Penyewa</string>
+    <string name="search_group_vehicles">Kendaraan</string>
+    <string name="search_empty_title">Tidak ada yang cocok</string>
+    <string name="search_empty_body">Tidak ada penyewa atau kendaraan untuk “%1$s”. Catatan, kode transaksi, dan nomor setoran tidak ikut dicari.</string>
+
     <!-- Snackbar -->
     <string name="snackbar_dismiss">Tutup</string>
 

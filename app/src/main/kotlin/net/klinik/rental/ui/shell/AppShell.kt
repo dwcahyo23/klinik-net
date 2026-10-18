@@ -95,6 +95,31 @@ internal fun AppShell(
     // place that knows. The FAB's visibility follows it, and follows nothing else.
     val isOnBeranda = backStackEntry?.destination?.route == Destination.Beranda.route
 
+    // The destination the owner is on.
+    val currentRoute = backStackEntry?.destination?.route
+
+    /**
+     * Narrows the screen a result belongs to, so choosing a hit opens that screen **on that
+     * item** rather than on the full list.
+     *
+     * ## Why this writes the destination's own query
+     *
+     * Because the screens keep their own search bars, and that is deliberate: the bar is also
+     * the only control that **widens** a narrowed list again. Removing it, as the spec's task
+     * list proposed, would leave a list the owner could filter but never unfilter — and would
+     * strand the screen's `query` state with no writer.
+     *
+     * So the shell's field searches **across** the app and hands its finding to the screen that
+     * owns it; the screen's own bar then shows that query and can clear it. The two controls
+     * have different jobs rather than being duplicates.
+     */
+    fun narrowTo(hit: SearchResult) {
+        when (hit) {
+            is SearchResult.RenterHit -> screens.penyewa.onQueryChange(hit.renter.name)
+            is SearchResult.VehicleHit -> screens.kendaraan.onQueryChange(hit.vehicle.plate)
+        }
+    }
+
     // The deposit FAB, mounted by the **shell** rather than by any destination.
     //
     // Story 3.2's AC opens the deposit form from "Beranda atau speed dial", and neither
@@ -113,61 +138,97 @@ internal fun AppShell(
     // `Column` sibling could not do. Both are children of one `Box`, so the shell
     // draws the graph and the sheet in the same place.
     Box(modifier.fillMaxSize()) {
-        if (isLandscape) {
-            Row(Modifier.fillMaxSize()) {
-                KnNavRail(
-                    items = items,
-                    selectedIndex = selectedIndex,
-                    onSelect = navigateTo,
-                    modifier = Modifier.testTag(TAG_RAIL),
+        // Story 4.6's search field, **above** whichever branch draws.
+        //
+        // Mounted here rather than in each screen because "available on every screen" is then
+        // a property of the layout rather than seven reminders: a destination added next year
+        // inherits it, and one added today cannot ship without it. The two screens that used
+        // to draw their own bars stopped, so the app has one search control rather than three.
+        //
+        // It sits above the graph in a `Column` rather than floating over it, so it never
+        // covers a screen's own top bar — and the results overlay hangs beneath the field
+        // inside its own bound, so a broad query cannot hide the destination either.
+        Column(modifier.fillMaxSize()) {
+            GlobalSearchBar(
+                state = screens.search.state,
+                onQueryChange = screens.search.onQueryChange,
+                onClear = screens.search.onClear,
+                // A result opens the destination that owns it, by the route the result
+                // carries. Derived here rather than passed in, because the nav controller
+                // lives in this function — see `Screens.Search`'s KDoc.
+                onSelect = { hit ->
+                    navController.navigate(hit.route) {
+                        popUpTo(navController.graph.startDestinationId) { saveState = true }
+                        launchSingleTop = true
+                        restoreState = true
+                    }
+                    // The destination opens **on that item** rather than on the full list.
+                    narrowTo(hit)
+                    // And the panel closes: the owner is now looking at the screen they
+                    // asked for, and an overlay still listing results would sit over the
+                    // answer.
+                    screens.search.onClear()
+                },
+            )
+
+            Box(Modifier.weight(1f)) {
+                if (isLandscape) {
+                    Row(Modifier.fillMaxSize()) {
+                        KnNavRail(
+                            items = items,
+                            selectedIndex = selectedIndex,
+                            onSelect = navigateTo,
+                            modifier = Modifier.testTag(TAG_RAIL),
+                        )
+                        AppNavGraph(
+                            navController = navController,
+                            screens = screens,
+                            modifier = Modifier.weight(1f),
+                        )
+                    }
+                } else {
+                    Column(Modifier.fillMaxSize()) {
+                        AppNavGraph(
+                            navController = navController,
+                            screens = screens,
+                            modifier = Modifier.weight(1f),
+                        )
+                        KnBottomNav(
+                            items = items,
+                            selectedIndex = selectedIndex,
+                            onSelect = navigateTo,
+                            modifier = Modifier.testTag(TAG_BOTTOM_NAV),
+                        )
+                    }
+                }
+
+                // The FAB floats over the content area, aligned to its bottom-end with the
+                // shell's own gutter. `align` rather than a nested `Box`, so it adds no layout
+                // of its own and cannot shift the graph above it.
+                //
+                // **Hidden on Beranda.** UX-DR17 is explicit — *"speed dial TIDAK muncul di
+                // Beranda"* — and the reason is worth keeping: the grid's "Catat Setoran" tile
+                // is the only door to that action from the morning screen, and two doors to one
+                // action is how one of them goes stale. `DepositFab`'s KDoc has carried this
+                // promise since Story 3.2, and this is the line it was waiting for.
+                //
+                // The check is the **route**, not a flag: the route is the fact, and a flag
+                // beside it would be a second thing to keep in step — the defect this repo
+                // finds whenever a fact is encoded twice.
+                DepositFab(
+                    visible = !screens.deposito.state.isOpen && !isOnBeranda,
+                    onOpen = screens.deposito.onOpen,
+                    modifier = Modifier
+                        .align(Alignment.BottomEnd)
+                        .padding(spacing.lg),
                 )
-                AppNavGraph(
-                    navController = navController,
-                    screens = screens,
-                    modifier = Modifier.weight(1f),
-                )
-            }
-        } else {
-            Column(Modifier.fillMaxSize()) {
-                AppNavGraph(
-                    navController = navController,
-                    screens = screens,
-                    modifier = Modifier.weight(1f),
-                )
-                KnBottomNav(
-                    items = items,
-                    selectedIndex = selectedIndex,
-                    onSelect = navigateTo,
-                    modifier = Modifier.testTag(TAG_BOTTOM_NAV),
-                )
+
+                // And the sheet, last so it composes above the FAB — two windows over one
+                // state is the defect Story 2.8's review found, and a FAB showing *through*
+                // an open sheet is the same shape in a smaller size.
+                DepositHost(screens.deposito)
             }
         }
-
-        // The FAB floats over whichever branch drew, aligned to the bottom-end with
-        // the shell's own gutter. `align` rather than a nested `Box`, so it adds no
-        // layout of its own and cannot shift the graph above it.
-        //
-        // **Hidden on Beranda.** UX-DR17 is explicit — *"speed dial TIDAK muncul di
-        // Beranda"* — and the reason is worth keeping: the grid's "Catat Setoran" tile
-        // is the only door to that action from the morning screen, and two doors to one
-        // action is how one of them goes stale. `DepositFab`'s KDoc has carried this
-        // promise since Story 3.2, and this is the line it was waiting for.
-        //
-        // The check is the **route**, not a flag: the route is the fact, and a flag
-        // beside it would be a second thing to keep in step — the defect this repo
-        // finds whenever a fact is encoded twice.
-        DepositFab(
-            visible = !screens.deposito.state.isOpen && !isOnBeranda,
-            onOpen = screens.deposito.onOpen,
-            modifier = Modifier
-                .align(Alignment.BottomEnd)
-                .padding(spacing.lg),
-        )
-
-        // And the sheet, last so it composes above the FAB — two windows over one
-        // state is the defect Story 2.8's review found, and a FAB showing *through*
-        // an open sheet is the same shape in a smaller size.
-        DepositHost(screens.deposito)
     }
 }
 

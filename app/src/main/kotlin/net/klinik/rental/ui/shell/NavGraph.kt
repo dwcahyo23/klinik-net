@@ -254,6 +254,19 @@ internal class Screens(
      * destination cannot exist in the chrome and not in the graph.
      */
     val laporan: Laporan,
+
+    /**
+     * The shell's global search — Story 4.6.
+     *
+     * A property of the **shell**, not of a destination: the field is mounted above whichever
+     * screen shows, so there is no screen that owns it and no route to compose. Putting it in
+     * a destination class would have said it belonged to that screen.
+     *
+     * [onSelect] carries the hit and nothing else. Turning it into a route is the shell's job,
+     * because the shell is what holds the nav controller — a wiring class that knew routes
+     * would be a second place navigation is decided.
+     */
+    val search: Search,
 ) {
     /**
      * The arrears destination's wiring.
@@ -292,6 +305,25 @@ internal class Screens(
         val onReminderOpenFailed: () -> Unit,
         val pendingReminderLink: String?,
     )
+    /**
+     * The shell's global search field — Story 4.6.
+     *
+     * Two callbacks and one state, and **neither callback is defaulted**: a defaulted
+     * `onQueryChange` produces a field that takes typing and shows nothing, which reads as a
+     * broken control rather than a missing handler.
+     *
+     * There is deliberately **no** `onSelect` here. Choosing a result is a *navigation*, and
+     * the nav controller lives in [AppShell] — so the shell derives it from the result's own
+     * route, exactly as `BerandaRoute` derives its three quick actions. A second nav
+     * controller, or a route passed in from `MainActivity`, would be a back stack that
+     * disagrees with itself.
+     */
+    class Search(
+        val state: GlobalSearchUiState,
+        val onQueryChange: (String) -> Unit,
+        val onClear: () -> Unit,
+    )
+
     /** The fleet destination's wiring. */
     class Kendaraan(
         val state: KendaraanUiState,

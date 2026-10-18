@@ -594,6 +594,14 @@ class AppShellTest {
             periodOptions = listOf("25 Sep - 24 Okt 2026"),
             onSelectPeriod = {},
         ),
+        // Story 4.6's field, idle. Required for the same reason every other parameter here
+        // is: the compiler found this call site rather than a test discovering at runtime that
+        // the shell renders a search box wired to nothing.
+        search = Screens.Search(
+            state = GlobalSearchUiState(),
+            onQueryChange = {},
+            onClear = {},
+        ),
     )
 }
 

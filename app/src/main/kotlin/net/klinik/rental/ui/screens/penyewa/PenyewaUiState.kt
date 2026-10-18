@@ -1,6 +1,8 @@
 package net.klinik.rental.ui.screens.penyewa
 
 import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.ui.asSearchNeedle
+import net.klinik.rental.ui.matchesSearch
 
 /**
  * One row: a renter plus the phone number shown beneath the name.
@@ -153,10 +155,9 @@ fun filterByQuery(rows: List<RenterRow>, query: String): List<RenterRow> {
  * the rule itself rather than through a list that happens to contain one
  * matching row.
  */
-fun matchesRenterQuery(renter: Renter, query: String): Boolean {
-    val needle = query.trim().lowercase()
-    if (needle.isEmpty()) return true
-    return renter.name.lowercase().contains(needle) ||
-        renter.phone.lowercase().contains(needle) ||
-        renter.bankAccount?.lowercase()?.contains(needle) == true
-}
+fun matchesRenterQuery(renter: Renter, query: String): Boolean =
+    // The predicate itself moved to `ui/SearchMatch.kt` in Story 4.6, because the global
+    // search field in the shell has to match renters the same way this list does. This
+    // function stays as the screen's entry point so every existing caller and test keeps
+    // one name to reach, and so there is still exactly one implementation.
+    renter.matchesSearch(query.asSearchNeedle())
