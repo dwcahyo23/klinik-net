@@ -96,7 +96,10 @@ fun ReminderDialog(
                 KnSnackbar(
                     message = message,
                     tone = KnBadgeTone.Success,
-                    onDismiss = {},
+                    // No `onDismiss`: the confirmation clears itself on the next edit (see
+                    // `ReminderUi.withText`), so a dismiss glyph would be a control with no
+                    // distinct outcome — the "renders and does nothing" shape this repo has
+                    // shipped twice. A snackbar without a dismiss handler draws no glyph.
                     modifier = Modifier
                         .fillMaxWidth()
                         .testTag(TAG_REMINDER_COPIED),

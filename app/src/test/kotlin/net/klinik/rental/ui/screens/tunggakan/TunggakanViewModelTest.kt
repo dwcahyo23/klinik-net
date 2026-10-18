@@ -16,7 +16,9 @@ import kotlinx.coroutines.test.setMain
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
+import net.klinik.rental.data.db.entity.SettingEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
+import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
@@ -415,6 +417,7 @@ class TunggakanViewModelTest {
             vehicleRepository = VehicleRepository(database.vehicleDao()),
             strings = strings,
             clock = CLOCK,
+            businessName = { BusinessIdentityRepository.DEFAULT_NAME },
             arrearsSourceOverride = {
                 flow {
                     if (attempts.getAndIncrement() == 0) {
@@ -493,6 +496,7 @@ class TunggakanViewModelTest {
             vehicleRepository = VehicleRepository(database.vehicleDao()),
             strings = strings,
             clock = CLOCK,
+            businessName = { BusinessIdentityRepository.DEFAULT_NAME },
             // The seam: a read that throws the instant it is collected. Everything the
             // ViewModel does on failure — the banner, the empty rows, the state — is
             // exercised against a flow that genuinely fails.
@@ -510,13 +514,18 @@ class TunggakanViewModelTest {
      * value — which reads as "no rows" rather than as an un-advanced clock. Every test that
      * reads `uiState.value` needs this, which is why it is a helper and not a per-test block.
      */
-    private fun TestScope.observingViewModel(): TunggakanViewModel {
+    private fun TestScope.observingViewModel(
+        businessName: suspend () -> String = { BusinessIdentityRepository.DEFAULT_NAME },
+    ): TunggakanViewModel {
         val viewModel = TunggakanViewModel(
             payments = payments,
             renterRepository = RenterRepository(database.renterDao()),
             vehicleRepository = VehicleRepository(database.vehicleDao()),
             strings = strings,
             clock = CLOCK,
+            // A real default rather than a null seam: the name is what Story 4.4 stores, and a
+            // test that left it unset could not tell a composed message from an empty one.
+            businessName = businessName,
         )
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect {} }
         dispatcher.scheduler.advanceUntilIdle()
@@ -639,9 +648,11 @@ class TunggakanViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
 
         val after = viewModel.uiState.value.reminder!!
-        assertTrue("the link changed with the text", before != after.link)
-        assertTrue("and carries the edited figure", after.link.contains("500.000"))
-        assertFalse("not the original", after.link.contains("750.000"))
+        val afterLink = after.link
+        assertNotNull("the edited text still addresses the renter", afterLink)
+        assertTrue("the link changed with the text", before != afterLink)
+        assertTrue("and carries the edited figure", afterLink!!.contains("500.000"))
+        assertFalse("not the original", afterLink.contains("750.000"))
     }
 
     /**
@@ -746,6 +757,176 @@ class TunggakanViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
 
         assertNull(viewModel.uiState.value.reminder)
+    }
+    /**
+     * **The stored business name reaches the message.**
+     *
+     * This is the join Story 4.4 explicitly handed to this story: 4.4 proves the name is stored
+     * and this story proves a message quotes a name, but nothing proved they are the same name.
+     * The acceptance criterion's own proof clause is *"Nama usaha muncul di pesan — dari sini,
+     * bukan dari hardcode"*, and a bug in the production wiring would have passed every other
+     * test in the suite.
+     *
+     * The name is written through the **repository** and read back through it, so the test
+     * exercises the real storage path rather than a stubbed string.
+     */
+    @Test
+    fun `a custom business name saved in settings appears in the message`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val identity = BusinessIdentityRepository(database.settingDao(), database)
+        // Written through the DAO rather than `identity.save`: that method opens a transaction,
+        // and `StandardTestDispatcher` drains on the main thread, where Room refuses one. The
+        // read below still goes through the repository, which is the path under test.
+        database.settingDao().putSetting(
+            SettingEntity(key = BusinessIdentityRepository.KEY_NAME, value = "Rental Pak Andi"),
+        )
+
+        val viewModel = observingViewModel(businessName = { identity.businessName() })
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val text = viewModel.uiState.value.reminder?.text.orEmpty()
+        assertTrue("the stored name is quoted", text.contains("Rental Pak Andi"))
+        assertFalse(
+            "and the compiled-in default is not, which is the hardcode the criterion forbids",
+            text.contains(BusinessIdentityRepository.DEFAULT_NAME),
+        )
+    }
+
+    /**
+     * An unconfigured identity opens the dialog with a **visible refusal**, not an unsigned
+     * message.
+     *
+     * A blank name would compose "ini pengingat dari ." and send it to a tenant. The dialog
+     * still opens, carrying the refusal, so the owner learns why Send is unavailable.
+     */
+    @Test
+    fun `a blank business name opens the dialog with a refusal`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel(businessName = { "" })
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val reminder = viewModel.uiState.value.reminder
+        assertNotNull("the dialog opens, so the owner sees why", reminder)
+        assertNotNull("with a refusal", reminder!!.errorMessage)
+        assertEquals("and no message to send", "", reminder.text)
+        assertFalse("so Send is unavailable", reminder.canSend)
+    }
+
+    /**
+     * Dismissing during the name read does **not** reopen the dialog.
+     *
+     * The defect Story 3.5 fixed in `saveCorrection`, in the same shape: a launch that awaits
+     * and then assigns unconditionally re-opens a sheet the owner closed.
+     */
+    @Test
+    fun `dismissing while the name read is in flight does not reopen the dialog`() =
+        runTest(dispatcher) {
+            saveDeposit(OWING_CONTRACT_ID, 750_000)
+            val viewModel = observingViewModel(businessName = { BusinessIdentityRepository.DEFAULT_NAME })
+
+            viewModel.openReminder(OWING_CONTRACT_ID)
+            // Before the launch resumes: the owner closes the dialog they just opened.
+            viewModel.dismissReminder()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            assertNull("the dialog stays closed", viewModel.uiState.value.reminder)
+        }
+
+    /**
+     * A phone that names no country is **refused**, not passed through.
+     *
+     * `wa.me` reads a bare digit string as an international number, so `812…` would deliver a
+     * tenant's bill to a stranger. The refusal lands on the dialog and nothing opens.
+     */
+    @Test
+    fun `an unaddressable phone refuses the send`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        database.renterDao().insert(
+            RenterEntity(
+                id = "r-unaddressable",
+                name = "Tanpa Nomor",
+                phone = "812345",
+                bankAccount = null,
+                emergencyContact = "08129876543",
+            ),
+        )
+        // Its own vehicle: `v1` already holds an active contract, and the UNIQUE index on
+        // `activeVehicleId` is what refuses a second one.
+        database.vehicleDao().insert(
+            VehicleEntity(
+                id = "v-unaddressable",
+                plate = "B 9999 ZZ",
+                brand = "Toyota",
+                model = "Avanza",
+                year = 2023,
+                color = null,
+                dailyRate = RATE,
+                notes = null,
+            ),
+        )
+        database.contractDao().insertContract(
+            ContractEntity(
+                id = "c-unaddressable",
+                renterId = "r-unaddressable",
+                vehicleId = "v-unaddressable",
+                startDate = LocalDate.of(2026, 10, 1),
+                dailyRate = RATE,
+                restDay = null,
+                activeVehicleId = "v-unaddressable",
+                activeRenterId = "r-unaddressable",
+                endDate = null,
+            ),
+        )
+        saveDeposit("c-unaddressable", 500_000)
+        val viewModel = observingViewModel()
+
+        viewModel.openReminder("c-unaddressable")
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val reminder = viewModel.uiState.value.reminder
+        assertNotNull("the refusal is on the dialog", reminder?.errorMessage)
+        assertNull("and no link was handed out", viewModel.pendingLink.value)
+    }
+
+    /** Copying an empty message is refused below the button, not only by it. */
+    @Test
+    fun `copying an empty message is refused`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onReminderChange("")
+        viewModel.onReminderCopied()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val reminder = viewModel.uiState.value.reminder!!
+        assertNull("no confirmation for nothing", reminder.copiedMessage)
+        assertNotNull("a refusal instead", reminder.errorMessage)
+    }
+
+    /** A failed WhatsApp launch is reported on the dialog. */
+    @Test
+    fun `a failed launch is reported`() = runTest(dispatcher) {
+        saveDeposit(OWING_CONTRACT_ID, 750_000)
+        val viewModel = observingViewModel()
+        viewModel.openReminder(OWING_CONTRACT_ID)
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.sendReminder()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.onReminderOpenFailed()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        assertNull("the link is consumed", viewModel.pendingLink.value)
+        assertNotNull(
+            "and the owner is told, because Copy is the way out",
+            viewModel.uiState.value.reminder?.errorMessage,
+        )
     }
     private companion object {
         const val OWING_CONTRACT_ID = "c-owing"

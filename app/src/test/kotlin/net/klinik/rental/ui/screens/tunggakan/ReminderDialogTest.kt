@@ -1,6 +1,11 @@
 package net.klinik.rental.ui.screens.tunggakan
 
+import android.content.ClipboardManager
+import android.content.Context
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertIsEnabled
 import androidx.compose.ui.test.assertIsNotEnabled
@@ -11,6 +16,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.test.performTextReplacement
+import androidx.test.core.app.ApplicationProvider
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -222,6 +228,72 @@ class ReminderDialogTest {
         compose.onNodeWithTag(TAG_REMINDER_COPIED).assertExists()
     }
 
+    /**
+     * `MSG_COPY` — the **edited** text reaches the clipboard.
+     *
+     * Read back through the real `ClipboardManager` rather than asserted on a flag, because the
+     * criterion is about the clipboard's contents: a handler that flipped a boolean and copied
+     * the *original* text would satisfy a flag-based test and send a tenant the wrong figure.
+     */
+    @Test
+    fun `copying puts the edited text on the clipboard`() {
+        val context = ApplicationProvider.getApplicationContext<Context>()
+        var state by mutableStateOf(arrearsState(reminder = reminder()))
+        compose.setContent {
+            theme {
+                Screen(
+                    state = state,
+                    onReminderChange = { state = state.copy(reminder = state.reminder?.withText(it)) },
+                )
+            }
+        }
+
+        compose.onNode(
+            hasSetTextAction() and hasAnyAncestor(hasTestTag(TAG_REMINDER_FIELD)),
+        ).performTextReplacement("Tunggakan Rp 500.000 · 3 hari")
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(TAG_REMINDER_COPY)
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        val clipboard = context.getSystemService(Context.CLIPBOARD_SERVICE) as ClipboardManager
+        assertEquals(
+            "the clipboard holds the edited text, not the composed one",
+            "Tunggakan Rp 500.000 · 3 hari",
+            clipboard.primaryClip?.getItemAt(0)?.text?.toString(),
+        )
+    }
+
+    /**
+     * The link the screen hands over is opened, and reported back **once**.
+     *
+     * Without a test passing a non-null `pendingLink`, the whole
+     * `LaunchedEffect → startActivity → onReminderLinkOpened()` chain is dead code: dropping the
+     * consume call would launch on every recomposition, and nothing would notice.
+     */
+    @Test
+    fun `a pending link is consumed exactly once`() {
+        var consumed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = arrearsState(reminder = reminder()),
+                    onReminderLinkOpened = { consumed++ },
+                    pendingLink = "https://wa.me/6281288997722?text=halo",
+                )
+            }
+        }
+        compose.waitForIdle()
+
+        assertEquals("the link was consumed", 1, consumed)
+
+        // A recomposition must not launch it again.
+        compose.onNodeWithTag(TAG_REMINDER_FIELD).assertExists()
+        compose.waitForIdle()
+        assertEquals("and not again on a recomposition", 1, consumed)
+    }
+
     // -------------------------------------------------------------------- helpers
 
     @Composable
@@ -237,6 +309,8 @@ class ReminderDialogTest {
         onReminderSend: () -> Unit = {},
         onReminderCopy: () -> Unit = {},
         onReminderDismiss: () -> Unit = {},
+        onReminderLinkOpened: () -> Unit = {},
+        pendingLink: String? = null,
     ) {
         TunggakanScreen(
             state = state,
@@ -247,7 +321,9 @@ class ReminderDialogTest {
             onReminderSend = onReminderSend,
             onReminderCopy = onReminderCopy,
             onReminderDismiss = onReminderDismiss,
-            onReminderLinkOpened = {},
+            onReminderLinkOpened = onReminderLinkOpened,
+            onReminderOpenFailed = {},
+            pendingLink = pendingLink,
         )
     }
 
@@ -294,7 +370,6 @@ class ReminderDialogTest {
         contractId = "c1",
         phone = "0812-8899-7722",
         text = text,
-        link = ReminderMessage.whatsappLink("0812-8899-7722", text),
         errorMessage = errorMessage,
         copiedMessage = copiedMessage,
     )

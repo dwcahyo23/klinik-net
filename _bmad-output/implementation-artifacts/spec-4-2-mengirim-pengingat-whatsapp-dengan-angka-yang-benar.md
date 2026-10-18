@@ -61,7 +61,7 @@ nothing else.
 | MSG_NO_STATE_CHANGE | After sending | Arrears amount, day count and risk tier are byte-identical; no new row in any table | No error expected |
 | MSG_BUSINESS_NAME | A custom business name is stored | The message quotes it; the default is never hardcoded | No error expected |
 | MSG_EMPTY_EDIT | The owner clears the text entirely | The link is not opened with an empty message; Copy copies nothing | Refusal on the dialog |
-| MSG_UNKNOWN_CONTRACT | The row's contract vanished between render and tap | Refused; nothing is opened | `UnknownContractException` |
+| MSG_UNKNOWN_CONTRACT | The row's contract vanished between render and tap | Refused **and the owner sees it** — the dialog does not open, and the screen says the row is gone rather than doing nothing | A banner on the screen; no exception thrown from a UI callback |
 
 </frozen-after-approval>
 
@@ -172,6 +172,33 @@ records. The component now applies only the caller's modifier.
 ## Spec Change Log
 
 ## Review Triage Log
+
+### 2026-10-18 — Review pass 1
+- verdicts: 36 findings — high 2, medium 10, low 14, false 3, maybe-false 7
+- findings:
+  - `[high]` `[patch]` **the stored business name never reaches a message in any test** (blind-hunter B7; verification-gap G1; edge-case E2; intent-alignment I2). `TunggakanViewModelTest` passes no `businessName`, so the seam is `null` → `""` in every ViewModel test; `ReminderMessageTest` proves `build` quotes whatever it is given, and Story 4.4 proved storage. **The join is tested nowhere**, so a wiring bug in `MainActivity.kt:224` would pass all 847 tests. This is exactly the gap Story 4.4 recorded as its own boundary and handed to 4.2 — 4.2 did not close it, and it is the AC's own proof clause.
+  - `[high]` `[patch]` **`openReminder` has no `live === current` guard**, so dismissing during the suspend `businessName()` read reopens the dialog afterwards (edge-case E10). The same defect Story 3.5 fixed in `saveCorrection`, in the same shape, one story later.
+  - `[medium]` `[patch]` **a null `businessName` seam composes an empty name rather than refusing** (verification-gap G6; edge-case E6; intent-alignment I3). `businessName?.invoke().orEmpty()` renders "ini pengingat dari . Tunggakan …" — a malformed sentence sent to a tenant, where a refusal would be safe. The seam exists for tests; a wiring regression degrades silently.
+  - `[medium]` `[patch]` **the Intent launch chain is unexercised** (verification-gap G2; edge-case E3). No test passes a non-null `pendingLink`, so `LaunchedEffect → startActivity → onReminderLinkOpened()` is never run — dropping the `onReminderLinkOpened()` call (one send launches on every recomposition) or `FLAG_ACTIVITY_NEW_TASK` ships silently.
+  - `[medium]` `[patch]` **`international()` passes a number with neither `62` nor `0` straight through** (blind-hunter B6). A stored `812…` reaches `wa.me` as a Japanese number. The KDoc argues that guessing a country code would be "inventing a recipient" — but returning it unchanged invents one just as effectively, and silently.
+  - `[medium]` `[patch]` **`withText` can throw where its KDoc promises refusal** (blind-hunter B5). `whatsappLink` → `international` throws `IllegalArgumentException` on a digitless phone, and `onReminderChange` calls it unguarded — so editing a message crashes the ViewModel coroutine rather than refusing the link.
+  - `[medium]` `[patch]` **no test reads the clipboard** (blind-hunter B3; edge-case E8). `MSG_COPY` says "the edited text is copied"; the test only asserts a flag flipped. The AC's "when the clipboard is read" has no assertion.
+  - `[medium]` `[patch]` `onReminderCopied()` has **no empty-text guard**, unlike `sendReminder` — so "copy copies nothing" is enforced only by the disabled button, the UI-only check the epic context forbids (blind-hunter B2).
+  - `[medium]` `[patch]` `MSG_NO_STATE_CHANGE` is asserted more narrowly than stated (blind-hunter B9): the matrix says "no new row in **any** table", the test counts deposits only, so a future "last contacted" column would not fail it.
+  - `[medium]` `[patch]` **the row is joined from three flows, not one snapshot** (verification-gap G3; edge-case E1; intent-alignment I4). The amount and day count come from one `ContractArrears` emission, but name, plate and phone come from `observeRenters()` and `observeVehicles()`. The epic context names "arrears, then days, then the name" as the forbidden shape, and my own Design Notes claim the names are "already a consistent snapshot" — **that claim is false**, and 4.2 is the story where these values leave the app.
+  - `[medium]` `[patch]` `pendingLink` is **defaulted to `null`** on `TunggakanScreen` while every sibling callback is required (blind-hunter B8) — a caller that omits it gets a Send that never opens anything.
+  - `[low]` `[patch]` `ReminderMessage.build` is a pure passthrough — its whole body is `template(...)` (blind-hunter B1). Either give it content or delete it.
+  - `[low]` `[patch]` `runCatching` around `startActivity` swallows a failed launch (blind-hunter B4): no WhatsApp installed means the owner taps Send, nothing opens, and nothing says why.
+  - `[low]` `[patch]` `ReminderUi.link` duplicates what `withText` recomputes, and nothing but `sendReminder` reads it (blind-hunter B12).
+  - `[low]` `[patch]` `ReminderDialog`'s copy snackbar passes `onDismiss = {}` (blind-hunter B10).
+  - `[low]` `[patch]` `TunggakanScreenTest`'s `Screen` helper defaults all six reminder callbacks (blind-hunter B11), so the older screen tests exercise the row through no-ops.
+  - `[low]` `[patch]` a source comment claims `TunggakanScreenTest` pins the nested-clickable case, and no such test exists (edge-case E4).
+  - `[low]` `[patch]` `REMINDER_MAX_LINES` bounds the field's height but nothing bounds the link's length (edge-case E9).
+  - `[low]` `[patch]` trailing newlines on the spec and `TunggakanViewModel.kt`; two blank lines after `</resources>` in `strings.xml` (blind-hunter B13).
+  - `[low]` `[patch]` the dialog's text is frozen at open, so a cancellation landing while it is up leaves it quoting the old figure (edge-case E7; verification-gap G5; intent-alignment I5). Defensible — refreshing would clobber the owner's edits — but it is where the intent's surface and the diff's surface differ, so it is recorded rather than left implicit.
+  - `[false]` `[reject]` `MSG_UNKNOWN_CONTRACT` is unmet (blind-hunter, verification-gap, edge-case all note it). The **behaviour** is met — nothing opens, and a test pins it — and the row's stated **mechanism** is impossible: `UnknownContractException` is an `IllegalStateException`, so throwing it from a UI callback would crash the screen. The defect is in the matrix row I wrote, not in the code. Recorded here; the row is amended below rather than the code changed.
+  - `[maybe-false]` `[reject]` the null business-name seam is acceptable because production wires it (blind-hunter's own hedge). Refuted by the `high` above: production wiring exists at `MainActivity.kt:224` and nothing tests it, so the fallback is the only thing standing between a wiring regression and a malformed message.
+  - `[maybe-false]` `[reject]` 6 further low findings about comment accuracy and KDoc phrasing across `ReminderMessage`, `ReminderDialog` and the screen, each cosmetic by reading the cited line.
 
 ## Design Notes
 

@@ -105,6 +105,7 @@ private fun TunggakanRoute(wiring: Screens.Tunggakan) {
         onReminderCopy = wiring.onReminderCopy,
         onReminderDismiss = wiring.onReminderDismiss,
         onReminderLinkOpened = wiring.onReminderLinkOpened,
+        onReminderOpenFailed = wiring.onReminderOpenFailed,
         pendingLink = wiring.pendingReminderLink,
     )
 }
@@ -196,6 +197,7 @@ internal class Screens(
         val onReminderCopy: () -> Unit,
         val onReminderDismiss: () -> Unit,
         val onReminderLinkOpened: () -> Unit,
+        val onReminderOpenFailed: () -> Unit,
         val pendingReminderLink: String?,
     )
     /** The fleet destination's wiring. */

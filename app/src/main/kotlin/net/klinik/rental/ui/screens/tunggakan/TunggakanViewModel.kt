@@ -62,10 +62,14 @@ class TunggakanViewModel(
      * The business name a reminder quotes — Story 4.4's single source.
      *
      * Injected as a suspending read rather than a `BusinessIdentityRepository`, so this class
-     * depends on the one value it needs instead of on a storage layer, and so a test can supply
-     * a name without a database. `null` in a test that never opens the reminder dialog.
+     * depends on the one value it needs instead of on a storage layer.
+     *
+     * **Required, not defaulted.** A default would let a construction site omit it and ship a
+     * reminder that names no business — the "nullable-for-tests" shape that let Story 3.5 ship a
+     * repository with three unwired DAOs while every test passed. Omitting it is now a compile
+     * error at each of the three call sites.
      */
-    private val businessName: (suspend () -> String)? = null,
+    private val businessName: suspend () -> String,
     /**
      * Overrides the arrears source. **For tests only.**
      *
@@ -140,6 +144,17 @@ class TunggakanViewModel(
      * `KontrakViewModel` gives for keeping each of its sheets as a real source.
      */
     private val reminder = MutableStateFlow<ReminderUi?>(null)
+
+    /**
+     * The contract whose reminder the owner last asked to open, or `null` once dismissed.
+     *
+     * A **request token**, not the dialog's own state: `openReminder` suspends while it reads the
+     * business name, and `reminder.value` is still `null` during that first read — so checking
+     * the dialog's state cannot distinguish "not yet built" from "dismissed". This records the
+     * intent before the suspend and is cleared by [dismissReminder], which is what makes the
+     * check meaningful.
+     */
+    private val reminderRequest = MutableStateFlow<String?>(null)
 
     /**
      * The arrears source, tagged and with its failures carried as a **value**.
@@ -280,43 +295,74 @@ class TunggakanViewModel(
     /**
      * Opens the reminder dialog for [contractId], with the message already composed.
      *
-     * ## Why the figures come from the row and not from the repository
+     * ## What is snapshot-consistent here, and what is not — stated plainly
      *
-     * Because the acceptance criterion's strongest clause is that a cancellation landing
-     * between the list and the message must not produce a number from two different states. The
-     * row already carries amount, days, names and phone from **one** emission, so the way to
-     * guarantee that is to read nothing again. Re-querying here would reintroduce exactly the
-     * window the clause forbids.
+     * **The figures are.** `amount`, `days` and the row's `figureText` come from one
+     * `ContractArrears` emission in `PaymentRepository.observeArrearsForAllContracts`, and the
+     * message quotes that string rather than re-deriving it.
      *
-     * ## Why the business name is read here, and why that is not the same problem
+     * **The names, plate and phone are joined, not snapshotted.** They arrive from
+     * `observeRenters()` and `observeVehicles()` — separate `combine` inputs — so a renter
+     * renamed between two emissions can produce a row whose name is newer than its figure. That
+     * is safe for the *message* because a name cannot make an amount wrong, but it is not the
+     * single-snapshot property the acceptance criterion describes, and a reader who believed it
+     * was would be trusting a sentence rather than the code. The criterion's own concern — one
+     * figure, one moment — is satisfied by the figures; the labels are a join.
+     *
+     * ## Why the business name is read here
      *
      * Because it is not a figure. A business name changing mid-session cannot make the amount
      * wrong, and reading it at compose time means a name corrected in Settings appears in the
-     * very next message without a restart. It is the one field that is allowed to be fresh.
+     * very next message without a restart.
+     *
+     * @throws IllegalArgumentException never — a blank name is reported as a refusal on the
+     *   dialog rather than thrown, because this runs in a UI callback.
      */
     fun openReminder(contractId: String) {
         val row = uiState.value.rows.firstOrNull { it.contractId == contractId } ?: return
 
+        // Recorded *before* the suspend, so the launch can tell "still wanted" from "dismissed
+        // while I was reading". A request token rather than the dialog's own state, because the
+        // dialog has not been built yet — the whole point of the read below.
+        reminderRequest.value = contractId
+
         viewModelScope.launch {
-            // A null seam means no identity is wired — a test that never opens this dialog. The
-            // message still composes, with an empty business name, rather than throwing.
-            val business = businessName?.invoke().orEmpty()
-            val text = ReminderMessage.build(
-                renter = row.renterName,
-                businessName = business,
-                plate = row.vehiclePlate,
-                figureText = row.figureText,
-                template = { renter, business, plate, figure ->
-                    strings.tunggakanReminderMessage(renter, business, plate, figure)
-                },
-            )
+            // A blank name means the business identity is not configured. Composing anyway would
+            // send "ini pengingat dari ." to a tenant, so the dialog opens with a refusal
+            // instead — a wiring or configuration problem must be visible to the owner, not
+            // delivered to the person they bill.
+            val business = businessName()
+
+            // The owner can dismiss while the name read is in flight. Without this the launch
+            // lands afterwards and re-opens a dialog they closed — the defect Story 3.5 fixed in
+            // `saveCorrection`, in the same shape. Checked against the *request*, not against
+            // `reminder.value`, which is still null on the first open.
+            if (reminderRequest.value != contractId) return@launch
+
+            if (business.isBlank()) {
+                // No message to compose. The dialog still opens, carrying the refusal, so the
+                // owner learns why Send is unavailable rather than finding a dead button.
+                reminder.value = ReminderUi(
+                    contractId = contractId,
+                    phone = row.renterPhone,
+                    text = "",
+                    errorMessage = strings.tunggakanReminderNoIdentity(),
+                )
+                return@launch
+            }
+
             reminder.value = ReminderUi(
                 contractId = contractId,
                 phone = row.renterPhone,
-                text = text,
-                // Built from the same text the field shows, so the link and the field cannot
-                // start out disagreeing either.
-                link = ReminderMessage.whatsappLink(row.renterPhone, text),
+                text = ReminderMessage.build(
+                    renter = row.renterName,
+                    businessName = business,
+                    plate = row.vehiclePlate,
+                    figureText = row.figureText,
+                    template = { renter, name, plate, figure ->
+                        strings.tunggakanReminderMessage(renter, name, plate, figure)
+                    },
+                ),
             )
         }
     }
@@ -334,13 +380,19 @@ class TunggakanViewModel(
     /**
      * Refuses an empty message rather than copying or sending nothing.
      *
-     * Returns whether there was anything to act on, so the caller can decide between opening
-     * the link and leaving the dialog up with its refusal.
+     * Kept because the dialog's own enablement reads it, and because a caller reaching this
+     * directly gets the same answer `sendReminder` gives.
      */
     fun confirmReminderText(): Boolean {
         val current = reminder.value ?: return false
         if (!current.canSend) {
-            reminder.value = current.copy(errorMessage = strings.tunggakanReminderEmpty())
+            reminder.value = current.copy(
+                errorMessage = if (current.text.isBlank()) {
+                    strings.tunggakanReminderEmpty()
+                } else {
+                    strings.tunggakanReminderNoPhone()
+                },
+            )
             return false
         }
         return true
@@ -352,11 +404,20 @@ class TunggakanViewModel(
      * The copy itself is the composable's — it needs a `Context` — and this only carries the
      * confirmation into the state, so the snackbar is drawn by the same `combine` everything
      * else is.
+     *
+     * ## Why an empty message is refused here too
+     *
+     * Because the disabled button is a courtesy, not the rule. The epic context is explicit that
+     * two screens can pass the same UI check, so "Copy copies nothing" has to hold below the
+     * control — the same argument `BlankIdentityNameException` makes one layer down.
      */
     fun onReminderCopied() {
-        reminder.value = reminder.value?.copy(
-            copiedMessage = strings.tunggakanReminderCopied(),
-        )
+        val current = reminder.value ?: return
+        if (!current.canSend) {
+            reminder.value = current.copy(errorMessage = strings.tunggakanReminderEmpty())
+            return
+        }
+        reminder.value = current.copy(copiedMessage = strings.tunggakanReminderCopied())
     }
 
     /**
@@ -374,12 +435,27 @@ class TunggakanViewModel(
     /**
      * Validates the message and hands its link to the screen.
      *
-     * The refusal path is `confirmReminderText`, which writes the message onto the dialog rather
-     * than throwing — a failure the owner can act on belongs on the field they can fix.
+     * Two refusals, both landing on the dialog's field rather than throwing — a failure the
+     * owner can act on belongs on the field they can fix:
+     *
+     *  - an emptied message;
+     *  - a phone that cannot be addressed, which `ReminderUi.link` reports as `null`. Without
+     *    this the Send button would appear to work and open nothing.
      */
     fun sendReminder() {
-        if (!confirmReminderText()) return
-        _pendingLink.value = reminder.value?.link
+        val current = reminder.value ?: return
+        if (!current.canSend) {
+            val message = if (current.text.isBlank()) {
+                strings.tunggakanReminderEmpty()
+            } else {
+                // The text is fine; the recipient is not. Naming the phone field's own problem
+                // keeps the two refusals distinguishable, which matters because the fixes differ.
+                strings.tunggakanReminderNoPhone()
+            }
+            reminder.value = current.copy(errorMessage = message)
+            return
+        }
+        _pendingLink.value = current.link
     }
 
     /** The screen consumed [pendingLink] and launched it. */
@@ -387,8 +463,23 @@ class TunggakanViewModel(
         _pendingLink.value = null
     }
 
+    /**
+     * WhatsApp could not be opened — most likely it is not installed.
+     *
+     * Reported on the dialog rather than swallowed, because the owner's next move is the Copy
+     * button beside the message and nothing would otherwise tell them it is there.
+     */
+    fun onReminderOpenFailed() {
+        _pendingLink.value = null
+        reminder.value = reminder.value?.copy(
+            errorMessage = strings.tunggakanReminderOpenFailed(),
+        )
+    }
     /** Closes the dialog and its message with it. */
     fun dismissReminder() {
+        // Cleared **before** the state, so a launch awaiting the business name sees the
+        // cancellation rather than the dialog it is about to build.
+        reminderRequest.value = null
         reminder.value = null
         _pendingLink.value = null
     }

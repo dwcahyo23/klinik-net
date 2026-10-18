@@ -782,6 +782,7 @@ class AccessibilityTest {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
             pendingReminderLink = null,
         ),
     )

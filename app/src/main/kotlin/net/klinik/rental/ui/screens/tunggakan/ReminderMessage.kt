@@ -21,6 +21,14 @@ object ReminderMessage {
     /**
      * The message, composed from a row's own figures.
      *
+     * ## Why a blank business name is refused
+     *
+     * Because this is the one string that leaves the app and reaches another person, and the
+     * failure is silent: a blank name produces *"ini pengingat dari . Tunggakan …"*, which reads
+     * as a broken app rather than as a missing setting. A caller that cannot supply a name has a
+     * wiring problem, and a wiring problem must be visible here rather than delivered to a
+     * tenant.
+     *
      * @param renter the tenant's name, as the row shows it.
      * @param businessName from `BusinessIdentityRepository.businessName()`, never a constant.
      * @param plate the vehicle's plate, as the row shows it.
@@ -29,6 +37,7 @@ object ReminderMessage {
      *   on screen and the number in the message start to differ.
      * @param template the localised sentence, resolved by the caller from `RStrings` so this
      *   file stays free of `Context`.
+     * @throws IllegalArgumentException when [businessName] is blank. See the paragraph above.
      */
     fun build(
         renter: String,
@@ -36,10 +45,26 @@ object ReminderMessage {
         plate: String,
         figureText: String,
         template: (renter: String, business: String, plate: String, figure: String) -> String,
-    ): String = template(renter, businessName, plate, figureText)
+    ): String {
+        require(businessName.isNotBlank()) {
+            "a reminder must name the business, but the name was blank — " +
+                "check that the business identity is wired, because an unnamed reminder " +
+                "reaches a tenant as a broken sentence"
+        }
+        return template(renter, businessName, plate, figureText)
+    }
 
     /**
-     * The `wa.me` link that carries [text] to [phone].
+     * The `wa.me` link that carries [text] to [phone], or `null` when [phone] cannot address
+     * anyone.
+     *
+     * ## Why `null` rather than an exception
+     *
+     * Because the phone comes from a stored row and the caller is a message edit — a field the
+     * owner types into. Throwing from `onReminderChange` would crash the ViewModel coroutine on
+     * every keystroke for a row whose renter has an unaddressable number, which is a worse
+     * failure than a Send button that refuses. The dialog shows the refusal; the field still
+     * accepts text.
      *
      * ## Why the number is in the link
      *
@@ -49,38 +74,35 @@ object ReminderMessage {
      * is carried on `ArrearsRow` for the same reason the amount is: reading it at send time
      * would be the second snapshot the acceptance criterion forbids, for a value that decides
      * **who receives** the message.
-     *
-     * ## Why the number is normalised, and why that is not a second source of truth
-     *
-     * `wa.me` resolves only an international number with no punctuation. The stored number is
-     * whatever the owner typed — `0812-8899-7722` in the prototype's own data — so the link
-     * strips non-digits and rewrites a leading `0` as Indonesia's `62`. That is **link
-     * formatting**, not a re-derivation of the number: it touches no stored value and the row
-     * still shows exactly what the owner entered.
-     *
-     * @throws IllegalArgumentException when [phone] holds no digits. An empty recipient would
-     *   open WhatsApp on a blank contact with a real bill in the box — refused here rather than
-     *   rendered as a broken link.
      */
-    fun whatsappLink(phone: String, text: String): String =
-        "https://wa.me/" + international(phone) + "?text=" + encode(text)
+    fun whatsappLink(phone: String, text: String): String? {
+        val recipient = international(phone) ?: return null
+        return "https://wa.me/$recipient?text=" + encode(text)
+    }
 
     /**
-     * A stored Indonesian phone number as `wa.me` wants it: digits only, `62` for a leading `0`.
+     * A stored Indonesian phone number as `wa.me` wants it, or `null` when it cannot be resolved.
      *
      * `+62…` and `62…` pass through unchanged apart from punctuation; `08…` becomes `628…`.
-     * Anything else is returned digit-stripped, because guessing a country code for a number
-     * that does not claim one would be inventing a recipient.
+     *
+     * ## Why a number claiming neither form is refused rather than passed through
+     *
+     * Because `wa.me` treats a bare digit string as an international number: `812…` resolves as
+     * a Japanese number and the message is delivered to a stranger. Returning it unchanged would
+     * invent a recipient just as effectively as guessing a country code — and more silently,
+     * because it looks like it worked. The app stores Indonesian numbers, so a number that names
+     * no country is a data problem the owner can fix in the renter form.
      */
-    internal fun international(phone: String): String {
+    internal fun international(phone: String): String? {
         val digits = phone.filter { it.isDigit() }
-        require(digits.isNotEmpty()) { "a reminder needs a phone number, but '$phone' has no digits" }
         return when {
+            digits.isEmpty() -> null
             // Already international, with or without the `+`.
             digits.startsWith("62") -> digits
             // Local form. `0` is the national trunk prefix and never part of the number.
             digits.startsWith("0") -> "62" + digits.substring(1)
-            else -> digits
+            // No country code and no trunk prefix: not a number this app can address.
+            else -> null
         }
     }
 

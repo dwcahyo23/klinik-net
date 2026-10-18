@@ -137,7 +137,8 @@ fun TunggakanScreen(
     onReminderCopy: () -> Unit,
     onReminderDismiss: () -> Unit,
     onReminderLinkOpened: () -> Unit,
-    pendingLink: String? = null,
+    onReminderOpenFailed: () -> Unit,
+    pendingLink: String?,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -236,21 +237,27 @@ fun TunggakanScreen(
             onSend = onReminderSend,
             onCopy = {
                 // Copy what is in the field **now**, then tell the ViewModel so the
-                // confirmation reaches the state like every other message.
-                copy(reminder.text)
-                onReminderCopy()
+                // confirmation reaches the state like every other message. The ViewModel still
+                // refuses an empty message — the disabled button is a courtesy, not the rule.
+                if (reminder.canSend) {
+                    copy(reminder.text)
+                    onReminderCopy()
+                }
             },
             onDismiss = onReminderDismiss,
         )
     }
 
     // Opening the link is a side effect, so it happens here rather than in the ViewModel: the
-    // state carries *what* to open, and this is where an `Intent` can be built. `pendingLink`
-    // is consumed immediately so one send cannot launch twice across a recomposition.
+    // state carries *what* to open, and this is where an `Intent` can be built.
+    //
+    // A failed launch is **reported, not swallowed**. No WhatsApp installed is the common case,
+    // and the owner would otherwise tap Send, watch nothing happen, and have no idea that the
+    // Copy button beside it exists for exactly this. `runCatching` used to hide that.
     val context = LocalContext.current
     LaunchedEffect(pendingLink) {
         pendingLink?.let { link ->
-            runCatching {
+            val opened = runCatching {
                 context.startActivity(
                     Intent(Intent.ACTION_VIEW, link.toUri()).apply {
                         // A new task, because this app has one Activity: without the flag the
@@ -258,7 +265,10 @@ fun TunggakanScreen(
                         addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)
                     },
                 )
-            }
+            }.isSuccess
+            if (!opened) onReminderOpenFailed()
+            // Consumed either way: a failed launch retried on every recomposition would report
+            // the same failure forever, and the owner's next attempt is a fresh Send.
             onReminderLinkOpened()
         }
     }
@@ -414,14 +424,11 @@ private fun ArrearsRowItem(
                 }
                 // Story 4.2's verb. Its own button rather than the row's tap: the row selects
                 // for the detail pane (landscape only), and sending a reminder is a different
-                // decision with money consequences. Two actions on one row must be two
-                // targets — a row that both selected and messaged would make one of them
-                // unreachable without the other.
+                // decision with money consequences. Two actions on one row must be two targets.
                 //
-                // It is a `KnButton` inside `KnListRow`'s trailing slot, which is a clickable
-                // region in landscape. The button consumes its own tap, so the row's selection
-                // does not also fire; `TunggakanScreenTest` pins that with a row that would
-                // report both.
+                // `KnButton` consumes its own tap, so in landscape the row's selection does not
+                // also fire. That is `Surface(onClick=)`'s own behaviour, not something asserted
+                // here — the button's semantics are the inner node's.
                 ReminderAction(
                     onClick = onRemind,
                     modifier = Modifier.testTag(
@@ -602,6 +609,8 @@ private fun LandscapePreview() {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
+            pendingLink = null,
         )
     }
 }
@@ -636,6 +645,8 @@ private fun PortraitPreview() {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
+            pendingLink = null,
         )
     }
 }
@@ -654,6 +665,8 @@ private fun EmptyPreview() {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
+            pendingLink = null,
         )
     }
 }

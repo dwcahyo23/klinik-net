@@ -72,10 +72,10 @@ data class ArrearsRow(
  * ## Why the text is held here rather than derived from the row
  *
  * Because the owner may edit it. The composed sentence is the **starting** value, not the
- * current one, so the state carries what is in the field and [link] is rebuilt from that on
- * every edit — the acceptance criterion's *"tautan dibangun ulang dari teks hasil suntingan"*.
- * A link computed once when the dialog opened would send the pre-edit figure, which is the
- * failure the criterion names.
+ * current one, so the state carries what is in the field and [link] is derived from it — the
+ * acceptance criterion's *"tautan dibangun ulang dari teks hasil suntingan"*. A link computed
+ * once when the dialog opened would send the pre-edit figure, which is the failure the criterion
+ * names.
  *
  * ## Why the recipient is carried rather than looked up
  *
@@ -86,32 +86,41 @@ data class ArrearsRow(
  *   still exists.
  * @property phone the renter's stored number, already on the row.
  * @property text what is in the field right now — the composed message, possibly edited.
- * @property link the `wa.me` URL for [text], rebuilt whenever [text] changes.
- * @property errorMessage a refusal that has no field of its own — an emptied message.
+ * @property errorMessage a refusal that has no field of its own — an emptied message, or a
+ *   phone that cannot be addressed.
  */
 data class ReminderUi(
     val contractId: String,
     val phone: String,
     val text: String,
-    val link: String,
     val errorMessage: String? = null,
     /** The copy confirmation, cleared when the dialog closes or the text changes. */
     val copiedMessage: String? = null,
 ) {
+    /**
+     * The `wa.me` URL for [text], or `null` when the stored phone cannot address anyone.
+     *
+     * **Derived, not carried.** A stored `link` field would be a second copy of a value that is
+     * a function of [phone] and [text], and the copy is what can go stale — the acceptance
+     * criterion exists because a link captured at open time sends the pre-edit figure. Deriving
+     * it makes "the link follows the text" a property of the type rather than of a handler
+     * somebody has to remember.
+     */
+    val link: String? get() = ReminderMessage.whatsappLink(phone, text)
+
     /** Whether there is anything to send or copy. */
-    val canSend: Boolean get() = text.isNotBlank()
+    val canSend: Boolean get() = text.isNotBlank() && link != null
 }
 
 /**
- * Applies an edit to the reminder text, rebuilding the link with it.
+ * Applies an edit to the reminder text.
  *
- * The rebuild is the whole point: the link is a function of the text, so the two cannot drift.
- * The refusal clears on the edit, because the edit **is** the fix — the same rule every field
- * in this app follows.
+ * Nothing to rebuild: [ReminderUi.link] is derived from the text, so the two cannot drift and
+ * this function cannot throw on an unaddressable phone. The refusal clears on the edit, because
+ * the edit **is** the fix — the same rule every field in this app follows.
  */
 fun ReminderUi.withText(text: String): ReminderUi = copy(
     text = text,
-    link = ReminderMessage.whatsappLink(phone, text),
     errorMessage = null,
     // The confirmation belongs to the text that was copied; an edit makes it stale.
     copiedMessage = null,

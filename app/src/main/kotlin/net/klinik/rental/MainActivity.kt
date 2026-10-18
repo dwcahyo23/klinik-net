@@ -515,6 +515,7 @@ private fun KlinikNetApp(
                     onReminderCopy = tunggakan::onReminderCopied,
                     onReminderDismiss = tunggakan::dismissReminder,
                     onReminderLinkOpened = tunggakan::onReminderLinkOpened,
+                    onReminderOpenFailed = tunggakan::onReminderOpenFailed,
                     pendingReminderLink = tunggakanPendingLink,
                 ),
             ),

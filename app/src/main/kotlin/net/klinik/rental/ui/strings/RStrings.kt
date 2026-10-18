@@ -903,4 +903,21 @@ class RStrings(private val context: Context) {
     /** The empty-text refusal. Says what to do, not only that something is missing. */
     fun tunggakanReminderEmpty(): String =
         context.getString(R.string.tunggakan_reminder_empty)
+
+    /**
+     * The phone cannot address anyone — a different fix from an empty message.
+     *
+     * Distinct copy because the two failures have different repairs: this one is corrected in
+     * the renter's own record, not in the field the owner is looking at.
+     */
+    fun tunggakanReminderNoPhone(): String =
+        context.getString(R.string.tunggakan_reminder_no_phone)
+
+    /** The business identity is not configured, so a reminder would be signed by nobody. */
+    fun tunggakanReminderNoIdentity(): String =
+        context.getString(R.string.tunggakan_reminder_no_identity)
+
+    /** WhatsApp could not be opened; the sentence points at Copy as the way out. */
+    fun tunggakanReminderOpenFailed(): String =
+        context.getString(R.string.tunggakan_reminder_open_failed)
 }

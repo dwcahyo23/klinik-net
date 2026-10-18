@@ -216,6 +216,7 @@ class BannerScopeTest {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
             pendingReminderLink = null,
         ),
     )

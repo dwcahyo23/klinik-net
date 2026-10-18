@@ -491,6 +491,7 @@ class AppShellTest {
             onReminderCopy = {},
             onReminderDismiss = {},
             onReminderLinkOpened = {},
+            onReminderOpenFailed = {},
             pendingReminderLink = null,
         ),
     )

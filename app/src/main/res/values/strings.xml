@@ -983,6 +983,22 @@
       to type something, which the sentence says.
     -->
     <string name="tunggakan_reminder_empty">Tulis dulu isi pesannya sebelum dikirim.</string>
+    <!--
+      The phone cannot be addressed: it is empty, or it names no country code, so `wa.me` would
+      deliver the message to a stranger. Distinct from `_empty` because the fix is different —
+      the number is corrected in the renter form, not in this field.
+    -->
+    <string name="tunggakan_reminder_no_phone">Nomor telepon penyewa ini tidak bisa dipakai untuk WhatsApp. Perbaiki nomornya di data penyewa.</string>
+    <!--
+      The business identity is not configured, so a reminder would be signed by nobody. Says what
+      to do, because the fix is two screens away and the owner would not guess it.
+    -->
+    <string name="tunggakan_reminder_no_identity">Nama usaha belum diisi, jadi pesan pengingat tidak bisa disusun. Isi dulu di Pengaturan.</string>
+    <!--
+      WhatsApp could not be opened — most likely it is not installed. The Copy button is the way
+      out, so the sentence points at it rather than only reporting the failure.
+    -->
+    <string name="tunggakan_reminder_open_failed">WhatsApp tidak bisa dibuka di perangkat ini. Salin pesannya lalu kirim manual.</string>
 </resources>
 
 

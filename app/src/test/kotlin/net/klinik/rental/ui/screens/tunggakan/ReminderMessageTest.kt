@@ -1,6 +1,7 @@
 package net.klinik.rental.ui.screens.tunggakan
 
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertThrows
 import org.junit.Assert.assertTrue
 import org.junit.Test
@@ -107,8 +108,9 @@ class ReminderMessageTest {
         val first = ReminderMessage.whatsappLink("0812-8899-7722", original)
         val second = ReminderMessage.whatsappLink("0812-8899-7722", edited)
 
+        assertTrue("both links resolve", first != null && second != null)
         assertTrue("the two links differ", first != second)
-        assertTrue("and the second carries the edited figure", second.contains("500.000"))
+        assertTrue("and the second carries the edited figure", second!!.contains("500.000"))
         assertTrue("not the original one", !second.contains("750.000"))
     }
 
@@ -131,22 +133,52 @@ class ReminderMessageTest {
     fun `the link addresses the renter's number`() {
         val link = ReminderMessage.whatsappLink("0812-8899-7722", "halo")
 
-        assertTrue(link.startsWith("https://wa.me/6281288997722?text="))
+        assertTrue(link!!.startsWith("https://wa.me/6281288997722?text="))
     }
 
     /**
-     * A number with no digits is refused rather than producing a broken link.
+     * A number that cannot address anyone yields **no link**, rather than a broken one.
      *
      * An empty recipient would open WhatsApp on a blank contact with a real bill in the box —
-     * a message about money with no addressee, which is worse than no message.
+     * a message about money with no addressee, which is worse than no message. The caller
+     * refuses the send rather than opening something wrong.
      */
     @Test
-    fun `a number with no digits is refused`() {
+    fun `an unaddressable number yields no link`() {
+        assertNull(ReminderMessage.whatsappLink("", "halo"))
+        assertNull(ReminderMessage.whatsappLink("---", "halo"))
+        assertNull(ReminderMessage.international("---"))
+    }
+
+    /**
+     * A number naming neither `62` nor a leading `0` is **refused**, not passed through.
+     *
+     * `wa.me` reads a bare digit string as an international number, so `812…` resolves as a
+     * Japanese number and the tenant's bill reaches a stranger. Passing it through would invent
+     * a recipient just as effectively as guessing a country code, and more silently.
+     */
+    @Test
+    fun `a number with no country code is refused`() {
+        assertNull(ReminderMessage.international("812345"))
+        assertNull(ReminderMessage.whatsappLink("812345", "halo"))
+    }
+
+    /**
+     * A blank business name is refused rather than composing an unsigned sentence.
+     *
+     * The failure would otherwise reach a tenant as *"ini pengingat dari ."* — which reads as a
+     * broken app rather than as a missing setting.
+     */
+    @Test
+    fun `a blank business name is refused`() {
         assertThrows(IllegalArgumentException::class.java) {
-            ReminderMessage.whatsappLink("", "halo")
-        }
-        assertThrows(IllegalArgumentException::class.java) {
-            ReminderMessage.international("---")
+            ReminderMessage.build(
+                renter = "Budi",
+                businessName = "   ",
+                plate = "B 1 X",
+                figureText = "Rp 1 · 1 hari",
+                template = template,
+            )
         }
     }
 

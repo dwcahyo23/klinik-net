@@ -428,6 +428,7 @@ class TunggakanScreenTest {
         onReminderCopy: () -> Unit = {},
         onReminderDismiss: () -> Unit = {},
         onReminderLinkOpened: () -> Unit = {},
+        onReminderOpenFailed: () -> Unit = {},
         pendingLink: String? = null,
     ) {
         TunggakanScreen(
@@ -440,6 +441,7 @@ class TunggakanScreenTest {
             onReminderCopy = onReminderCopy,
             onReminderDismiss = onReminderDismiss,
             onReminderLinkOpened = onReminderLinkOpened,
+            onReminderOpenFailed = onReminderOpenFailed,
             pendingLink = pendingLink,
         )
     }
