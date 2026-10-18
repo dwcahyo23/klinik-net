@@ -2,7 +2,7 @@
 title: 'Story 4.5 — Laporan periode bulanan'
 type: 'feature'
 created: '2026-10-18'
-status: 'in-progress'
+status: 'done'
 baseline_revision: '780e2c86b348d1dd61945aed0f7dddcf8717f5b7'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-4-context.md'
@@ -145,6 +145,43 @@ for", and the seven-day trend is a line drawn on `Canvas`.
 - Given the risk breakdown, when it renders, then four coloured numbers appear and no chart
 - Given the app builds, when tests run, then `:domain:test`, `:app:testDebugUnitTest` and
   `:app:assembleDebug` all pass
+
+## Implementation Notes
+
+**The "same function" clause is proved by one body and two call shapes.**
+`observeArrearsForAllContracts(clock, asOf: () -> LocalDate = { LocalDate.now(clock) })` — a
+defaulted parameter read inside the `combine`'s lambda, so the default path stays byte-identical
+to what Beranda runs. Two overloads with similar bodies would look right today and diverge the
+day one is edited; this cannot.
+
+**And the test proves both halves, which the first version got backwards.** It compared a report
+period's *end* against *today* and expected equality: 24 October charges a full month and 17
+October charges three weeks, so they differ by seven days. It now passes the **same** date through
+two call shapes and expects identical results, then moves the date and expects the figure to shift.
+The first half is the claim; the second proves the parameter is live rather than decorative.
+
+**Two more tests were wrong rather than the code**, and both were corrected the same way — by
+reading what the criterion says instead of what the first draft assumed. `REPORT_FUTURE` passed a
+*future period end* as the time point and expected zero, which is the opposite: the criterion is
+about days after **today**, so a contract starting after `asOf` is what owes nothing.
+
+**Seven destinations on a 360dp phone leave each tab 44dp.** `weight(1f)` constrains a child in a
+`Row` whether `minTouchTarget` comes before or after it, because the minimum is measured *inside*
+an already-fixed share — ordering the modifiers changes nothing, which was tried first. The row
+therefore scrolls, the same trade the landscape rail made in Story 4.1: a destination hard to
+reach beats one that cannot be hit.
+
+**Two hierarchies the criteria forbid, caught by measuring rather than assuming.** The trend
+tile had an icon and the other three did not, and the icon made it taller — which is exactly the
+"no tile is enlarged" rule, caught only because the test compares the four measured heights.
+And `riskTone(count)` mapped a *contract count* onto the day ladder, so three contracts would
+render as "Perhatian" when that is the Kritik level. Both now go through the arrears list's own
+`toneFor`, so the report and the list cannot colour a level differently.
+
+**The rail's UX-DR17 order is complete and still unsorted.** All seven destinations now exist,
+so the frequency ordering could be applied — but Setoran is still not one of them (it is a
+quick action, not a destination), and reordering here would touch the KDoc that explains the
+ordering rule for no remaining story to benefit. It is Epic 4's closing piece, not this one's.
 
 ## Spec Change Log
 
