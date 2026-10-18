@@ -2,7 +2,7 @@
 title: 'Story 5.3 — Mengunci aplikasi dengan PIN dan kode pemulihan'
 type: 'feature'
 created: '2026-10-19'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'e0dab9bcbed7314dbbd518e56009777701c170b1'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -207,9 +207,91 @@ countdown.
 
 ## Spec Change Log
 
+### `NEVER_EXPORTED` had to grow from two keys to nine, and that is the story's real risk
+
+Story 5.1 shipped `setOf("pinHash", "recoveryHash")` as a placeholder. This story writes **nine**
+keys, and the list now covers all of them. The failure mode of leaving one out is not a leaked
+hash: it is `pinEnabled = true` restored onto a device with **no hash** — a lock nobody can open,
+holding the owner's records, on the day they restored a backup because they had lost a phone.
+
+Proven by mutation: removing `pinEnabled` from the list failed **two** tests
+(`every pin key is excluded from the file` and `the enabled flag never travels, so a restore cannot
+produce a lock without a hash`). The first is a loop over the key list, so a tenth key added
+without the list fails here rather than bricking a restore six months later.
+
+### Generation and writing had to be separate calls, which the first signature got wrong
+
+`enable(pin)` that generated *and* wrote looked like one clean operation and is wrong for two
+reasons that only show up in the cancel path:
+
+- the AC says the flow is not finished until the owner confirms they wrote the code down, so a
+  lock written at the PIN step is a lock whose escape hatch was dismissed;
+- rolling that back with `disable()` would destroy an existing PIN when the owner was **changing**
+  one, not setting one.
+
+So the signature is `newRecoveryCode()` (writes nothing) followed by `enable(pin, code)`. A test
+asserts the first writes no settings rows at all.
+
+### Three bugs, each found by a test rather than by review
+
+1. **The recovery button was un-tappable.** `Column(verticalScroll).arrangement = Center` centres
+   the *overflow* when content is taller than the viewport, so both ends sit outside the scroll
+   range. The button was drawn, enabled, wired — and unreachable on a short screen. Found by
+   `performClick` missing while `performSemanticsAction(OnClick)` succeeded, which is exactly the
+   distinction that test was written to make.
+2. **The countdown loop never completed.** A `delay` loop inside the ViewModel re-arms forever
+   against a fixed injected `Clock`, so `advanceUntilIdle` hung the whole suite (a 600s timeout).
+   The fix is a design one: "how often to redraw" is a UI concern and moved to a `LaunchedEffect`
+   in `LockScreen`; the **deadline** stays persisted in the state. The ViewModel is now a pure
+   state machine a test drives by hand.
+3. **The ViewModel test was not draining Room.** Room runs queries on its own executor, which
+   `advanceUntilIdle` does not drain, so every coroutine assertion failed as though the ViewModel
+   were unwired. Fixed by pointing both Room executors at the test dispatcher — the pattern every
+   other ViewModel test in this repo already uses.
+
+### `KnMotion.tween` was not widened
+
+The 420ms shake is a field (`shakeMillis`) that `LockScreen` reads directly; `allowedMillis` still
+contains only 140/220/300, so `tween(420)` still throws. The UX doc carves out one exception by
+name, and widening the guard would make 420ms available on every future screen.
+
 ## Review Triage Log
 
 ## Auto Run Result
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `data/repository/PinLockRepository.kt` | **new** — PBKDF2, salts, recovery code, attempts, lockout, background timestamp |
+| `ui/lock/PinLockViewModel.kt` | **new** — entry, auto-submit, countdown, recovery flow |
+| `ui/lock/LockScreen.kt` | **new** — the full-screen lock over `KnPinGrid`, the 420ms shake |
+| `ui/lock/RecoveryDialogs.kt` | **new** — the recovery flow's three steps and the setup code's one-time display |
+| `ui/screens/pengaturan/PinSetupDialog.kt` | **new** — choose, confirm, show the code once |
+| `ui/theme/Motion.kt` | `shakeMillis`, with the exception documented |
+| `data/backup/BackupJson.kt` | `NEVER_EXPORTED` grows to nine keys |
+| `MainActivity.kt` | `onStart`/`onStop`, the lock gate, `PinLockRepository` construction |
+| `ui/screens/pengaturan/*`, `NavGraph.kt`, `strings.xml`, `RStrings.kt` | the security card and its wiring |
+
+### Verification
+
+- `./gradlew :domain:test` -- **SUCCESS** (203)
+- `./gradlew :app:testDebugUnitTest` -- **SUCCESS** (1043, 0 failures)
+- `./gradlew :app:assembleDebug` -- **SUCCESS**
+- `git grep -n "terenkripsi" app/src/main` -- every match is a **comment explaining why the word
+  must not be used**; no user-facing string contains it. The lock screen's subtitle is asserted
+  verbatim in `LockScreenTest`.
+
+### Residual risks
+
+- **No device run.** The auto-lock timing, the shake, and the recovery flow were not exercised on
+  hardware; there is no device here.
+- **`PinLockRepository`'s lockout window is 30 seconds**, chosen rather than specified. The PRD
+  says "hitung mundur" without a duration; 30s makes 10,000 combinations about sixteen hours of
+  continuous tapping. Worth a second look against how the owner actually behaves.
+- **The recovery code is not rate-limited**, deliberately — see `verifyRecoveryCode`'s KDoc — and
+  that decision rests on the code's ~119 bits. If the length is ever reduced, the limit becomes
+  necessary.
 
 ## Design Notes
 
