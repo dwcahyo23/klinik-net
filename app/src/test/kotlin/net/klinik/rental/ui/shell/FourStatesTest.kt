@@ -512,6 +512,11 @@ class FourStatesTest {
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 5.1's backup, stated for the same reason as the identity callbacks above:
+            // this fixture names every callback each screen renders a control for, and the
+            // export button is one.
+            onExport = {},
+            onExportErrorDismiss = {},
         )
     }
 

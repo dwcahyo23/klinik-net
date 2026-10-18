@@ -34,6 +34,20 @@ interface SettingDao {
     suspend fun findValue(key: String): String?
 
     /**
+     * Every setting row, ordered by key.
+     *
+     * Story 5.1's backup read, and the only whole-table read this DAO has: everything else
+     * here is per-key, because the app reads configuration one value at a time. A backup is
+     * the one caller that does not know the keys in advance — it has to take whatever is
+     * there, including keys a later version wrote and this one has never heard of.
+     *
+     * The ordering exists so the exported file is stable between two runs over the same
+     * database, which is what lets an owner diff two backups and see what actually changed.
+     */
+    @Query("SELECT * FROM settings ORDER BY key ASC")
+    suspend fun all(): List<SettingEntity>
+
+    /**
      * The stored value read as an [Int], falling back to [default].
      *
      * The fallback covers three cases that all want the same answer: the key was never

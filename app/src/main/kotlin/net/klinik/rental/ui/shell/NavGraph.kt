@@ -4,6 +4,9 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import android.net.Uri
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
@@ -77,7 +80,26 @@ internal fun AppNavGraph(
         // a nav item that navigates to nothing — the two are asserted together in
         // `AppShellTest`, because a route composed but absent from the enum is invisible in
         // the nav and one present in the enum but not composed lands on a blank screen.
-        composable(Destination.Pengaturan.route) { PengaturanRoute(screens.pengaturan) }
+        composable(Destination.Pengaturan.route) {
+            // Story 5.1's launcher, declared here because a `rememberLauncherForActivityResult`
+            // needs a `ComponentActivity` and this is the one place in the graph that has one.
+            // The destination is the **route** rather than the whole app because an export is
+            // only reachable from the settings screen, and a launcher declared in `AppShell`
+            // would let every screen open a file picker.
+            val launcher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument(MIME_JSON),
+            ) { uri ->
+                // Null means the owner backed out of the picker. That is not a failure and gets
+                // no message — the system already closed itself, and a banner saying "export
+                // failed" over a screen that is perfectly fine is the app telling the owner
+                // something untrue.
+                if (uri != null) screens.pengaturan.onExportGranted(uri)
+            }
+            PengaturanRoute(
+                wiring = screens.pengaturan,
+                onExport = { launcher.launch(screens.pengaturan.backupFilename()) },
+            )
+        }
         // The fifth, added by Story 4.1 — and the first with **no** sheet of its own, so
         // this route composes the screen directly rather than wrapping it in a `Box` for
         // sheets like `KendaraanRoute` and `PenyewaRoute` do.
@@ -185,6 +207,21 @@ private fun NavHostController.navigateTo(route: String) {
         restoreState = true
     }
 }
+
+/**
+ * The MIME type the file picker offers for a backup.
+ *
+ * `application/json` rather than the catch-all that `CreateDocument`'s no-argument constructor
+ * uses. The catch-all cannot be written literally in a KDoc block: its first and last characters
+ * are a comment terminator, so the text ends the comment early and the compiler reads the rest
+ * as top-level source. That is exactly what happened here, and it is worth writing down — the
+ * fix is prose, and the next person will otherwise "restore" the literal and get this again.
+ *
+ * The difference is visible to the owner. With a real MIME type the provider greys out
+ * everything that is not a JSON file, which is the difference between picking the right backup
+ * and picking a photo of a receipt.
+ */
+private const val MIME_JSON = "application/json"
 
 /**
  * The arrears destination.
@@ -518,6 +555,38 @@ internal class Screens(
         val onIdentityErrorDismiss: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
+        /**
+         * Story 5.1's export-failure dismissal.
+         *
+         * A **separate** slot from [onErrorDismiss] for the same reason the identity sheet has
+         * one: the export's banner shares the screen's single banner slot, and clearing it must
+         * go through the exporter's own channel so a dismissal cannot be mistaken for "the form
+         * error is gone too".
+         *
+         * The launcher's own half — [onExport] — is **not** here: it needs an
+         * `ActivityResultLauncher`, so it is a parameter of `PengaturanRoute` rather than a field
+         * of this bundle. A bundle that could be built without a launcher would let a caller
+         * assemble the whole settings screen and forget the export entirely.
+         */
+        val onExportErrorDismiss: () -> Unit,
+        /**
+         * Writes the backup to the `Uri` the file picker granted.
+         *
+         * A parameter rather than a `() -> Unit` because **the launcher has to be somewhere**,
+         * and this is that somewhere's only handle. Hiding the write behind a no-argument
+         * callback would mean the picker callback in `AppNavGraph` has nowhere to send the
+         * destination — and the two halves of "pick a file, then write it" would have to be
+         * wired by whoever builds this bundle, at every call site.
+         */
+        val onExportGranted: (android.net.Uri) -> Unit,
+        /**
+         * The filename offered to the picker, `klinik-net-backup-<today>.json`.
+         *
+         * Read through a function rather than a stored string so the date is the day the
+         * **picker opens**, not the day the screen was built — a settings screen left open
+         * across midnight would otherwise offer yesterday's name.
+         */
+        val backupFilename: () -> String,
     )
 
     /**
@@ -752,7 +821,7 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
  * property of the screens, not an oversight.
  */
 @Composable
-private fun PengaturanRoute(wiring: Screens.Pengaturan) {
+private fun PengaturanRoute(wiring: Screens.Pengaturan, onExport: () -> Unit) {
     PengaturanScreen(
         state = wiring.state,
         onAdd = wiring.onAdd,
@@ -771,6 +840,11 @@ private fun PengaturanRoute(wiring: Screens.Pengaturan) {
         snackbarMessage = wiring.snackbarMessage,
         onSnackbarDismiss = wiring.onSnackbarDismiss,
         onErrorDismiss = wiring.onErrorDismiss,
+        // Story 5.1's, forwarded the same way — except the export's *launcher*, which the route
+        // below owns because a launcher needs an Activity and this function is the one place
+        // in the graph that already has one.
+        onExport = onExport,
+        onExportErrorDismiss = wiring.onExportErrorDismiss,
     )
 }
 

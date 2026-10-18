@@ -16,6 +16,7 @@ import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.ViewModelProvider
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import net.klinik.rental.data.backup.BackupRepository
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.DepositHistoryRepository
@@ -191,6 +192,13 @@ class MainActivity : ComponentActivity() {
                     beranda = berandaViewModel,
                     laporan = laporanViewModel,
                     search = searchViewModel,
+                    // Story 5.1's export, built here from the same singleton the settings
+                    // ViewModel reads — the route needs it for the picker's filename, and a
+                    // repository rather than a ViewModel because it holds no state.
+                    backups = createBackupRepository(
+                        database = KlinikDatabase.get(applicationContext),
+                        clock = Clock.systemDefaultZone(),
+                    ),
                 )
             }
         }
@@ -291,14 +299,49 @@ internal fun createKontrakViewModel(context: Context): KontrakViewModel {
  */
 internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
     val database = KlinikDatabase.get(context)
+    // AD-8 in force: the one `Clock` every other ViewModel factory here builds, rather than a
+    // seventh call to `Clock.systemDefaultZone()` in the same file. A second construction of the
+    // same value is not wrong today — it is a seventh place to change when the rule about which
+    // zone counts as "today" moves.
+    val clock = Clock.systemDefaultZone()
     return PengaturanViewModel(
         repository = BusinessAccountRepository(database.businessAccountDao(), database),
         // Story 4.4's identity. The database handle is passed because `save` writes three
         // keys as one block and a half-written identity is one the owner did not enter.
         identity = BusinessIdentityRepository(database.settingDao(), database),
         strings = RStrings(context),
+        // Story 5.1's export, over the same singleton — eight readers, no writer. It is built
+        // here rather than in `KlinikNetApp` because the filename the picker is offered needs
+        // the same [Clock] the rest of the app's dates use, and a second clock is a second
+        // "today".
+        backups = createBackupRepository(database, clock),
     )
 }
+
+/**
+ * Story 5.1's export read, over the database singleton.
+ *
+ * Its own factory because it needs eight DAOs and every other repository needs one or two: an
+ * inline `BackupRepository(...)` in the settings factory would be a ten-line constructor call
+ * sitting next to two two-line ones, and the count is itself the argument for naming it.
+ *
+ * Returns the repository rather than the ViewModel, because the *filename* is needed outside
+ * this file — the picker is launched in `AppNavGraph`, which has no database handle — and a
+ * second derivation of that format string in the graph would be the defect the whole class
+ * exists to prevent.
+ */
+internal fun createBackupRepository(database: KlinikDatabase, clock: Clock): BackupRepository =
+    BackupRepository(
+        vehicleDao = database.vehicleDao(),
+        renterDao = database.renterDao(),
+        contractDao = database.contractDao(),
+        serviceExceptionDao = database.serviceExceptionDao(),
+        businessAccountDao = database.businessAccountDao(),
+        paymentDao = database.paymentDao(),
+        allocationDao = database.allocationDao(),
+        settingDao = database.settingDao(),
+        clock = clock,
+    )
 
 /**
  * The deposit ViewModel over the same singleton.
@@ -486,6 +529,13 @@ private fun KlinikNetApp(
     beranda: BerandaViewModel,
     laporan: LaporanViewModel,
     search: GlobalSearchViewModel,
+    // Story 5.1's export, **not** a ViewModel.
+    //
+    // The export is a read plus a write, it holds no state of its own between calls, and
+    // everything it produces travels to the settings screen through that screen's ViewModel.
+    // Giving it one would mean a second set of flows collected here for no new information —
+    // and the one fact the route needs from it, the filename, is a pure function of a date.
+    backups: BackupRepository,
 ) {
     val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
     val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
@@ -653,6 +703,13 @@ private fun KlinikNetApp(
                     onIdentityErrorDismiss = pengaturan::consumeIdentityError,
                     onSnackbarDismiss = pengaturan::consumeMessage,
                     onErrorDismiss = pengaturan::consumeError,
+                    // Story 5.1's backup. `backupFilename` is read at the moment the picker
+                    // opens rather than stored, so a settings screen left open across midnight
+                    // still offers today's date — and the name comes from the repository's own
+                    // formatter rather than a second spelling of the same format here.
+                    onExportErrorDismiss = pengaturan::consumeExportError,
+                    onExportGranted = pengaturan::exportTo,
+                    backupFilename = { backups.filenameFor(LocalDate.now(Clock.systemDefaultZone())) },
                 ),
                 // Story 3.2's deposit sheet. No route — the shell mounts it over
                 // whichever destination is showing, because a deposit is a quick

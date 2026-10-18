@@ -25,6 +25,21 @@ import net.klinik.rental.data.db.entity.SettingEntity
 import net.klinik.rental.data.db.entity.VehicleEntity
 
 /**
+ * The schema version, as one number with two readers.
+ *
+ * `@Database(version = …)` and Story 5.1's exported `schemaVersion` are the same fact: the shape
+ * of the data. Written as two literals they would agree today and drift the first time a story
+ * bumped the database and forgot the other — and a backup whose `schemaVersion` understates its
+ * own shape is a file Story 5.2 would *accept* and then mis-restore, which is the one failure
+ * NFR-3 exists to prevent.
+ *
+ * Top-level and `const` because an annotation argument has to be a compile-time constant, and
+ * because a reader who needs the number should find it by grepping the version rather than by
+ * opening this file and hoping.
+ */
+const val SCHEMA_VERSION = 8
+
+/**
  * The app's Room database.
  *
  * Five entities as of Story 3.1: `VEHICLE`, `RENTER`, `CONTRACT` — the real
@@ -65,7 +80,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
         AllocationEntity::class,
         SettingEntity::class,
     ],
-    version = 8,
+    version = SCHEMA_VERSION,
     exportSchema = false,
 )
 @TypeConverters(Converters::class)

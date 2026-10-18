@@ -881,6 +881,12 @@ class AppShellTest {
             onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 5.1's backup, stated like every other bundle here: this fixture builds
+            // the container the shell hands to the settings route, so an omitted callback
+            // would be a silent no-op at runtime rather than a compile error.
+            onExportErrorDismiss = {},
+            onExportGranted = {},
+            backupFilename = { "klinik-net-backup-2026-10-19.json" },
         ),
         deposito = Screens.Deposito(
             state = depositoState,

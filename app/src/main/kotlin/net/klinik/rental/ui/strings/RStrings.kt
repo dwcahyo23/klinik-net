@@ -35,6 +35,19 @@ import net.klinik.rental.ui.format.formatTanggalBulan
  */
 class RStrings(private val context: Context) {
 
+    /**
+     * The context every accessor reads through.
+     *
+     * Exposed for the one caller that needs more than a string: `PengaturanViewModel.exportTo`
+     * writes a backup file and needs a `ContentResolver`. Reaching for a *separate* context
+     * field there instead would mean this class's constructor takes two contexts that must be
+     * the same object, which is a fact nothing would check.
+     *
+     * It is `getApplicationContext()` behind the constructor — see the factory below — so a
+     * caller holding this cannot leak an Activity.
+     */
+    val contextRef: Context get() = context.applicationContext
+
     /** A saved vehicle's confirmation. Names the plate so it is recognisable. */
     fun kendaraanSaved(plate: String): String =
         context.getString(R.string.kendaraan_saved, plate)
@@ -564,6 +577,29 @@ class RStrings(private val context: Context) {
      */
     fun pengaturanIdentitySaved(name: String): String =
         context.getString(R.string.pengaturan_identity_saved, name)
+
+    // -------------------------------------------------------------- Story 5.1
+
+    /**
+     * The export's success message, naming the file that was written.
+     *
+     * A **message**, so it gets an accessor rather than a `stringResource` at the call site —
+     * the rule this file's own KDoc states. It names the file because "your backup is done" and
+     * "your backup is done, at this path, under this name" are different assurances, and the
+     * second is the one the owner needs when they go looking for the file next month.
+     */
+    fun pengaturanExportSaved(filename: String): String =
+        context.getString(R.string.pengaturan_export_saved, filename)
+
+    /**
+     * A failed export, naming the fix.
+     *
+     * Deliberately distinct from [pengaturanErrorUnexpected]: that one reads as a form problem,
+     * and an owner who cannot tell a failed backup from a rejected account will assume their
+     * data is safe when it is not.
+     */
+    fun pengaturanErrorExportFailed(): String =
+        context.getString(R.string.pengaturan_error_export_failed)
 
     // -------------------------------------------------------------- Story 3.2
 

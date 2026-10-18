@@ -82,6 +82,23 @@ interface AllocationDao {
     @Query("SELECT DISTINCT contractId FROM allocation")
     fun observeContractIds(): Flow<List<String>>
 
+    /**
+     * Every allocation row on every contract.
+     *
+     * Story 5.1's backup read, and the reason this query exists at all: every other read here
+     * is scoped to one contract, because the app's own arithmetic is always asked about a
+     * contract. A backup is the one read that is not — it takes the whole table, and a
+     * per-contract loop over `observeContracts()` would be eight hundred queries for the
+     * same rows.
+     *
+     * **No `ORDER BY` here on purpose.** The backup writer sorts by primary key, so the
+     * file's bytes depend on the data and not on which screen last happened to change this
+     * DAO's ordering. An `ORDER BY` would add a second answer to "what order is this table
+     * in", and only one of them would reach the file.
+     */
+    @Query("SELECT * FROM allocation")
+    suspend fun all(): List<AllocationEntity>
+
     // ----------------------------------------------------------------- writes
 
     /**

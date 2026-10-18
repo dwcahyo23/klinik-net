@@ -56,6 +56,25 @@ data class PengaturanUiState(
     val identityErrorMessage: String? = null,
     val identitySuccessMessage: String? = null,
     val errorMessage: String? = null,
+    /**
+     * Story 5.1's export, in flight.
+     *
+     * A single boolean rather than a progress figure because there is nothing to report progress
+     * *about*: the owner is looking at a system file picker, not at this app, and the work is
+     * eight table reads plus one file write. What the flag prevents is a **second picker** — a
+     * double tap would open two pickers, and the second one's destination would silently win
+     * while the owner believed the first file had been written.
+     */
+    val isExporting: Boolean = false,
+    /**
+     * A failed export, or `null`.
+     *
+     * Its own field rather than the screen's [errorMessage], because a form is never open while
+     * an export runs — and because the screen's banner suppresses itself while either sheet is
+     * up, which would swallow an export failure the moment an account sheet appeared. The
+     * failure is about money the owner believed was safe, so it has to be readable.
+     */
+    val exportErrorMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
     /**

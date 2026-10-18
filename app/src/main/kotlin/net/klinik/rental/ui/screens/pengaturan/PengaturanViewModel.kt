@@ -1,5 +1,6 @@
 package net.klinik.rental.ui.screens.pengaturan
 
+import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import kotlinx.coroutines.CancellationException
@@ -13,12 +14,14 @@ import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.klinik.rental.data.backup.BackupRepository
 import net.klinik.rental.data.repository.BusinessAccountRepository
 import net.klinik.rental.data.repository.BusinessIdentity
 import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.BlankIdentityNameException
 import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.validation.InvalidAccountNumberException
+import net.klinik.rental.ui.backup.BackupFileWriter
 import net.klinik.rental.ui.strings.RStrings
 
 /**
@@ -49,6 +52,16 @@ class PengaturanViewModel(
     private val repository: BusinessAccountRepository,
     private val identity: BusinessIdentityRepository,
     private val strings: RStrings,
+    /**
+     * Story 5.1's export, optional rather than required.
+     *
+     * Optional because this ViewModel is the *settings* screen's, not the backup's: an
+     * exporter is handed in where it exists and absent where it does not, rather than every
+     * caller of a settings screen having to build one. `exportTo` refuses in words when it is
+     * absent — the same shape `SetoranViewModel.openHistory` uses for its nullable repository —
+     * so the missing case is a **message**, not a silently dead button.
+     */
+    private val backups: BackupRepository? = null,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
@@ -116,6 +129,24 @@ class PengaturanViewModel(
     private val saving = java.util.concurrent.atomic.AtomicBoolean(false)
 
     /**
+     * Whether Story 5.1's export is in flight.
+     *
+     * A **flow** rather than the `AtomicBoolean` [saving] is, because unlike a save this value is
+     * rendered: the action button draws disabled while it is true. An `AtomicBoolean` would have
+     * to be copied into the `combine` on every write, which is a second fact to keep in step —
+     * and the screen's button enabled-state disagreeing with an export in progress is exactly
+     * what the flag exists to prevent.
+     *
+     * It also serves as the double-tap guard, and does so without a CAS: the flag is set
+     * **synchronously** before the coroutine is launched, so a second tap arriving before the
+     * coroutine starts already sees `true`.
+     */
+    private val exporting = MutableStateFlow(false)
+
+    /** A failed export. Its own slot so the screen's form banner cannot swallow it. */
+    private val exportErrorMessage = MutableStateFlow<String?>(null)
+
+    /**
      * The accounts plus "has the read happened yet", as one flow.
      *
      * A derived flag rather than a separate `MutableStateFlow<Boolean>`: a flag set in the
@@ -142,7 +173,8 @@ class PengaturanViewModel(
         combine(identityForm, storedIdentity, identityError) { form, stored, error ->
             IdentitySnapshot(form, stored, error)
         },
-    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot ->
+        combine(exporting, exportErrorMessage) { busy, failure -> ExportSnapshot(busy, failure) },
+    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot ->
         PengaturanUiState(
             // The projection to a row happens here, once per emission, so the screen renders
             // what it is handed and no composable formats a value.
@@ -156,6 +188,8 @@ class PengaturanViewModel(
             // transient bar rather than a field either sheet owns.
             identitySuccessMessage = null,
             errorMessage = formSnapshot.error,
+            isExporting = exportSnapshot.busy,
+            exportErrorMessage = exportSnapshot.failure,
             isLoading = !hasEmitted,
         )
     }
@@ -195,6 +229,18 @@ class PengaturanViewModel(
         val form: IdentityFormState?,
         val stored: IdentityRow?,
         val error: String?,
+    )
+
+    /**
+     * Story 5.1's half of the screen, as one value.
+     *
+     * Nested for the reason [IdentitySnapshot] gives: an export in flight and a form being
+     * typed are never both true, and pairing them would let closing a sheet clear the export's
+     * failure — which is the defect the screen's banner suppression makes visible.
+     */
+    private data class ExportSnapshot(
+        val busy: Boolean,
+        val failure: String?,
     )
 
     init {
@@ -510,6 +556,73 @@ class PengaturanViewModel(
 
     fun consumeError() {
         errorMessage.value = null
+    }
+
+    // ------------------------------------------------------- the backup export
+
+    /**
+     * Writes the whole database to [uri], which the Storage Access Framework already granted.
+     *
+     * ## Why the picker is **not** launched from here
+     *
+     * Because a launcher needs an `ActivityResultLauncher`, and this class deliberately holds no
+     * Android context of its own — `RStrings` is the only thing here that touches the framework,
+     * and it does so to read a string. The screen's route owns the launcher and hands the granted
+     * `Uri` back here, which keeps the export's two halves in the order they must happen and
+     * leaves this class testable with a repository and no Robolectric activity at all.
+     *
+     * ## Why the file is written even when the owner has no accounts
+     *
+     * Because "no accounts" is a fact the backup must be able to carry: a fresh install whose
+     * owner exports before typing anything still gets a valid, complete, empty file rather than
+     * an error. Refusing would make the first backup — the one taken before anything can go
+     * wrong — the one that fails.
+     *
+     * A `null` [backups] reports the failure in the UI rather than throwing: this method is
+     * called from a coroutine whose caller is a `Uri` callback, and an exception crossing that
+     * boundary takes the Activity with it.
+     */
+    fun exportTo(uri: Uri) {
+        if (backups == null) {
+            exportErrorMessage.value = strings.pengaturanErrorExportFailed()
+            return
+        }
+        // Set synchronously, not inside the coroutine — see `exporting`'s KDoc.
+        if (exporting.value) return
+        exporting.value = true
+
+        exportErrorMessage.value = null
+        viewModelScope.launch {
+            try {
+                val document = backups.build()
+                val written = BackupFileWriter.write(strings.contextRef, uri, document.json)
+                if (written) {
+                    // The screen's **shared** success slot, now with a third writer: an account
+                    // save, an identity save and an export all land here, newest wins. That is
+                    // right for the same reason they share one banner — two `BottomCenter`
+                    // bars would stack on the same pixels — and the sequence that could lose a
+                    // message is two successes within the life of one bar, where the owner has
+                    // already seen both. The export's *failure* does not come here.
+                    message.value = strings.pengaturanExportSaved(document.filename)
+                } else {
+                    exportErrorMessage.value = strings.pengaturanErrorExportFailed()
+                }
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: Exception) {
+                // Said plainly rather than silently. A backup that half-wrote and reported
+                // success is worse than one that failed loudly: the owner would stop taking
+                // backups believing they had a current one.
+                exportErrorMessage.value = strings.pengaturanErrorExportFailed()
+            } finally {
+                exporting.value = false
+            }
+        }
+    }
+
+    /** Dismisses the export's failure banner and re-arms the action. */
+    fun consumeExportError() {
+        exportErrorMessage.value = null
     }
 
     /**

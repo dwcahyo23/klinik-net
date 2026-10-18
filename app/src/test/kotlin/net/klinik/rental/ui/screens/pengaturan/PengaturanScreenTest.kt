@@ -4,11 +4,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.SemanticsNodeInteraction
 import androidx.compose.ui.test.assertHeightIsAtLeast
+import androidx.compose.ui.test.assertIsEnabled
+import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -280,6 +284,165 @@ class PengaturanScreenTest {
         compose.onNodeWithTag(accountRowTag("a1")).assertAtLeast(MIN_TARGET, "account row")
     }
 
+    // ----------------------------------------------------- Story 5.1's backup
+
+    /**
+     * The backup control exists, and says what the export does.
+     *
+     * The section's copy is the acceptance criterion's substance rather than decoration: FR-17
+     * forbids claiming the data is encrypted, and a section that says "your data is safe here"
+     * without saying *why* would be making that claim by implication. So the test asserts the
+     * copy says the data is local and nothing is uploaded — the two facts that are true.
+     */
+    @Test
+    fun `the backup section exists and makes no encryption claim`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag(TAG_BACKUP_SECTION).assertExists()
+        compose.onNodeWithText("Data & cadangan").assertExists()
+        compose.onNodeWithText(
+            "Semua data tersimpan di perangkat ini dan tidak dikirim ke mana pun. " +
+                "Ekspor menulis satu berkas JSON yang bisa Anda simpan sendiri.",
+        ).assertExists()
+    }
+
+    /**
+     * Tapping the export action reaches its handler.
+     *
+     * The wiring assertion, not a render one. A backup button that draws and reaches nothing is
+     * the single worst version of the "control exists, wired to nothing" defect this repo has
+     * shipped repeatedly — here it would leave the owner believing they have an exit from their
+     * data when they do not.
+     */
+    @Test
+    fun `tapping the export action reaches its handler`() {
+        var exported = 0
+        compose.setContent {
+            theme {
+                Screen(state = populatedState(), onExport = { exported = exported + 1 })
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).performClick()
+        compose.waitForIdle()
+
+        assertEquals("the picker is launched", 1, exported)
+    }
+
+    /**
+     * And it is **disabled** while an export is in flight.
+     *
+     * A second tap would open a second file picker, and the second destination would silently
+     * win while the owner believed the first file had been written — so this is a double-write,
+     * not a cosmetic state.
+     */
+    @Test
+    fun `the export action is disabled while an export is in flight`() {
+        var exported = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(isExporting = true),
+                    onExport = { exported = exported + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).assertIsNotEnabled()
+        // And it says so, rather than simply going quiet — a button that changes nothing on
+        // tap leaves the owner wondering whether they pressed it.
+        compose.onNodeWithText("Menyimpan…").assertExists()
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).performClick()
+        compose.waitForIdle()
+        assertEquals("and a tap on it does nothing", 0, exported)
+    }
+
+    /**
+     * The action clears the 48dp floor like every other control here.
+     *
+     * Story 4.1 shipped a 38dp rail item and Story 4.5 a 44dp bottom nav, both caught only by
+     * a measurement. This is the app's only route to a copy of the owner's money, so it is
+     * measured rather than assumed.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the export action clears the touch floor`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).assertAtLeast(MIN_TARGET, "export action")
+    }
+
+    /**
+     * A failed export raises the **export's** banner, and dismissing it calls its own channel.
+     *
+     * The three failure sources share one banner slot — two `BottomCenter` bars would stack on
+     * the same pixels — so the tag is what distinguishes them, and the dismiss callback is what
+     * stops clearing the export's failure from also clearing the form's error.
+     */
+    @Test
+    fun `a failed export raises its own banner and dismisses through its own channel`() {
+        var exportDismissed = 0
+        var formDismissed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        exportErrorMessage = "Cadangan gagal disimpan. " +
+                            "Periksa ruang penyimpanan dan coba lagi.",
+                    ),
+                    onExportErrorDismiss = { exportDismissed = exportDismissed + 1 },
+                    onErrorDismiss = { formDismissed = formDismissed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXPORT_ERROR).assertExists()
+        compose.onNodeWithTag(TAG_BANNER).assertDoesNotExist()
+
+        // The banner's own trailing **close affordance**, not the bar. `KnSnackbar` draws the
+        // dismiss as a `Surface(onClick = …)` with an `Icon` inside it, so a click on the bar
+        // as a whole hits the `Surface` node the tag is on and never reaches the affordance —
+        // which is the shape this test exists to exercise.
+        compose.onNodeWithContentDescription("Tutup").performClick()
+        compose.waitForIdle()
+
+        assertEquals("the export's own channel", 1, exportDismissed)
+        assertEquals("and not the form's", 0, formDismissed)
+    }
+
+    /**
+     * The backup is available on a **fresh install** — no accounts at all.
+     *
+     * The whole point of an export is to have one before something goes wrong, and a fresh
+     * install is exactly when the owner might take it. Hiding the control inside the list's
+     * `isEmpty` branch would make the first backup impossible, which is why it is mounted
+     * outside that `when`.
+     */
+    @Test
+    fun `the backup action is available before any account exists`() {
+        compose.setContent { theme { Screen(state = PengaturanUiState()) } }
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).assertIsEnabled()
+        compose.onNodeWithTag(TAG_EMPTY).assertExists()
+    }
+
+    /**
+     * And it stays available while the list is still loading.
+     *
+     * The same argument as the fresh install: an owner who opens settings and immediately wants
+     * a backup should not have to wait for the account read to finish, and the read failing must
+     * not remove their way out.
+     */
+    @Test
+    fun `the backup action is available while the account list is loading`() {
+        compose.setContent {
+            theme { Screen(state = PengaturanUiState(isLoading = true)) }
+        }
+
+        compose.onNodeWithTag(TAG_EXPORT_ACTION).assertIsEnabled()
+    }
+
     // ------------------------------------------------------------------ helpers
 
     @Composable
@@ -310,6 +473,10 @@ class PengaturanScreenTest {
         // Defaulted here for the same reason as the identity callbacks above — this helper is
         // the fixture every existing test uses. The production parameter is required.
         onIdentityErrorDismiss: () -> Unit = {},
+        // Story 5.1's two, defaulted on the same argument. The production parameters are
+        // required; this helper is the fixture every test in the file shares.
+        onExport: () -> Unit = {},
+        onExportErrorDismiss: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -326,6 +493,8 @@ class PengaturanScreenTest {
             onIdentityChange = onIdentityChange,
             onSaveIdentity = onSaveIdentity,
             onIdentityErrorDismiss = onIdentityErrorDismiss,
+            onExport = onExport,
+            onExportErrorDismiss = onExportErrorDismiss,
         )
     }
 

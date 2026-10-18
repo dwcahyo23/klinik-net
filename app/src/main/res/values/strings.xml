@@ -785,6 +785,31 @@
     <string name="pengaturan_identity_saved">%1$s tersimpan sebagai identitas usaha</string>
 
     <!--
+      Story 5.1 — the backup. The section's body says where the data lives and that nothing is
+      sent anywhere, because both are the facts the owner is really asking when they back up:
+      "is my money only here, and does anything leave my tablet?" It deliberately says **notHING**
+      about encryption — FR-17 forbids reusing the prototype's "data tersimpan lokal dan
+      terenkripsi", which is not true of a plain JSON file.
+
+      The failure copy names the fix rather than reporting a code, per NFR-6. It is its own
+      string because a failed export is not a failed account save: the owner reads the first as
+      "my data is not safe" and the second as "the form was wrong".
+    -->
+    <string name="pengaturan_backup_section">Data &amp; cadangan</string>
+    <string name="pengaturan_backup_section_body">Semua data tersimpan di perangkat ini dan tidak dikirim ke mana pun. Ekspor menulis satu berkas JSON yang bisa Anda simpan sendiri.</string>
+    <string name="pengaturan_export_action">Ekspor data</string>
+    <string name="pengaturan_export_exporting">Menyimpan…</string>
+    <string name="pengaturan_export_saved">Cadangan tersimpan: %1$s</string>
+    <string name="pengaturan_error_export_failed">Cadangan gagal disimpan. Periksa ruang penyimpanan dan coba lagi.</string>
+    <!--
+      Why the restore is absent. Story 5.2 builds it; until then the section says so in words
+      rather than drawing a disabled button, which is the "renders and is wired to nothing"
+      defect this repo has shipped repeatedly. Removing this string should coincide with the
+      restore control appearing.
+    -->
+    <string name="pengaturan_backup_restore_pending">Pemulihan dari cadangan belum tersedia di versi ini.</string>
+
+    <!--
       Story 3.2 — Setoran (deposits).
 
       The numpad's own copy is not here: `KnNumPad` ships its digits and its Save

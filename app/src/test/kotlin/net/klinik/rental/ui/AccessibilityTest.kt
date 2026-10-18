@@ -765,6 +765,12 @@ class AccessibilityTest {
             onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 5.1's backup, for the same reason: this file walks every interactive node
+            // the shell can draw, and the export button's 48dp floor is only measured because
+            // the wiring is here.
+            onExportErrorDismiss = {},
+            onExportGranted = {},
+            backupFilename = { "klinik-net-backup-2026-10-19.json" },
         ),
         deposito = Screens.Deposito(
             state = SetoranUiState(),

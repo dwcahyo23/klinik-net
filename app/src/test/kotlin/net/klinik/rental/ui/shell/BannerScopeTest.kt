@@ -200,6 +200,12 @@ class BannerScopeTest {
             onIdentityErrorDismiss = {},
             onSnackbarDismiss = {},
             onErrorDismiss = {},
+            // Story 5.1's backup, named for the same reason: this file walks every window
+            // that can draw a banner, and the export's failure rides on the settings screen's
+            // single banner slot.
+            onExportErrorDismiss = {},
+            onExportGranted = {},
+            backupFilename = { "klinik-net-backup-2026-10-19.json" },
         ),
         deposito = Screens.Deposito(
             state = SetoranUiState(),

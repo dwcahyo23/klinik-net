@@ -3,12 +3,12 @@ package net.klinik.rental.ui.screens.pengaturan
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.lazy.LazyColumn
-import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -20,6 +20,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
@@ -97,6 +98,12 @@ fun PengaturanScreen(
     // other's message.
     identityErrorMessage: String? = null,
     onIdentityErrorDismiss: () -> Unit,
+    // Story 5.1's two. Required, not defaulted, for the reason the ones above give — and with a
+    // sharper edge here: a defaulted `onExport` would leave a button whose whole purpose is to
+    // give the owner a copy of their data, wired to nothing, on the screen where data loss is
+    // the thing being guarded against.
+    onExport: () -> Unit,
+    onExportErrorDismiss: () -> Unit,
     // Required, not defaulted. A defaulted lambda produces a control that renders and
     // silently does nothing — the failure the required-parameter rule exists to prevent, and
     // it has caught unwired call sites in five test files across two stories.
@@ -110,54 +117,67 @@ fun PengaturanScreen(
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
         Box(Modifier.fillMaxSize()) {
-            Column(Modifier.fillMaxSize()) {
-                KnTopBar(
-                    title = stringResource(R.string.pengaturan_title),
-                    // The account count lives on the bar rather than in a KPI tile, so the
-                    // screen says how much data it is showing without spending a card on it.
-                    subtitle = stringResource(
-                        R.string.pengaturan_account_count,
-                        state.accountCount,
-                    ),
-                    actions = {
-                        // The bar's action, so the owner can add an account whether or not any
-                        // exist. `Small` because the bar is 72dp tall and a `Default` button
-                        // would fill it edge to edge; `Small` still carries the 48dp floor
-                        // through `KnButton`.
-                        //
-                        // Its own tag rather than the empty state's, which draws the same
-                        // label: a shared tag would make a test asserting "the empty state's
-                        // action" silently resolve to the top bar's the moment an account
-                        // exists — the trap `KontrakScreen` records.
-                        KnButton(
-                            label = stringResource(R.string.pengaturan_add_action),
-                            onClick = onAdd,
-                            icon = Lucide.Landmark,
-                            size = KnButtonSize.Small,
-                            modifier = Modifier.testTag(TAG_ADD_ACTION),
-                        )
-                    },
-                )
+            Column(
+                    modifier = Modifier
+                        .fillMaxSize()
+                        .verticalScroll(rememberScrollState()),
+                ) {
+                    KnTopBar(
+                        title = stringResource(R.string.pengaturan_title),
+                        // The account count lives on the bar rather than in a KPI tile, so the
+                        // screen says how much data it is showing without spending a card on it.
+                        subtitle = stringResource(
+                            R.string.pengaturan_account_count,
+                            state.accountCount,
+                        ),
+                        actions = {
+                            // The bar's action, so the owner can add an account whether or not any
+                            // exist. `Small` because the bar is 72dp tall and a `Default` button
+                            // would fill it edge to edge; `Small` still carries the 48dp floor
+                            // through `KnButton`.
+                            //
+                            // Its own tag rather than the empty state's, which draws the same
+                            // label: a shared tag would make a test asserting "the empty state's
+                            // action" silently resolve to the top bar's the moment an account
+                            // exists — the trap `KontrakScreen` records.
+                            KnButton(
+                                label = stringResource(R.string.pengaturan_add_action),
+                                onClick = onAdd,
+                                icon = Lucide.Landmark,
+                                size = KnButtonSize.Small,
+                                modifier = Modifier.testTag(TAG_ADD_ACTION),
+                            )
+                        },
+                    )
 
-                // Story 4.4's identity block, **above** the list and outside its `when`.
-                //
-                // Outside, because the list's four states are the *account list's*, and the
-                // identity is a separate thing whose visibility has nothing to do with how
-                // many accounts exist: a fresh install with no accounts still needs to be
-                // able to name its business. Putting it inside the `isEmpty` branch would
-                // hide the very form a first run most needs.
-                IdentitySection(
-                    name = state.identity?.name,
-                    // Disabled until the identity has been read. The action is not a
-                    // navigation — it opens a form seeded from storage — so a tap before the
-                    // read lands would open the form on the **default** and the owner's next
-                    // save would write that over their real business name. The same reason
-                    // `KnNumPad`'s Save is gated rather than merely flashing.
-                    enabled = state.identity != null,
-                    onOpen = onOpenIdentity,
-                )
+                    // Story 4.4's identity block, **above** the list and outside its `when`.
+                    //
+                    // Outside, because the list's four states are the *account list's*, and the
+                    // identity is a separate thing whose visibility has nothing to do with how
+                    // many accounts exist: a fresh install with no accounts still needs to be
+                    // able to name its business. Putting it inside the `isEmpty` branch would
+                    // hide the very form a first run most needs.
+                    IdentitySection(
+                        name = state.identity?.name,
+                        // Disabled until the identity has been read. The action is not a
+                        // navigation — it opens a form seeded from storage — so a tap before the
+                        // read lands would open the form on the **default** and the owner's next
+                        // save would write that over their real business name. The same reason
+                        // `KnNumPad`'s Save is gated rather than merely flashing.
+                        enabled = state.identity != null,
+                        onOpen = onOpenIdentity,
+                    )
 
-                Box(Modifier.weight(1f)) {
+                    // Story 5.1's backup, beside the identity block and **outside** the list's
+                    // `when` for the same reason the identity is: the backup action's
+                    // availability has nothing to do with how many accounts exist. Inside
+                    // `isEmpty` it would be hidden on a fresh install — which is exactly the
+                    // moment the owner most wants it, before there is anything to lose.
+                    BackupSection(
+                        isExporting = state.isExporting,
+                        onExport = onExport,
+                    )
+
                     when {
                         state.isLoading -> KnSkeletonList(
                             rows = SKELETON_ROWS,
@@ -170,29 +190,32 @@ fun PengaturanScreen(
 
                         state.isEmpty -> PengaturanEmpty(onAdd = onAdd)
 
-                        else -> LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                                bottom = spacing.colossal,
-                            ),
+                        // A plain `Column` of rows rather than a `LazyColumn`.
+                        //
+                        // The list cannot be lazily composed inside a scrolling `Column` — a
+                        // `LazyColumn` with unbounded height throws — and it was a `LazyColumn`
+                        // because the list used to be the only thing that scrolled. A handful of
+                        // bank accounts is not a list that needs windowing: `PengaturanScreen`'s
+                        // own KDoc calls it "a handful of accounts". If that ever stops being
+                        // true, the fix is to pull the two cards *out* of the scroll and give the
+                        // list its own bounded `Box` again — not to reintroduce nesting.
+                        else -> Column(
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .padding(
+                                    start = spacing.lg,
+                                    end = spacing.lg,
+                                    top = spacing.lg,
+                                    bottom = spacing.colossal,
+                                ),
                             verticalArrangement = Arrangement.spacedBy(spacing.sm),
                         ) {
-                            items(
-                                items = state.rows,
-                                // Keyed on the account id: an edit that re-emits must not make
-                                // the remaining rows shift their saved state onto a different
-                                // account.
-                                key = { it.account.id },
-                            ) { row ->
+                            state.rows.forEach { row ->
                                 AccountListRow(row = row, onEdit = { onEdit(row) })
                             }
                         }
                     }
                 }
-            }
 
             // One snackbar, never two. Both messages are `BottomCenter` with the same padding,
             // so drawing them independently stacks two bars on the same pixels. They are also
@@ -206,7 +229,12 @@ fun PengaturanScreen(
             val banner: Pair<String, KnBadgeTone>? = if (state.form != null || state.identityForm != null) {
                 null
             } else {
-                state.errorMessage?.let { it to KnBadgeTone.Danger }
+                // The export's failure joins the same single banner rather than getting its own.
+                // Two `BottomCenter` bars with the same padding stack on the same pixels — the
+                // reason this is one pair and not two — and the export's failure is the more
+                // urgent of the two, so it goes first.
+                state.exportErrorMessage?.let { it to KnBadgeTone.Danger }
+                    ?: state.errorMessage?.let { it to KnBadgeTone.Danger }
                     ?: snackbarMessage?.let { it to KnBadgeTone.Success }
             }
 
@@ -217,12 +245,21 @@ fun PengaturanScreen(
                     modifier = Modifier
                         .align(Alignment.BottomCenter)
                         .padding(spacing.lg)
-                        .testTag(TAG_BANNER),
+                        // The export failure carries its own tag so a test can assert *that*
+                        // banner rather than "a banner" — the three sources share one slot, and
+                        // only the source distinguishes which failure the owner is being shown.
+                        .testTag(
+                            if (state.exportErrorMessage != null) TAG_EXPORT_ERROR else TAG_BANNER,
+                        ),
                     onDismiss = {
                         // Branch on the tone rather than on `state.errorMessage`, because the
                         // tone is what was actually *drawn*. Reading the state instead would be
                         // a second thing to keep in step with the first.
-                        if (tone == KnBadgeTone.Danger) onErrorDismiss() else onSnackbarDismiss()
+                        when {
+                            state.exportErrorMessage != null -> onExportErrorDismiss()
+                            tone == KnBadgeTone.Danger -> onErrorDismiss()
+                            else -> onSnackbarDismiss()
+                        }
                     },
                 )
             }
@@ -349,6 +386,87 @@ private fun IdentitySection(
     }
 }
 
+/**
+ * Story 5.1's backup control: where the data lives, and the one button that copies it out.
+ *
+ * ## Why the section says **nothing** about encryption
+ *
+ * Because the file is plain JSON and FR-17 explicitly forbids reusing the prototype's *"data
+ * tersimpan lokal dan terenkripsi"* — a claim that is not true of anything this app writes. The
+ * copy states the two facts the owner is really asking when they back up: the data is on this
+ * device, and nothing is sent anywhere. Those are both true.
+ *
+ * ## Why there is **no restore button**
+ *
+ * Because restoration is Story 5.2 and a disabled one would be the "renders and is wired to
+ * nothing" defect in its purest form — a control the owner can see, tap, and get nothing from,
+ * on the screen where they most expect the feature. The section says in words that it is not
+ * here yet, and that line should disappear when the control appears.
+ *
+ * ## Why [isExporting] disables rather than hides
+ *
+ * Because the export is a system file picker followed by a write, and a button that vanishes
+ * mid-tap leaves the owner wondering whether they pressed it. Disabling with a label that says
+ * what is happening is the same rule `KnNumPad`'s Save follows.
+ */
+@Composable
+private fun BackupSection(
+    isExporting: Boolean,
+    onExport: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+
+    Surface(
+        modifier = modifier
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.lg)
+            .testTag(TAG_BACKUP_SECTION),
+        color = MaterialTheme.knColors.bgCard,
+        contentColor = MaterialTheme.knColors.textPrimary,
+        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = stringResource(R.string.pengaturan_backup_section),
+                style = MaterialTheme.knTypography.label,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            Text(
+                text = stringResource(R.string.pengaturan_backup_section_body),
+                style = MaterialTheme.knTypography.body,
+                color = MaterialTheme.knColors.textPrimary,
+            )
+            KnButton(
+                label = stringResource(
+                    if (isExporting) {
+                        R.string.pengaturan_export_exporting
+                    } else {
+                        R.string.pengaturan_export_action
+                    },
+                ),
+                onClick = onExport,
+                variant = KnButtonVariant.Secondary,
+                size = KnButtonSize.Small,
+                icon = Lucide.Download,
+                // And disabled while it runs — a second tap would open a second file picker,
+                // and the owner's second choice would silently win over the first.
+                enabled = !isExporting,
+                modifier = Modifier.testTag(TAG_EXPORT_ACTION),
+            )
+            // The absent restore, stated rather than drawn. See the class KDoc.
+            Text(
+                text = stringResource(R.string.pengaturan_backup_restore_pending),
+                style = MaterialTheme.knTypography.body,
+                color = MaterialTheme.knColors.textTertiary,
+            )
+        }
+    }
+}
+
 /** One account: the bank as the title, the number beneath it. */
 @Composable
 private fun AccountListRow(
@@ -428,6 +546,17 @@ internal const val TAG_BANNER = "pengaturan-banner"
 // would let a test asserting "the empty state's action" silently resolve to the identity's
 // once an account exists — the trap `KontrakScreen` records.
 internal const val TAG_IDENTITY_SECTION = "pengaturan-identity-section"
+
+/**
+ * The backup section and its one control.
+ *
+ * Their own tags rather than the account list's: `TAG_EMPTY`'s action draws the same
+ * *"tambah rekening"* label, and a shared tag would let a test asserting the backup control
+ * resolve to another button the moment the screen grows one.
+ */
+internal const val TAG_BACKUP_SECTION = "pengaturan-backup-section"
+internal const val TAG_EXPORT_ACTION = "pengaturan-export-action"
+internal const val TAG_EXPORT_ERROR = "pengaturan-export-error"
 internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"
 internal const val TAG_IDENTITY_ACTION = "pengaturan-identity-action"
 
@@ -473,6 +602,8 @@ private fun PengaturanScreenPreview() {
             onIdentityChange = { it },
             onSaveIdentity = {},
             onIdentityErrorDismiss = {},
+            onExport = {},
+            onExportErrorDismiss = {},
             onErrorDismiss = {},
         )
     }
