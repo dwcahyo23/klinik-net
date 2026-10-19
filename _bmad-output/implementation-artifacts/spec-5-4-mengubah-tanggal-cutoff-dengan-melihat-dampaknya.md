@@ -2,7 +2,7 @@
 title: 'Story 5.4 — Mengubah tanggal cutoff dengan melihat dampaknya'
 type: 'feature'
 created: '2026-10-19'
-status: 'in-progress'
+status: 'done'
 baseline_revision: 'a8bd913ea57b1a248019fa0cf276f6ab66822786'
 context:
   - '{project-root}/_bmad-output/implementation-artifacts/epic-5-context.md'
@@ -161,9 +161,79 @@ touched, because changing the range must never rewrite the facts.
 
 ## Spec Change Log
 
+### `cutoffShift` is deliberately not called, and the reason is worth recording
+
+The domain function from Story 1.5 looks purpose-built for this story and is not used. It takes
+the *stored allocation rows*; the app's arrears read re-derives them from the deposits
+(`previewAllocation`'s KDoc explains why — a stored read would let the preview disagree with the
+save the moment history and re-derivation drifted). So the two day lists come from two
+`previewAllocation` calls over the same deposits. Same property, different input, and the
+`CutoffShift.kt` KDoc's guarantee is preserved by construction rather than by being called.
+
+### The `combine` had to be restructured — an unanticipated change
+
+The settings ViewModel carried seven sources by the end of this story. `combine` has typed
+overloads to five and a sixth falls through to the `vararg` one whose lambda takes an
+`Array<Any?>`. Nesting kept it typed until the nesting itself became a `Pair<Pair<A, B>, C>` that
+the file could no longer be read out of. Each concern now bundles **once** into a value class of
+its own (`ExportSnapshot`, `RestoreSnapshot`, `PinSnapshot`, `CutoffSnapshot`, and one `DatalessTriple`
+to carry three of them), so the outer `combine` takes four typed sources. No behaviour changed;
+the same flows are read in the same places.
+
+This is the third time this repo has hit the same wall, and the first time the fix was made
+structurally rather than by adding one more nesting level.
+
+### Two test bugs, both mine
+
+- The empty-database case used `clearAllTables()`, which **asserts it is off the main thread** —
+  and `runBlocking` on the test thread *is* the main thread. Replaced with a second in-memory
+  database, which is also closer to the case: a fresh install, not a wiped one.
+- Two test names collided (`no preview means no dialog` already existed for the restore dialog),
+  and the collision reads as a missing runner rather than a duplicate name. The new one is
+  `a pick alone opens no cutoff dialog`, and it asserts something the old one could not: that a
+  **pick** does not open a dialog, because the dialog's presence is the computed preview's
+  business.
+
+### The cutoff chips sit below the fold
+
+`picking a day reaches its handler` had to `performScrollTo()`. The screen now carries four cards,
+and 28 chips below three of them are off-screen on the default viewport. An owner scrolls; so does
+the test — and the first version without the scroll failed in exactly the way a clipped control
+should.
+
 ## Review Triage Log
 
 ## Auto Run Result
+
+### Files changed
+
+| File | Change |
+|---|---|
+| `data/repository/PaymentRepository.kt` | `cutoffDayOverride` on `previewAllocation` and `arrearsEntry`; `cutoffDay()`, `previewCutoffChange()`, `setCutoffDay()`, `CutoffChangePreview` |
+| `ui/screens/pengaturan/PengaturanUiState.kt` | `CutoffSettingsUi`, `CutoffPreviewUi`, three new state fields |
+| `ui/screens/pengaturan/PengaturanViewModel.kt` | pick → preview → confirm; the value-class bundles that replaced the `combine` nesting |
+| `ui/screens/pengaturan/PengaturanScreen.kt` | the 28-chip card; the cutoff's fourth banner source |
+| `ui/screens/pengaturan/CutoffPreviewDialog.kt` | **new** — counts, delta, periods, the ledger note |
+| `ui/shell/NavGraph.kt`, `MainActivity.kt`, `strings.xml`, `RStrings.kt` | the wiring and eleven strings |
+
+### Verification
+
+- `./gradlew :domain:test` -- **SUCCESS** (203)
+- `./gradlew :app:testDebugUnitTest` -- **SUCCESS** (1060, 0 failures)
+- `./gradlew :app:assembleDebug` -- **SUCCESS**
+- `git grep -n "deleteForContract\|deleteForPayment" PaymentRepository.kt` -- three hits, all inside
+  `cancelDeposit` (L392) and `correctDeposit` (L500). `setCutoffDay` (L1126) has none.
+- **Mutation run**: adding `allocationDao.deleteForContract(...)` to `setCutoffDay` fails exactly
+  `changing the cutoff touches no allocation row`. Reverted.
+
+### Residual risks
+
+- **No device run.** The 28-chip card's layout at a large system font size, and the preview
+  dialog beside the on-screen keyboard, were not exercised on hardware.
+- **The preview reads every contract twice.** At twenty contracts that is forty
+  `previewAllocation` calls, each re-deriving allocations. It is fast (Story 1.6 measured the full
+  recomputation well under the budget) but it is O(contracts × deposits), and a fleet far larger
+  than the PRD's bound would make the dialog slow. Worth a note when that bound moves.
 
 ## Design Notes
 
