@@ -78,7 +78,7 @@ development_status:
   5-2-memulihkan-data-dari-cadangan: done # strict reader (optJSONArray nowhere: a missing key read as [] turns a corrupt file into a successful wipe), one-transaction replace, preview before confirm. 1002 app tests green
   5-3-mengunci-aplikasi-dengan-pin-dan-kode-pemulihan: done # PBKDF2 + 20-char recovery code shown once; NEVER_EXPORTED grew to all 9 PIN keys (a restored pinEnabled with no hash is a lock nobody can open)
   5-4-mengubah-tanggal-cutoff-dengan-melihat-dampaknya: done # mandatory preview (no ViewModel path writes without it); one settings row, zero allocation rows — proven by mutation
-  5-5-mengingat-kalau-backup-belum-dibuat: backlog
+  5-5-mengingat-kalau-backup-belum-dibuat: done # banner on Beranda, three gates (data exists, nudge hour passed, not exported today). lastBackupDate written inside BackupRepository.build(), never in the ViewModel's success branch
   5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
   epic-5-retrospective: optional
 

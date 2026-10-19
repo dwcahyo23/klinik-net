@@ -46,6 +46,16 @@ data class BerandaUiState(
     val incomeRupiah: Long = 0L,
     val arrearsRupiah: Long = 0L,
     val isLoading: Boolean = false,
+    /**
+     * Story 5.5's reminder, or `null` when there is nothing to say.
+     *
+     * `null` is three separate "no reminder" cases — never exported, exported today, or a
+     * database with no deposits — collapsed into one, because the screen draws one thing or
+     * nothing and the *reason* for silence is not the owner's business. A reminder that said
+     * "you have not backed up today, but you have no data anyway" would be the app talking to
+     * itself.
+     */
+    val backupReminder: BackupReminderUi? = null,
 ) {
     /**
      * Whether the summary has nothing to show.
@@ -57,6 +67,22 @@ data class BerandaUiState(
     val isQuietMorning: Boolean
         get() = incomeRupiah == 0L && arrearsRupiah == 0L
 }
+
+/**
+ * The reminder's content, already formatted.
+ *
+ * Built by the ViewModel for the reason every `*Ui` type in this app is built: a sentence
+ * assembled in a composable is assembled per recomposition, and the last-export line is
+ * optional in a way a `null` check in the UI would have to get right every time.
+ *
+ * @property lastExportLine `Ekspor terakhir 19 Okt`, or `null` when the owner has never
+ *   exported — the AC says *"menyebut tanggal ekspor terakhir, **kalau ada**"*, so a first-run
+ *   reminder carries no date rather than a line reading "never".
+ */
+data class BackupReminderUi(
+    val body: String,
+    val lastExportLine: String?,
+)
 
 /**
  * The fleet's three counts, in the order the tile shows them.

@@ -165,6 +165,18 @@
     -->
     <string name="pengaturan_cutoff_ledger_note">Catatan setoran tidak diubah — hanya periode tagihan yang bergeser.</string>
 
+    <!--
+      Story 5.5 — the backup reminder. Deliberately not a modal and not an escalation: the epic
+      rejects automation precisely because it stores files the owner does not know about, and a
+      nag that grows is the same problem in a smaller package.
+    -->
+    <string name="beranda_backup_reminder_body">Belum ada cadangan hari ini. Data Anda hanya ada di perangkat ini.</string>
+    <string name="beranda_backup_reminder_last">Ekspor terakhir: %1$s</string>
+    <string name="beranda_backup_reminder_action">Cadangkan sekarang</string>
+    <string name="beranda_backup_reminder_title">Cadangkan data</string>
+    <string name="beranda_backup_reminder_dialog_body">Semua data rental Anda — mobil, penyewa, kontrak, dan catatan setoran — hanya ada di perangkat ini. Kalau perangkat hilang atau rusak, tidak ada salinannya. Berkas cadangan bisa Anda simpan sendiri di mana saja.</string>
+    <string name="beranda_backup_reminder_dialog_go">Buka Ekspor data</string>
+
     <!-- Logo / iconography -->
     <string name="logo_lockup_description">Klinik.Net</string>
     <string name="logo_mono_description">Klinik.Net</string>

@@ -558,6 +558,10 @@ internal fun createBerandaViewModel(context: Context): BerandaViewModel {
         // The same clock every other ViewModel gets, for the same reason: "today" decides
         // which deposits count, and a test that passed in October would fail in November.
         clock = Clock.systemDefaultZone(),
+        // Story 5.5's reminder, over the **same** repository the settings screen exports
+        // through. Two instances would still read the same rows, but the reminder's date and
+        // the export's date must be one fact, and one repository makes that structural.
+        backups = createBackupRepository(database, Clock.systemDefaultZone()),
     )
 }
 
@@ -914,6 +918,12 @@ private fun KlinikNetApp(
                 beranda = Screens.Beranda(
                     state = berandaState,
                     onDeposit = setoran::openDeposit,
+                    // Story 5.5: the owner tapped the backup reminder. Nothing is written and
+                    // no route is taken here — the dialog is the screen's own window and the
+                    // navigation belongs to the shell. This is here so the tap is observable
+                    // at all, which is the difference between "a dialog appeared" and "the
+                    // app knows the owner is worried about their backup".
+                    onBackupReminderTap = beranda::onBackupReminderTapped,
                 ),
                 // Story 4.5's report. No navigation verb: the only control is picking a
                 // period, which is the screen's own state, so a second nav controller here

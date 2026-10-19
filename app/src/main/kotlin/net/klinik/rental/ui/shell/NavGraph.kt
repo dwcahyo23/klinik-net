@@ -217,6 +217,12 @@ private fun BerandaRoute(wiring: Screens.Beranda, navController: NavHostControll
         onAddVehicle = { navController.navigateTo(Destination.Kendaraan.route) },
         onManageRenters = { navController.navigateTo(Destination.Penyewa.route) },
         onSendReminder = { navController.navigateTo(Destination.Tunggakan.route) },
+        // Story 5.5's reminder routes to **Pengaturan**, not to a picker: the export lives
+        // there, and a second door to the same action is the defect this shell's KDoc warns
+        // about. `onBackupReminderTap` is forwarded to the bundle rather than handled here,
+        // so a test can assert the tap reached its handler and not merely opened a dialog.
+        onBackupReminderTap = wiring.onBackupReminderTap,
+        onBackupExport = { navController.navigateTo(Destination.Pengaturan.route) },
     )
 }
 
@@ -706,6 +712,15 @@ internal class Screens(
     class Beranda(
         val state: net.klinik.rental.ui.screens.beranda.BerandaUiState,
         val onDeposit: () -> Unit,
+        /**
+         * Story 5.5: the backup reminder was tapped.
+         *
+         * Required, not defaulted, for the reason every member here is — and it is carried
+         * through the route rather than handled by it, so a test can assert the tap reached
+         * **something** rather than only that a dialog appeared. The dialog is the screen's own
+         * window; this is the fact that the owner asked, which is worth being observable.
+         */
+        val onBackupReminderTap: () -> Unit,
     )
 
     /**

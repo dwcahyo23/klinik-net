@@ -14,6 +14,10 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.saveable.rememberSaveable
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -73,9 +77,16 @@ fun BerandaScreen(
     onAddVehicle: () -> Unit,
     onManageRenters: () -> Unit,
     onSendReminder: () -> Unit,
+    onBackupReminderTap: () -> Unit,
+    onBackupExport: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
+
+    // Story 5.5's dialog, mounted from this file beside the banner that opens it — the two are
+    // one feature and a dialog living in another file would be a window whose owner state is
+    // somewhere else.
+    var reminderDialogShown by rememberSaveable { mutableStateOf(false) }
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -92,6 +103,20 @@ fun BerandaScreen(
                     .padding(spacing.lg),
                 verticalArrangement = Arrangement.spacedBy(spacing.lg),
             ) {
+                // Story 5.5's reminder, **above** the tiles: the screen opens every day and a
+                // reminder below four KPIs is a reminder nobody reaches.
+                state.backupReminder?.let { reminder ->
+                    BackupReminderBanner(
+                        reminder = reminder,
+                        // The tap only records "the owner asked"; the dialog is this screen's
+                        // own window, so opening it needs no ViewModel round trip.
+                        onTap = {
+                            reminderDialogShown = true
+                            onBackupReminderTap()
+                        },
+                    )
+                }
+
                 KpiRow(state)
 
                 Text(
@@ -107,6 +132,17 @@ fun BerandaScreen(
                     onSendReminder = onSendReminder,
                 )
             }
+        }
+
+        // The dialog, outside the scrolling column so it is not part of what scrolls.
+        if (reminderDialogShown) {
+            BackupReminderDialog(
+                onGo = {
+                    reminderDialogShown = false
+                    onBackupExport()
+                },
+                onDismiss = { reminderDialogShown = false },
+            )
         }
     }
 }

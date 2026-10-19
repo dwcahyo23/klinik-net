@@ -2,7 +2,9 @@ package net.klinik.rental.data.backup
 
 import java.time.Clock
 import java.time.LocalDate
+import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.db.dao.AllocationDao
 import net.klinik.rental.data.db.dao.BusinessAccountDao
@@ -12,6 +14,7 @@ import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.SettingDao
 import net.klinik.rental.data.db.dao.VehicleDao
+import net.klinik.rental.data.db.entity.SettingEntity
 
 /**
  * What an export produced: the text to write, and the name the owner sees.
@@ -78,20 +81,67 @@ class BackupRepository(
      * which query finished first — a deposit written between two of them would appear half in
      * the file and half outside it.
      */
-    suspend fun build(): BackupDocument = BackupDocument(
-        filename = filenameFor(LocalDate.now(clock)),
-        json = BackupJson.build(
-            vehicles = vehicleDao.observeAll().first(),
-            renters = renterDao.observeAll().first(),
-            contracts = contractDao.observeAll().first(),
-            serviceExceptions = serviceExceptionDao.observeAll().first(),
-            businessAccounts = businessAccountDao.observeAll().first(),
-            payments = paymentDao.observeAllForHistory().first(),
-            allocations = allocationDao.all(),
-            settings = settingDao.all(),
-            schemaVersion = SCHEMA_VERSION,
-        ),
-    )
+    suspend fun build(): BackupDocument {
+        // The last export date is written **here**, beside the act that earned it, rather than
+        // in the ViewModel's success branch. The two write the same string and differ in one
+        // way that matters: this runs when the export succeeds, a message is written after it
+        // returns, and a process death between the two loses the record of a backup that
+        // exists. Story 5.5's reminder compares against this, so a missed write is a banner
+        // that nags an owner who already backed up.
+        //
+        // One `putSetting`, in the same read-then-write shape as `build()`'s eight reads. Not
+        // in a transaction: there is nothing to be atomic with, and `withTransaction` asserts
+        // it is off the main thread, which a test that only reads the document would trip.
+        settingDao.putSetting(
+            SettingEntity(
+                key = KEY_LAST_BACKUP_DATE,
+                value = LocalDate.now(clock).toString(),
+            ),
+        )
+
+        return BackupDocument(
+            filename = filenameFor(LocalDate.now(clock)),
+            json = BackupJson.build(
+                vehicles = vehicleDao.observeAll().first(),
+                renters = renterDao.observeAll().first(),
+                contracts = contractDao.observeAll().first(),
+                serviceExceptions = serviceExceptionDao.observeAll().first(),
+                businessAccounts = businessAccountDao.observeAll().first(),
+                payments = paymentDao.observeAllForHistory().first(),
+                allocations = allocationDao.all(),
+                settings = settingDao.all(),
+                schemaVersion = SCHEMA_VERSION,
+            ),
+        )
+    }
+
+    /**
+     * How many deposits exist at all - Story 5.5's "does this owner have anything to lose".
+     *
+     * A **deposit**, not a general row count, on purpose. A vehicle added yesterday can be
+     * retyped in a minute; six months of deposits is what "ini satu-satunya salinan data" is
+     * true of, and it is what the reminder protects. Counting vehicles would remind an owner
+     * with a full fleet and no rentals that their backup is stale, which is not the same
+     * warning.
+     *
+     * A [Flow] rather than a suspend count because the answer has to **change**: the owner
+     * records their first deposit in another screen, returns, and the reminder must appear
+     * without reopening the app. A count read once at construction would nag an owner who
+     * had not yet done anything.
+     */
+    fun observeDepositCount(): Flow<Int> =
+        paymentDao.observeAllForHistory().map { rows -> rows.size }
+
+    /**
+     * The date of the last export, or `null` when the owner has never exported.
+     *
+     * A **date**, not a boolean, because Story 5.5's banner names it: a last date is a fact
+     * the owner reads, and a boolean could only answer today's question. Today's comparison is
+     * then a derivation rather than a second stored fact.
+     */
+    suspend fun lastBackupDate(): LocalDate? =
+        settingDao.findValue(KEY_LAST_BACKUP_DATE)
+            ?.let { runCatching { LocalDate.parse(it) }.getOrNull() }
 
     /**
      * The filename an export on [date] is offered under.
@@ -100,4 +150,26 @@ class BackupRepository(
      * one-line assertion rather than a test that has to run a whole export to look at a string.
      */
     fun filenameFor(date: LocalDate): String = "klinik-net-backup-$date.json"
+
+    companion object {
+        /**
+         * The settings key holding the last export date.
+         *
+         * Deliberately **not** in `BackupJson.NEVER_EXPORTED`: a last-export date is a
+         * preference the owner benefits from having restored onto a new device — it is not a
+         * secret, and dropping it would make the first reminder on a restored install fire
+         * against a backup the owner demonstrably already has.
+         */
+        const val KEY_LAST_BACKUP_DATE = "lastBackupDate"
+
+        /**
+         * The hour after which the reminder may appear, when the owner has not chosen one.
+         *
+         * 09:00: after the day's deposits are usually recorded and before the owner has left
+         * the office. See the spec's Design Notes for why this is a setting rather than a
+         * constant — the same reminder is noise at 07:00 for a bookkeeper and too late at 22:00
+         * for someone who runs the books each morning.
+         */
+        const val DEFAULT_NUDGE_HOUR = 9
+    }
 }

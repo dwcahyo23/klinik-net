@@ -941,6 +941,7 @@ class AppShellTest {
         beranda = Screens.Beranda(
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
+            onBackupReminderTap = {},
         ),
         // The seventh, Story 4.5's. Empty but present: the parameter is required so this
         // fixture cannot ship a report with no figures and call the shell green.

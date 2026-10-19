@@ -822,6 +822,10 @@ class AccessibilityTest {
         beranda = Screens.Beranda(
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
+            // Story 5.5's reminder. Named for the same reason as every callback above: this
+            // file walks every interactive node the shell can draw, and the banner's action is
+            // one of them.
+            onBackupReminderTap = {},
         ),
         // Story 4.5's report, written out for the same reason: its period chips and its
         // four risk rows are interactive or bearing nodes this walk has to reach.

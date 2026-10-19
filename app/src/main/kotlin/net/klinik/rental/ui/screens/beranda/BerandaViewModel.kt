@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
+import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -20,6 +21,8 @@ import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.screens.kendaraan.VehicleStatus
 import net.klinik.rental.ui.strings.RStrings
 import java.time.Clock
+import java.time.LocalDate
+import java.time.LocalDateTime
 
 /**
  * Owns the morning summary's state — Story 4.3.
@@ -60,6 +63,15 @@ class BerandaViewModel(
      * for how it works.
      */
     private val arrearsSourceOverride: (() -> Flow<List<ContractArrears>>)? = null,
+    /**
+     * Story 5.5's backup repository.
+     *
+     * Optional so every existing test that builds this ViewModel without one keeps compiling —
+     * and so the reminder simply does not appear rather than appearing with an invented date.
+     */
+    private val backups: net.klinik.rental.data.backup.BackupRepository? = null,
+    /** The hour the nudge may appear, supplied by the caller from the owner's setting. */
+    private val nudgeHour: Int = net.klinik.rental.data.backup.BackupRepository.DEFAULT_NUDGE_HOUR,
 ) : ViewModel() {
 
     /**
@@ -105,6 +117,48 @@ class BerandaViewModel(
         ) { vehicles, rented -> vehicles to rented }
 
     /**
+     * Story 5.5's reminder source, read as its own flow.
+     *
+     * ## Why it reads the deposit table directly rather than reusing `fleet` or the arrears source
+     *
+     * Because "has this owner anything to lose" is a question about **deposits**, and neither of
+     * those flows carries one. Reading a table the reminder alone cares about is cheaper than
+     * widening a source every other screen also pays for.
+     *
+     * ## Why it re-reads on every emission rather than once
+     *
+     * Because two of its three inputs are settings the owner can change from another screen, and
+     * a reminder computed once at construction would show a date the export has since replaced.
+     * `observeAllForHistory` re-emits after every export, which is exactly when the answer
+     * changes.
+     */
+
+    private val reminderSource: Flow<BackupReminderUi?> = flow {
+        val repository = backups
+        if (repository == null) {
+            // No repository: the screen builds one it did not ask for, which would be a reminder
+            // whose date came from somewhere other than the export that set it.
+            emit(null)
+            return@flow
+        }
+        repository.observeDepositCount().collect { count ->
+            emit(
+                backupReminder(
+                    lastExport = repository.lastBackupDate(),
+                    depositCount = count,
+                    today = LocalDate.now(clock),
+                    // The hour is read from the clock, **not** from `today` — a `LocalDate` has
+                    // no hour, and reading one is a compile error rather than a reminder that
+                    // quietly never appears.
+                    currentHour = LocalDateTime.now(clock).hour,
+                    hour = nudgeHour,
+                    strings = strings,
+                ),
+            )
+        }
+    }
+
+    /**
      * The screen state.
      *
      * `flatMapLatest` on the arrears source keeps the failure a value rather than an
@@ -112,10 +166,12 @@ class BerandaViewModel(
      * `KendaraanViewModel` nests rather than reaching for the `vararg` overload.
      */
     val uiState: StateFlow<BerandaUiState> = combine(
-        arrearsSource,
-        payments.observeTodaysIncome(clock),
+        combine(arrearsSource, payments.observeTodaysIncome(clock)) { source, income -> source to income },
         fleet,
-    ) { source, income, (vehicles, rentedPlates) ->
+        reminderSource,
+    ) { sourceAndIncome, vehiclesAndPlates, reminder ->
+        val (source, income) = sourceAndIncome
+        val (vehicles, rentedPlates) = vehiclesAndPlates
         val split = splitFleet(vehicles, rentedPlates)
         val arrears = source.arrearsTotal()
         BerandaUiState(
@@ -131,6 +187,7 @@ class BerandaViewModel(
             // screen that says "Rp 0" before it has looked is the app claiming nobody owes
             // anything.
             isLoading = source is Source.Loading,
+            backupReminder = reminder,
         )
     }
         // After the projection, so an emission that produces identical figures does not
@@ -154,6 +211,46 @@ class BerandaViewModel(
     private fun Source.arrearsTotal(): Long = when (this) {
         Source.Loading, is Source.Failed -> 0L
         is Source.Loaded -> entries.sumOf { it.amount }
+    }
+
+
+    /**
+     * Story 5.5: the owner tapped the reminder.
+     *
+     * Records **that** they asked, and nothing else - no flag the banner reads, no route, no
+     * write. It exists so the tap is observable from a test: a dialog appearing proves the
+     * button was pressed, but not that the app's own callback chain is intact, and this is
+     * the end of that chain.
+     */
+    fun onBackupReminderTapped() {
+        taps += 1
+    }
+
+    /** How many times the reminder has been tapped. For a test, and nothing else. */
+    val reminderTaps: Int get() = taps
+
+    private var taps = 0
+
+    private fun backupReminder(
+        lastExport: LocalDate?,
+        depositCount: Int,
+        today: LocalDate,
+        currentHour: Int,
+        hour: Int,
+        strings: RStrings,
+    ): BackupReminderUi? {
+        // Never exported and nothing to lose: a reminder about backing up nothing is noise,
+        // and the first-run owner would meet it on the morning they have not yet typed a
+        // deposit.
+        if (lastExport == today) return null
+        if (depositCount == 0) return null
+        if (currentHour < hour) return null
+
+        return BackupReminderUi(
+            body = strings.berandaBackupReminderBody(),
+            lastExportLine = lastExport
+                ?.let { strings.berandaBackupReminderLast(strings.formatExceptionDate(it)) },
+        )
     }
 }
 

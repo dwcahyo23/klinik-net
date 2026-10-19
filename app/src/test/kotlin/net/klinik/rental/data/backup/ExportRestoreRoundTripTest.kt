@@ -194,7 +194,29 @@ class ExportRestoreRoundTripTest {
         assertTrue(read(target.renterDao().observeAll()).isEmpty())
         assertTrue(read(target.paymentDao().observeAllForHistory()).isEmpty())
         assertTrue(target.allocationDao().all().isEmpty())
-        assertTrue(target.settingDao().all().isEmpty())
+
+        // And the one row the export adds **survives** the round trip, because it is the record
+        // that a backup exists. Story 5.5's reminder compares against it, so a restore that
+        // dropped it would nag an owner about a backup they demonstrably have — which is why
+        // `lastBackupDate` is deliberately absent from `NEVER_EXPORTED`.
+        assertEquals(
+            listOf(BackupRepository.KEY_LAST_BACKUP_DATE),
+            target.settingDao().all().map { it.key },
+        )
+        assertEquals(
+            "2026-10-19",
+            BackupRepository(
+                vehicleDao = target.vehicleDao(),
+                renterDao = target.renterDao(),
+                contractDao = target.contractDao(),
+                serviceExceptionDao = target.serviceExceptionDao(),
+                businessAccountDao = target.businessAccountDao(),
+                paymentDao = target.paymentDao(),
+                allocationDao = target.allocationDao(),
+                settingDao = target.settingDao(),
+                clock = CLOCK,
+            ).lastBackupDate().toString(),
+        )
     }
 
     // ------------------------------------------------------------------ helpers

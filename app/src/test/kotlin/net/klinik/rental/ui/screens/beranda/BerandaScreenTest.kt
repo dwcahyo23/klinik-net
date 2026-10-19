@@ -10,6 +10,7 @@ import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -174,6 +175,136 @@ class BerandaScreenTest {
         compose.onNodeWithText("Rp 750.000").assertDoesNotExist()
     }
 
+    // ----------------------------------------------------- Story 5.5's reminder
+
+    /**
+     * The banner draws, with its body and its action, and **above** the KPI row.
+     *
+     * "Above" is asserted rather than assumed: the screen opens every day, and a reminder below
+     * four tiles is a reminder nobody reaches. Both being present at once is the claim — not that
+     * one replaced the other.
+     */
+    @Test
+    fun `the reminder banner draws above the tiles`() {
+        compose.setContent { theme { Screen(state = berandaState().copy(backupReminder = reminder())) } }
+
+        compose.onNodeWithTag(TAG_BACKUP_BANNER).assertExists()
+        compose.onNodeWithText("Belum ada cadangan hari ini. Data Anda hanya ada di perangkat ini.")
+            .assertExists()
+        compose.onNodeWithTag(TAG_BACKUP_ACTION).assertExists()
+        // And the tiles are still there — the reminder costs a row, not the screen.
+        compose.onNodeWithTag(TAG_KPI_ROW).assertExists()
+    }
+
+    /** The last-export line appears **only** when there is one. */
+    @Test
+    fun `the banner names the last export only when there is one`() {
+        compose.setContent { theme { Screen(state = berandaState().copy(backupReminder = reminder())) } }
+
+        // A first run: no date line at all, rather than a line reading "never".
+        compose.onNodeWithTag(TAG_BACKUP_LAST).assertDoesNotExist()
+    }
+
+    @Test
+    fun `the banner names the last export when there is one`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = berandaState().copy(
+                        backupReminder = reminder(lastExportLine = "Ekspor terakhir: 18 Okt"),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_BACKUP_LAST).assertExists()
+        compose.onNodeWithText("Ekspor terakhir: 18 Okt").assertExists()
+    }
+
+    /** No reminder means no banner — the common case, and it must draw nothing. */
+    @Test
+    fun `no reminder means no banner`() {
+        compose.setContent { theme { Screen(state = berandaState()) } }
+
+        compose.onNodeWithTag(TAG_BACKUP_BANNER).assertDoesNotExist()
+    }
+
+    /** Tapping reaches the handler **and** opens the dialog. */
+    @Test
+    fun `tapping the banner reaches the handler and opens the dialog`() {
+        var tapped = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = berandaState().copy(backupReminder = reminder()),
+                    onBackupReminderTap = { tapped = tapped + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_BACKUP_ACTION).performClick()
+        compose.waitForIdle()
+
+        assertEquals("the tap is observable", 1, tapped)
+        compose.onNodeWithTag(TAG_BACKUP_DIALOG).assertExists()
+        // And it explains why, before offering the door.
+        compose.onNodeWithText(
+            "Semua data rental Anda — mobil, penyewa, kontrak, dan catatan setoran — hanya ada di " +
+                "perangkat ini. Kalau perangkat hilang atau rusak, tidak ada salinannya. Berkas " +
+                "cadangan bisa Anda simpan sendiri di mana saja.",
+        ).assertExists()
+    }
+
+    /** The dialog's confirm routes to the export — and does not launch anything itself. */
+    @Test
+    fun `the dialog confirm reaches the export handler`() {
+        var exported = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = berandaState().copy(backupReminder = reminder()),
+                    onBackupExport = { exported = exported + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_BACKUP_ACTION).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Buka Ekspor data").performClick()
+        compose.waitForIdle()
+
+        assertEquals("and it goes to the settings screen, which owns the export", 1, exported)
+        // And the dialog is gone — a window that outlives its decision is a tap blocker.
+        compose.onNodeWithTag(TAG_BACKUP_DIALOG).assertDoesNotExist()
+    }
+
+    /** Dismissing leaves the banner exactly where it was. */
+    @Test
+    fun `dismissing the dialog leaves the banner`() {
+        var exported = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = berandaState().copy(backupReminder = reminder()),
+                    onBackupExport = { exported = exported + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_BACKUP_ACTION).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithText("Batal").performClick()
+        compose.waitForIdle()
+
+        assertEquals("and nothing was exported", 0, exported)
+        compose.onNodeWithTag(TAG_BACKUP_BANNER).assertExists()
+    }
+
+    private fun reminder(lastExportLine: String? = null) = BackupReminderUi(
+        body = "Belum ada cadangan hari ini. Data Anda hanya ada di perangkat ini.",
+        lastExportLine = lastExportLine,
+    )
+
     // -------------------------------------------------------------------- helpers
 
     @Composable
@@ -194,6 +325,11 @@ class BerandaScreenTest {
         onAddVehicle: () -> Unit = {},
         onManageRenters: () -> Unit = {},
         onSendReminder: () -> Unit = {},
+        // Story 5.5's two. Defaulted **here** on purpose, like every callback above: this
+        // helper is the fixture the whole file shares, and the new tests that exercise the
+        // reminder pass them explicitly.
+        onBackupReminderTap: () -> Unit = {},
+        onBackupExport: () -> Unit = {},
     ) {
         BerandaScreen(
             state = state,
@@ -201,6 +337,8 @@ class BerandaScreenTest {
             onAddVehicle = onAddVehicle,
             onManageRenters = onManageRenters,
             onSendReminder = onSendReminder,
+            onBackupReminderTap = onBackupReminderTap,
+            onBackupExport = onBackupExport,
         )
     }
 

@@ -738,6 +738,26 @@ class RStrings(private val context: Context) {
     fun pengaturanCutoffSaved(day: Int): String =
         context.getString(R.string.pengaturan_cutoff_saved, day)
 
+    // -------------------------------------------------------------- Story 5.5
+
+    /**
+     * The reminder's body — one sentence, no urgency.
+     *
+     * "Belum ada cadangan hari ini" states the fact; "Data Anda bisa hilang kapan saja" would be
+     * the app manufacturing fear to make the owner act, and the epic's whole argument against
+     * automation is that it pressures rather than informs.
+     */
+    fun berandaBackupReminderBody(): String =
+        context.getString(R.string.beranda_backup_reminder_body)
+
+    /** The last export date, **only when there is one** — the AC says "kalau ada". */
+    fun berandaBackupReminderLast(date: String): String =
+        context.getString(R.string.beranda_backup_reminder_last, date)
+
+    /** The dialog's explanation: what is at stake, and what the file is for. */
+    fun berandaBackupReminderDialogBody(): String =
+        context.getString(R.string.beranda_backup_reminder_dialog_body)
+
     // -------------------------------------------------------------- Story 3.2
 
     /**

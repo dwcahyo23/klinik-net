@@ -255,6 +255,7 @@ class BannerScopeTest {
         beranda = Screens.Beranda(
             state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
             onDeposit = {},
+            onBackupReminderTap = {},
         ),
         // Story 4.5's report. Like Beranda, it draws no banner of its own — every figure
         // comes from a read — but the fixture states it so this stays complete.
