@@ -56,6 +56,8 @@ data class BerandaUiState(
      * itself.
      */
     val backupReminder: BackupReminderUi? = null,
+    /** The dashboard's charts — `dashboard.html:60-106`. Empty until the first read lands. */
+    val charts: DashboardCharts = DashboardCharts(),
 ) {
     /**
      * Whether the summary has nothing to show.
@@ -82,6 +84,107 @@ data class BerandaUiState(
 data class BackupReminderUi(
     val body: String,
     val lastExportLine: String?,
+)
+
+/**
+ * The dashboard's three charts and its comparison rows — `dashboard.html:60-106,285-287`.
+ *
+ * ## Why these carry no `null`
+ *
+ * Because a chart with no data is still a chart: an empty series draws a flat baseline, an empty
+ * donut draws its sunken placeholder, and an empty comparison says "no money yet this period" —
+ * which is a true statement, not a missing one. A nullable chart would give the screen three ways
+ * to draw nothing and the shape that skips the data is the one that gets forgotten.
+ *
+ * @property trend the last 14 days, oldest first — `renderLine` in `dashboard.html:198`.
+ * @property trendTarget the daily rate the active contracts bill; the dashed line above the series.
+ * @property trendLabels a label per trend point; the chart draws every other one.
+ * @property weeks four weekly totals, oldest first — `renderBars`, `dashboard.html:256`.
+ * @property weekTarget the weekly figure each bar is measured against.
+ * @property slices the per-vehicle shares, largest first — `renderDonut`, `dashboard.html:291`.
+ * @property comparison this period against the one before it — `renderBars`, `dashboard.html:277`.
+ */
+data class DashboardCharts(
+    val trend: List<Long> = emptyList(),
+    val trendTarget: Long = 0L,
+    val trendLabels: List<String> = emptyList(),
+    val weeks: List<Long> = emptyList(),
+    val weekTarget: Long = 0L,
+    val slices: List<Long> = emptyList(),
+    /**
+     * The plate each slice belongs to, in the same order as [slices].
+     *
+     * Carried beside the amounts rather than joined at draw time because a donut with no legend
+     * is a shape the owner cannot act on — "a third of your income" is a fact, "Agya, Avanza,
+     * Xpander" is the one that tells the owner which car to look at.
+     */
+    val sliceLabels: List<String> = emptyList(),
+    val comparison: List<ComparisonRow> = emptyList(),
+    /**
+     * `14 hari · total Rp 8.400.000` — the trend card's subtitle (`dashboard.html:249`).
+     *
+     * Formatted here for the reason every figure in this app is: one formatter, one spelling.
+     */
+    val trendTotalText: String = "",
+    /**
+     * Whether the latest day met the daily target — the trend badge's own fact.
+     *
+     * A Boolean rather than a sentence, so the *tone* is decided by the screen from a fact and the
+     * text comes from resources. A ViewModel that chose the colour would be a ViewModel that knew
+     * about themes.
+     */
+    val trendMeetsTarget: Boolean = false,
+    /** How far the latest day fell short, formatted. Only drawn when [trendMeetsTarget] is false. */
+    val trendGapText: String = "",
+    /** "Transaksi terakhir" — the newest confirmed deposits (`dashboard.html:108-117`). */
+    val recent: List<RecentTransaction> = emptyList(),
+)
+
+/**
+ * One row of the dashboard's transaction table.
+ *
+ * ## Why every field is a `String`
+ *
+ * Because each is either already-formatted text or a name this app does not own — a plate, a
+ * renter's name, a bank's — and a row that carried the domain objects would let the table
+ * re-derive a spelling the rest of the app already fixed.
+ */
+data class RecentTransaction(
+    /** `19 Okt` — [net.klinik.rental.ui.format.formatTanggalBulan]'s form. */
+    val dateText: String,
+    val renterName: String,
+    val plate: String,
+    val bank: String,
+    val reference: String,
+    val amountText: String,
+)
+
+/**
+ * One row of the period comparison — the target, what was collected, and how far short.
+ *
+ * ## Why the target and the collected are both carried
+ *
+ * Because a comparison is a **difference**, and a difference whose operands cannot be seen is a
+ * number nobody can check — the same reason `BerandaUiState` carries [incomeRupiah] beside
+ * [rateText].
+ */
+data class ComparisonRow(
+    /** `M-1` or `M-2`, the prototype's own labels. */
+    val label: String,
+    val rangeText: String,
+    /**
+     * `M-1 (1 Okt – 7 Okt)` — the label and its range, already composed.
+     *
+     * Composed here rather than in the screen because the parenthesis is a *format*, and a format
+     * assembled in a composable is one that gets assembled differently the second time. The
+     * resource holds it, [net.klinik.rental.ui.strings.RStrings] applies it, and the screen draws
+     * the result.
+     */
+    val labelText: String,
+    val collectedText: String,
+    val targetText: String,
+    /** 0..1, what fraction of the target arrived. Drives the progress bar's colour. */
+    val fraction: Float,
 )
 
 /**

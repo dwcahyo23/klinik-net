@@ -1151,6 +1151,42 @@ class RStrings(private val context: Context) {
     fun berandaRate(percent: Int): String =
         context.getString(R.string.beranda_rate, percent)
 
+    /**
+     * The trend card's subtitle — "14 hari · total Rp 8.400.000".
+     *
+     * Takes the **formatted** total rather than a `Long`, because the figure is formatted once,
+     * by the ViewModel, and this composes the sentence around it. A `Long` here would be a
+     * second `formatRupiah` call inside a resource lookup, which is the second spelling this
+     * app keeps refusing.
+     */
+    fun berandaTrendSub(totalText: String): String =
+        context.getString(R.string.beranda_chart_trend_sub, totalText)
+
+    /** The trend badge when the latest day met its target. */
+    fun berandaTrendMeets(): String =
+        context.getString(R.string.beranda_chart_trend_meets)
+
+    /** The trend badge when it fell short — names the gap, so the badge is actionable. */
+    fun berandaTrendShort(gapText: String): String =
+        context.getString(R.string.beranda_chart_trend_short, gapText)
+
+    /** The weekly row's own heading — the target every bar is measured against. */
+    fun berandaCompareTarget(targetText: String): String =
+        context.getString(R.string.beranda_chart_compare_target, targetText)
+
+    /**
+     * One comparison row's label — `M-1 (1 Okt – 7 Okt)`.
+     *
+     * A resource rather than string concatenation in the composable, so the parenthesisation is
+     * translatable and a locale that brackets differently can say so.
+     */
+    fun berandaCompareRow(label: String, rangeText: String): String =
+        context.getString(R.string.beranda_chart_compare_row, label, rangeText)
+
+    /** A joined transaction row whose renter could not be resolved. */
+    fun dashboardUnknownName(): String =
+        context.getString(R.string.beranda_recent_unknown_name)
+
     // -------------------------------------------------------------- Story 4.5
 
     /**

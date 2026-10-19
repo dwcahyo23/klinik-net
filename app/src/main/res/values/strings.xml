@@ -1315,6 +1315,53 @@
     <string name="beranda_action_reminder">Kirim Pengingat</string>
 
     <!--
+      The dashboard's charts and transaction table — `dashboard.html:58-117`.
+
+      The four card titles are the prototype's own words, kept verbatim: the owners approved that
+      copy, and a paraphrase would be a design change nobody asked for.
+    -->
+    <string name="beranda_chart_trend_title">Tren pendapatan harian</string>
+    <!-- `14 hari · total Rp 8.400.000` — the window and what it came to, in one line. -->
+    <string name="beranda_chart_trend_sub">14 hari · total %1$s</string>
+    <string name="beranda_chart_trend_meets">Di atas target</string>
+    <!-- Falls short: names the gap rather than only saying "below". -->
+    <string name="beranda_chart_trend_short">Di bawah target %1$s</string>
+    <string name="beranda_chart_legend_realised">Realisasi</string>
+    <string name="beranda_chart_legend_target">Target harian</string>
+
+    <string name="beranda_chart_weekly_title">Target vs realisasi</string>
+    <string name="beranda_chart_weekly_sub">Per minggu berjalan</string>
+
+    <string name="beranda_chart_donut_title">Pendapatan per mobil</string>
+    <string name="beranda_chart_donut_sub">Kontribusi 6 armada teratas</string>
+    <string name="beranda_chart_donut_centre">Total</string>
+
+    <string name="beranda_chart_compare_title">Perbandingan periode</string>
+    <string name="beranda_chart_compare_sub">Periode cut off berjalan vs sebelumnya</string>
+    <!-- The target every comparison row is measured against. -->
+    <string name="beranda_chart_compare_target">Target mingguan %1$s</string>
+    <!--
+      One comparison row's label — `M-1 (1 Okt – 7 Okt)`.
+
+      The range is parenthesised rather than set beside the label with a separator, matching the
+      prototype's own shape (`dashboard.html:279`): the label is *which* week and the parenthesis
+      is *when*, and two different kinds of fact read better apart.
+    -->
+    <string name="beranda_chart_compare_row">%1$s (%2$s)</string>
+
+    <string name="beranda_recent_title">Transaksi terakhir</string>
+    <string name="beranda_recent_see_all">Lihat semua →</string>
+    <string name="beranda_recent_col_date">Tanggal</string>
+    <string name="beranda_recent_col_renter">Penyewa</string>
+    <string name="beranda_recent_col_plate">Plat</string>
+    <string name="beranda_recent_col_bank">Bank</string>
+    <string name="beranda_recent_col_reference">Referensi</string>
+    <string name="beranda_recent_col_amount">Nominal</string>
+    <string name="beranda_recent_empty">Belum ada setoran tercatat.</string>
+    <!-- A joined row whose renter no longer exists. A dash, never an invented name. -->
+    <string name="beranda_recent_unknown_name">—</string>
+
+    <!--
       Story 4.5 — Laporan (the period report).
 
       The `laporan_*` prefix follows the same rule as every other screen's block.

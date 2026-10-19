@@ -624,6 +624,17 @@ internal fun createBerandaViewModel(context: Context): BerandaViewModel {
         ),
         vehicleRepository = VehicleRepository(database.vehicleDao(), database),
         strings = RStrings(context),
+        // The dashboard's charts and its transaction table. `contracts` carries the frozen
+        // daily rate the trend's target line draws; the other three join a deposit row to the
+        // renter, the plate and the bank that make it readable.
+        contracts = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+            database,
+        ),
+        history = DepositHistoryRepository(database.paymentDao()),
+        renters = RenterRepository(database.renterDao()),
+        accounts = BusinessAccountRepository(database.businessAccountDao(), database),
         // The same clock every other ViewModel gets, for the same reason: "today" decides
         // which deposits count, and a test that passed in October would fail in November.
         clock = Clock.systemDefaultZone(),

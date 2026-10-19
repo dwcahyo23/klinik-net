@@ -43,12 +43,12 @@ import net.klinik.rental.ui.components.KnModal
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.format.formatTanggalBulan
+import net.klinik.rental.ui.format.pickerMillisToDate
+import net.klinik.rental.ui.format.toPickerMillis
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
 
 /**
  * The deposit sheet: who paid, how much, and how it arrived.
@@ -561,15 +561,10 @@ private fun DepositDateField(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // `selectedDateMillis` is UTC midnight for the picked calendar
-                        // day, so it is read back through the same UTC offset it was
-                        // written with. Converting through the device zone here would move
-                        // the date by a day for anyone west of Greenwich — the classic
-                        // off-by-one this whole component exists to avoid, and the one
-                        // `DepositSheetTest` drives the confirm button for.
-                        pickerState.selectedDateMillis?.let { millis ->
-                            onPick(Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate())
-                        }
+                        // The UTC round-trip lives in `ui.format`'s `toPickerMillis` /
+                        // `pickerMillisToDate` — see those on why the zone matters, and why three
+                        // sheets share one conversion rather than owning one each.
+                        pickerMillisToDate(pickerState.selectedDateMillis)?.let(onPick)
                         open = false
                     },
                     modifier = Modifier.testTag(TAG_DEPOSIT_DATE_CONFIRM),
@@ -593,11 +588,9 @@ private fun DepositDateField(
 }
 
 /**
- * A `LocalDate` as UTC midnight in epoch millis.
+ * The write half of the picker bridge, as a local alias.
  *
- * The inverse of the read-back in [DepositDateField], and deliberately both in UTC — see
- * that composable on why. `ContractFormSheet` holds an identical private helper for its own
- * start date; a shared one would be a `public` function in `ui.format` for the sake of two
- * call sites, and the arithmetic is two lines.
+ * Delegates to [net.klinik.rental.ui.format.toPickerMillis] so this sheet and the two contract
+ * sheets cannot disagree about the zone. No logic of its own.
  */
-private fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun LocalDate.toUtcMillis(): Long = toPickerMillis()

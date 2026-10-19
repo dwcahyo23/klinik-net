@@ -386,12 +386,14 @@ fun KnSkeleton(
  * the accessibility tree outright, so a loading fleet is silent rather than a
  * list of unreadable empty boxes.
  *
- * @param rows how many placeholder rows to draw. `0` draws nothing at all, so a
- *   caller can pass a count it computed without branching on an empty `Column`.
+ * @param rows how many placeholder rows to draw. Defaults to [SkeletonRows], which is the
+ *   count `FourStatesTest` asserts for every screen at once — a screen that passed its own
+ *   number would be the one the cross-cutting contract could not cover. `0` draws nothing at
+ *   all, so a caller can pass a count it computed without branching on an empty `Column`.
  */
 @Composable
 fun KnSkeletonList(
-    rows: Int,
+    rows: Int = SkeletonRows,
     modifier: Modifier = Modifier,
 ) {
     if (rows <= 0) return
@@ -919,6 +921,39 @@ private val SkeletonRowHeight = 104.dp
  * guarding against in a different costume.
  */
 internal const val SkeletonRowTag = "skeleton-row"
+
+/**
+ * How tall a sheet's content may grow before it scrolls — **one figure for every sheet**.
+ *
+ * ## Why this is one constant and not a copy per sheet
+ *
+ * Because four sheets declared their own `900.dp`, and three of the four KDocs admitted the bound
+ * was *not* load-bearing for their content ("one field plus two buttons"). Four copies of a figure
+ * that none of them justified is four places to change the day a tall sheet really does need a
+ * different bound — and the sheet that needs it can pass its own [Modifier.heightIn] instead.
+ *
+ * The figure itself is a ceiling, not a decision about any one sheet: `ModalBottomSheet` already
+ * constrains itself to the window, and this only stops a very tall sheet on a very tall tablet from
+ * pushing its confirm button off the top.
+ */
+internal val SheetMaxHeight = 900.dp
+
+/**
+ * How many skeleton rows a loading list draws — **one number for the whole app**.
+ *
+ * ## Why this is a shared constant rather than a per-screen choice
+ *
+ * Because a skeleton's job is to occupy the space the content will, and the *count* is a claim
+ * about how tall a list is, not about what is in it. Six screens each declaring their own copy is
+ * how `TunggakanScreen` ended up drawing five while `FourStatesTest` asserted six for every other
+ * screen — a discrepancy that only showed up because that screen had no entry in the test.
+ *
+ * `PengaturanScreen` argued this exact point in a KDoc above its own private copy. The copy is gone;
+ * the argument now lives here, where the value does.
+ *
+ * The default belongs on [KnSkeletonList] too, so most call sites need not mention it at all.
+ */
+internal const val SkeletonRows = 6
 
 /** Tag on [KnScreenError]'s action, the component's only interactive node. */
 internal const val ScreenErrorActionTag = "screen-error-action"

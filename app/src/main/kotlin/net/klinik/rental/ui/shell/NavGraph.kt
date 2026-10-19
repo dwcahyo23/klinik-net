@@ -223,6 +223,10 @@ private fun BerandaRoute(wiring: Screens.Beranda, navController: NavHostControll
         // so a test can assert the tap reached its handler and not merely opened a dialog.
         onBackupReminderTap = wiring.onBackupReminderTap,
         onBackupExport = { navController.navigateTo(Destination.Pengaturan.route) },
+        // The prototype's own "Lihat semua →" (`dashboard.html:111`) goes to the deposit
+        // screen's history tab — the same destination its rail item names, because the table
+        // and that screen are one list read at two depths.
+        onSeeAllTransactions = { navController.navigateTo(Destination.Setoran.route) },
     )
 }
 

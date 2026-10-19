@@ -94,7 +94,7 @@ fun SettleContractSheet(
                 // Not load-bearing for one field and two buttons — kept for the reason
                 // `EndContractSheet` keeps its bound: so a future line cannot push the
                 // confirm off a short landscape tablet.
-                .heightIn(max = SettleSheetMaxHeight),
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -204,9 +204,6 @@ fun SettleContractSheet(
         }
     }
 }
-
-/** A bound on the sheet's content. See [EndContractSheet]'s for why it is not load-bearing. */
-private val SettleSheetMaxHeight = 900.dp
 
 internal const val TAG_SETTLE_SHEET = "kontrak-settle-sheet"
 internal const val TAG_SETTLE_TITLE = "kontrak-settle-title"

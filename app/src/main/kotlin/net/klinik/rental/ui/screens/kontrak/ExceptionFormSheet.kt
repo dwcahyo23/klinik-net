@@ -42,12 +42,12 @@ import net.klinik.rental.ui.components.KnIconButton
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnModal
 import net.klinik.rental.ui.components.KnSnackbar
+import net.klinik.rental.ui.format.pickerMillisToDate
+import net.klinik.rental.ui.format.toPickerMillis
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
 
 /**
  * The open contract's service-exception editor, as one Material3 `ModalBottomSheet`.
@@ -173,7 +173,7 @@ fun ExceptionFormSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = ExceptionSheetMaxHeight),
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -534,15 +534,10 @@ internal fun ContractDateField(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // `selectedDateMillis` is UTC midnight for the picked calendar
-                        // day, so it is read back through the same UTC offset it was
-                        // written with. Converting through the device zone here would
-                        // move the date by a day for anyone west of Greenwich.
-                        pickerState.selectedDateMillis?.let { millis ->
-                            onPick(
-                                Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate(),
-                            )
-                        }
+                        // The UTC round-trip lives in `ui.format`'s `toPickerMillis` /
+                        // `pickerMillisToDate` — see those on why the zone matters, and why three
+                        // sheets share one conversion rather than owning one each.
+                        pickerMillisToDate(pickerState.selectedDateMillis)?.let(onPick)
                         open = false
                     },
                     modifier = Modifier.testTag(TAG_CONTRACT_DATE_CONFIRM),
@@ -566,12 +561,12 @@ internal fun ContractDateField(
 }
 
 /**
- * A `LocalDate` as UTC midnight in epoch millis.
+ * The write half of the picker bridge, as a local alias.
  *
- * The inverse of the read-back in [ContractDateField], and deliberately both in UTC,
- * for the reason that read-back's comment gives.
+ * Delegates to [net.klinik.rental.ui.format.toPickerMillis] so this sheet and the two others
+ * cannot disagree about the zone. No logic of its own.
  */
-private fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun LocalDate.toUtcMillis(): Long = toPickerMillis()
 
 // ------------------------------------------------------------ ending a contract
 
@@ -639,7 +634,7 @@ fun EndContractSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = EndSheetMaxHeight),
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -711,15 +706,6 @@ fun EndContractSheet(
     }
 }
 
-/**
- * A bound on the end sheet's content.
- *
- * The same figure as the exception sheet's, for the same reason — and it is *not*
- * load-bearing for one field plus two buttons, which is said here rather than left
- * implied so nobody copies it as a precedent for a sheet that really needs it.
- */
-private val EndSheetMaxHeight = 900.dp
-
 internal const val TAG_END_SHEET = "kontrak-end-sheet"
 internal const val TAG_END_TITLE = "kontrak-end-title"
 internal const val TAG_END_DATE = "kontrak-end-date"
@@ -748,16 +734,6 @@ internal fun exceptionRemoveTag(id: String): String = "kontrak-exception-remove-
  * below the fold of a 760dp-tall portrait tablet.
  */
 private const val REASON_MAX_LINES = 3
-
-/**
- * A bound on the sheet's content.
- *
- * The same reasoning as `ContractFormSheet`'s `SheetMaxHeight`: `ModalBottomSheet`
- * already constrains itself to the window, and this stops the add block plus a long
- * list from pushing the stored rows and the Close button off the top of a short
- * landscape tablet.
- */
-private val ExceptionSheetMaxHeight = 900.dp
 
 internal const val TAG_EXCEPTION_SHEET = "kontrak-exception-sheet"
 internal const val TAG_EXCEPTION_TITLE = "kontrak-exception-title"

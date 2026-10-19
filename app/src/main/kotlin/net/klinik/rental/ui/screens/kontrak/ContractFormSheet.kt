@@ -41,13 +41,13 @@ import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.format.formatTanggalBulan
+import net.klinik.rental.ui.format.pickerMillisToDate
+import net.klinik.rental.ui.format.toPickerMillis
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
 import java.time.DayOfWeek
-import java.time.Instant
 import java.time.LocalDate
-import java.time.ZoneOffset
 
 /**
  * The open-contract form, as a Material3 `ModalBottomSheet`.
@@ -120,9 +120,8 @@ fun ContractFormSheet(
     // `skipPartiallyExpanded` so a second tap on the top-bar action does not find
     // the sheet at half height.
     //
-    // The content's own height bound is `SheetMaxHeight` below — a fixed dp, not a
-    // fraction, because `ModalBottomSheet` reports its window in dp and a "half the
-    // screen" rule would have to re-derive the screen height to say anything.
+    // The content's own height bound is `components.SheetMaxHeight` — see that constant's KDoc
+    // for why it is one figure shared by every sheet rather than a per-screen copy.
     // `ModalBottomSheet` already constrains itself to the window; the fixed bound
     // stops the tallest content from pushing Save off the top of a short landscape
     // tablet.
@@ -138,7 +137,7 @@ fun ContractFormSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = SheetMaxHeight),
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             ContractPicker(
@@ -335,17 +334,11 @@ private fun StartDateField(
             confirmButton = {
                 TextButton(
                     onClick = {
-                        // `selectedDateMillis` is UTC midnight for the picked
-                        // calendar day, so it is read back through the same UTC
-                        // offset it was written with. Converting through the device
-                        // zone here would move the date by a day for anyone west of
-                        // Greenwich — the classic off-by-one this whole component
-                        // exists to avoid.
-                        pickerState.selectedDateMillis?.let { millis ->
-                            onPick(
-                                Instant.ofEpochMilli(millis).atZone(ZoneOffset.UTC).toLocalDate(),
-                            )
-                        }
+                        // The UTC round-trip lives in `ui.format`'s `toPickerMillis` /
+                        // `pickerMillisToDate` — see those on why the zone matters. Three sheets
+                        // read the picker, and a copy of the conversion per sheet is three
+                        // places the day can move.
+                        pickerMillisToDate(pickerState.selectedDateMillis)?.let(onPick)
                         open = false
                     },
                     modifier = Modifier.testTag(TAG_DATE_CONFIRM),
@@ -466,27 +459,15 @@ private fun SchedulePicker(
 }
 
 /**
- * A `LocalDate` as UTC midnight in epoch millis.
+ * The write half of the picker bridge, as a local alias.
  *
- * The inverse of the read-back in [StartDateField], and deliberately both in UTC:
- * `DatePickerState.selectedDateMillis` is documented as UTC midnight for the chosen
- * calendar day, so writing and reading through the device zone would shift the date
- * by a day for anyone whose offset is not zero.
+ * Delegates to [net.klinik.rental.ui.format.toPickerMillis] so this sheet, the exception sheet and
+ * the deposit sheet cannot disagree about the zone. No logic of its own.
  */
-private fun LocalDate.toUtcMillis(): Long = atStartOfDay(ZoneOffset.UTC).toInstant().toEpochMilli()
+private fun LocalDate.toUtcMillis(): Long = toPickerMillis()
 
 /** The rest-day chip's tag, derived from the enum name so the two cannot drift. */
 internal fun restDayTag(day: DayOfWeek): String = "kontrak-rest-day-${day.name}"
-
-/**
- * A bound on the sheet's content.
- *
- * `ModalBottomSheet` already constrains itself to the window; this stops two
- * pickers, a date, a rate, a 66dp-key numpad and eight chips from growing past a
- * tall tablet and pushing the Save button off the top. The sheet's own scroll
- * container handles the rest.
- */
-private val SheetMaxHeight = 900.dp
 
 internal const val TAG_SHEET = "contract-form-sheet"
 internal const val TAG_FIELD_RENTER = "contract-field-renter"

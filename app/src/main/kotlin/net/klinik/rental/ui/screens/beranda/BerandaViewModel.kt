@@ -11,6 +11,7 @@ import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
@@ -52,9 +53,33 @@ import java.time.LocalDateTime
  */
 class BerandaViewModel(
     private val payments: PaymentRepository,
-    vehicleRepository: VehicleRepository,
+    private val vehicleRepository: VehicleRepository,
     private val strings: RStrings,
     private val clock: Clock,
+    /**
+     * The contracts, for the chart's daily target and its per-vehicle slices.
+     *
+     * The donut needs to know **which car** a contract's income belongs to
+     * (`dashboard.html:294-320`), and the trend needs each open contract's frozen rate to draw its
+     * target line. Both are properties of `contract`, so this is one more reader of the table the
+     * other screens already read — joined here rather than through a `@Query` with two JOINs, which
+     * is the rule every reader in this app follows.
+     *
+     * Optional so the existing tests, which build this ViewModel without it, keep compiling — and
+     * so a fleet with no contracts still draws both charts, with a zero target.
+     */
+    contracts: net.klinik.rental.data.repository.ContractRepository? = null,
+    /**
+     * The deposit history, for the dashboard's "Transaksi terakhir" table.
+     *
+     * The same repository `SetoranViewModel` reads, over the same cross-contract query — one
+     * answer to "what came in recently" rather than a second one assembled here.
+     */
+    private val history: net.klinik.rental.data.repository.DepositHistoryRepository? = null,
+    /** Renter names, so a transaction row can say *who* paid. Joined here, never in SQL. */
+    private val renters: net.klinik.rental.data.repository.RenterRepository? = null,
+    /** Bank names, so a transaction row can say *where* the money arrived. */
+    private val accounts: net.klinik.rental.data.repository.BusinessAccountRepository? = null,
     /**
      * Overrides the arrears source. **For tests only.**
      *
@@ -117,6 +142,213 @@ class BerandaViewModel(
         ) { vehicles, rented -> vehicles to rented }
 
     /**
+     * The four reads the dashboard's charts and its transaction table are built from.
+     *
+     * **The fleet is not among them.** It rides in from [fleet], which already observes it:
+     * subscribing to `observeVehicles()` twice on one screen is two queries for one answer, and
+     * the second subscription is the one that drifts.
+     */
+    private data class ChartInputs(
+        val byDay: List<net.klinik.rental.data.db.dao.DailyIncome>,
+        val byContract: Map<String, Long>,
+        val allContracts: List<net.klinik.rental.domain.model.Contract>,
+        val ledger: LedgerInputs,
+    )
+
+    /**
+     * The recent-transactions table's three reads, joined here rather than by a `@Query`.
+     *
+     * The rule every reader in this app follows: a join is a property of the *screen*, so it
+     * happens in the projection where the clock is also read — not in SQL, where a second
+     * copy of "which contract belongs to which renter" would live.
+     */
+    private data class LedgerInputs(
+        val rows: List<net.klinik.rental.data.repository.DepositHistoryRow> = emptyList(),
+        /** renterId -> name. */
+        val renterNames: Map<String, String> = emptyMap(),
+        /** accountId -> bank name; a cash deposit has no account and draws a dash. */
+        val bankNames: Map<String, String> = emptyMap(),
+    )
+
+    private val chartSources: Flow<ChartInputs> = run {
+        val historyRepo = history
+        val renterRepo = renters
+        val accountRepo = accounts
+        val ledger: Flow<LedgerInputs> =
+            if (historyRepo == null || renterRepo == null || accountRepo == null) {
+                // A ViewModel built without them (the older tests) draws the charts and an
+                // empty table, rather than inventing names it has no way to read.
+                flowOf(LedgerInputs())
+            } else {
+                combine(
+                    historyRepo.observeAll(),
+                    renterRepo.observeRenters(),
+                    accountRepo.observeAccounts(),
+                ) { rows, renterList, accountList ->
+                    LedgerInputs(
+                        rows = rows,
+                        renterNames = renterList.associate { it.id to it.name },
+                        bankNames = accountList.associate { it.id to it.bankName },
+                    )
+                }
+            }
+        combine(
+            payments.observeIncomeByDay(),
+            payments.observeIncomeByContract(),
+            contracts?.observeContracts() ?: flowOf(emptyList()),
+            ledger,
+        ) { byDay, byContract, allContracts, ledgerInputs ->
+            ChartInputs(byDay, byContract, allContracts, ledgerInputs)
+        }
+    }
+
+    /**
+     * The dashboard's charts and its recent-transactions table, as one flow.
+     *
+     * ## Why the window is computed here and not in the screen
+     *
+     * Because "the last 14 days" is a claim about **today**, and today is read from [clock] on
+     * every emission — a window frozen when the ViewModel was built would keep showing yesterday's
+     * last day after midnight, which is the exact defect `observeTodaysIncome`'s own KDoc was
+     * written to fix.
+     *
+     * ## Why the plates arrive as a parameter rather than being read here
+     *
+     * Because [fleet] already observes them. Subscribing to `observeVehicles()` twice on one
+     * screen is two queries for one answer, so the plates ride in on the same flow that reads the
+     * contracts and are joined inside the projection.
+     */
+    private fun chartProjection(
+        byDay: List<net.klinik.rental.data.db.dao.DailyIncome>,
+        incomeByContract: Map<String, Long>,
+        allContracts: List<net.klinik.rental.domain.model.Contract>,
+        vehicles: List<net.klinik.rental.domain.model.Vehicle>,
+        ledger: LedgerInputs,
+        today: LocalDate,
+    ): DashboardCharts {
+        // Zero-filled from the day before, so a quiet day is a point at zero rather than a gap the
+        // chart would have to infer — and a straight line through that gap would read as a steady
+        // Tuesday when nothing arrived.
+        val daily = today.minusDays(TREND_DAYS - 1L).datesUntil(today.plusDays(1))
+            .map { day -> day to (byDay.firstOrNull { it.date == day }?.total ?: 0L) }
+            .toList()
+
+        val dailyRate = allContracts.filter { it.endDate == null }.sumOf { it.dailyRate }
+        val plateByVehicle = vehicles.associate { it.id to it.plate }
+
+        val slices = incomeByContract
+            .filter { it.value > 0L }
+            .map { (contractId, total) ->
+                val contract = allContracts.firstOrNull { it.id == contractId }
+                (contract?.let { plateByVehicle[it.vehicleId] } ?: contractId) to total
+            }
+            .sortedByDescending { it.second }
+
+        val weeks = weeklyTotals(daily, COMPARISON_WEEKS)
+        val weekTarget = dailyRate * DAYS_PER_WEEK
+        // "Di atas target" is a claim about the **latest day**, the same way the prototype's own
+        // badge reads (`dashboard.html:250-252`) — not about the fortnight's total, which a good
+        // week and a bad one average into a number neither statement is true of.
+        val latest = daily.lastOrNull()?.second ?: 0L
+
+        return DashboardCharts(
+            trend = daily.map { it.second },
+            trendTarget = dailyRate,
+            trendLabels = daily.map { strings.formatOldestOpenDay(it.first).orEmpty() },
+            weeks = weeks.map { it.total },
+            weekTarget = weekTarget,
+            slices = slices.map { it.second },
+            sliceLabels = slices.map { it.first },
+            comparison = weeks.map { row ->
+                val range = "${strings.formatOldestOpenDay(row.start)} – " +
+                    strings.formatOldestOpenDay(row.end)
+                ComparisonRow(
+                    label = row.label,
+                    rangeText = range,
+                    labelText = strings.berandaCompareRow(row.label, range),
+                    collectedText = formatRupiah(row.total),
+                    targetText = formatRupiah(weekTarget),
+                    fraction = if (weekTarget <= 0L) 0f else row.total.toFloat() / weekTarget.toFloat(),
+                )
+            },
+            trendTotalText = formatRupiah(daily.sumOf { it.second }),
+            trendMeetsTarget = dailyRate > 0L && latest >= dailyRate,
+            trendGapText = formatRupiah((dailyRate - latest).coerceAtLeast(0L)),
+            recent = recentRows(ledger, allContracts, plateByVehicle),
+        )
+    }
+
+    /**
+     * The prototype's "Transaksi terakhir" — the eight newest confirmed deposits.
+     *
+     * ## Why eight, and why "confirmed"
+     *
+     * `dashboard.html:325` takes the newest eight of the confirmed rows. A cancelled deposit is
+     * not income and must not sit in a table headed "what came in" — the same filter the income
+     * queries apply, applied here because the history read deliberately returns every row for
+     * its audit trail.
+     */
+    private fun recentRows(
+        ledger: LedgerInputs,
+        allContracts: List<net.klinik.rental.domain.model.Contract>,
+        plateByVehicle: Map<String, String>,
+    ): List<RecentTransaction> {
+        val contractById = allContracts.associateBy { it.id }
+        return ledger.rows
+            .asSequence()
+            .filter { !it.isCanceled }
+            .take(RECENT_ROWS)
+            .map { row ->
+                val contract = contractById[row.contractId]
+                RecentTransaction(
+                    dateText = strings.formatOldestOpenDay(row.date).orEmpty(),
+                    renterName = contract?.let { ledger.renterNames[it.renterId] }
+                        ?: strings.dashboardUnknownName(),
+                    plate = contract?.let { plateByVehicle[it.vehicleId] } ?: DASH,
+                    bank = row.accountId?.let { ledger.bankNames[it] } ?: CASH,
+                    reference = row.referenceNo.orEmpty().ifBlank { DASH },
+                    amountText = formatRupiah(row.amount),
+                )
+            }
+            .toList()
+    }
+
+    /**
+     * The last [weeks] seven-day windows, oldest first.
+     *
+     * **Derived from the same daily series the trend draws**, never summed from the table again:
+     * a second pass over the deposits would be a second answer to "how much came in last week".
+     */
+    private fun weeklyTotals(
+        daily: List<Pair<LocalDate, Long>>,
+        weeks: Int,
+    ): List<WeekTotal> {
+        // The series is zero-filled by the caller, so it always has a last day — the fallback
+        // exists so this stays total rather than because it is expected.
+        val last = daily.lastOrNull()?.first ?: LocalDate.now(clock)
+        return (weeks - 1 downTo 0).map { back ->
+            val end = last.minusDays(back * DAYS_PER_WEEK)
+            val start = end.minusDays(DAYS_PER_WEEK - 1L)
+            WeekTotal(
+                label = WEEK_LABELS.getOrElse(back) { "M-$back" },
+                start = start,
+                end = end,
+                total = daily
+                    .filter { day -> !day.first.isBefore(start) && !day.first.isAfter(end) }
+                    .sumOf { it.second },
+            )
+        }
+    }
+
+    /** One weekly window and what arrived in it. */
+    private data class WeekTotal(
+        val label: String,
+        val start: LocalDate,
+        val end: LocalDate,
+        val total: Long,
+    )
+
+    /**
      * Story 5.5's reminder source, read as its own flow.
      *
      * ## Why it reads the deposit table directly rather than reusing `fleet` or the arrears source
@@ -169,11 +401,27 @@ class BerandaViewModel(
         combine(arrearsSource, payments.observeTodaysIncome(clock)) { source, income -> source to income },
         fleet,
         reminderSource,
-    ) { sourceAndIncome, vehiclesAndPlates, reminder ->
+        chartSources,
+    ) { sourceAndIncome, vehiclesAndPlates, reminder, chartInputs ->
         val (source, income) = sourceAndIncome
         val (vehicles, rentedPlates) = vehiclesAndPlates
         val split = splitFleet(vehicles, rentedPlates)
         val arrears = source.arrearsTotal()
+        val charts = if (source is Source.Loading) {
+            // A chart drawn from a read that has not landed shows a flat line at zero for the
+            // frames before the first emission, which reads as "no income for two weeks".
+            DashboardCharts()
+        } else {
+            chartProjection(
+                byDay = chartInputs.byDay,
+                incomeByContract = chartInputs.byContract,
+                allContracts = chartInputs.allContracts,
+                // The plates ride in on **this** flow's own fleet read — no second subscription.
+                vehicles = vehicles,
+                ledger = chartInputs.ledger,
+                today = LocalDate.now(clock),
+            )
+        }
         BerandaUiState(
             incomeText = formatRupiah(income),
             arrearsText = formatRupiah(arrears),
@@ -188,6 +436,7 @@ class BerandaViewModel(
             // anything.
             isLoading = source is Source.Loading,
             backupReminder = reminder,
+            charts = charts,
         )
     }
         // After the projection, so an emission that produces identical figures does not
@@ -284,3 +533,29 @@ fun splitFleet(
     }
     return FleetSplit(available = available, rented = rented, service = service)
 }
+
+/**
+ * `dashboard.html:198` — the trend's window, in days.
+ *
+ * Fourteen rather than the seven `LaporanScreen` uses: the dashboard is the wide screen, and a
+ * fortnight is what makes a weekly rhythm visible. The reports screen keeps seven because it is
+ * summarising a billing period, not a habit.
+ */
+private const val TREND_DAYS = 14L
+
+/** Four weekly windows — `dashboard.html:256`, `renderBars`'s `length: 4`. */
+private const val COMPARISON_WEEKS = 4
+
+private const val DAYS_PER_WEEK = 7L
+
+/** `dashboard.html:267-275` — four bars, oldest (`M-3`) first. */
+private val WEEK_LABELS = listOf("M-0", "M-1", "M-2", "M-3")
+
+/** `dashboard.html:325` — the table shows the newest eight confirmed deposits. */
+private const val RECENT_ROWS = 8
+
+/** The prototype's own placeholder for a field a joined row could not resolve. */
+private const val DASH = "—"
+
+/** A cash deposit's bank column — `payment.accountId` is null for cash (`dashboard.html:333`). */
+private const val CASH = "Tunai"

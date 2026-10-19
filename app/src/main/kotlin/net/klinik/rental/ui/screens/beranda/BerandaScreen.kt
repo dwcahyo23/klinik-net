@@ -69,6 +69,9 @@ import net.klinik.rental.ui.theme.knTypography
  * @param onAddVehicle opens the vehicle form. Required for the same reason.
  * @param onManageRenters opens the renters list. Required for the same reason.
  * @param onSendReminder opens the arrears list, where the WhatsApp reminder lives. Required.
+ * @param onSeeAllTransactions opens the deposit screen's history tab — the prototype's own
+ *   "Lihat semua →" (`dashboard.html:111`). Required, not defaulted: a link wired to `{}` is the
+ *   defect this repo's screens KDoc names twice, and the audit found it again on this table.
  */
 @Composable
 fun BerandaScreen(
@@ -79,6 +82,7 @@ fun BerandaScreen(
     onSendReminder: () -> Unit,
     onBackupReminderTap: () -> Unit,
     onBackupExport: () -> Unit,
+    onSeeAllTransactions: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -131,6 +135,16 @@ fun BerandaScreen(
                     onManageRenters = onManageRenters,
                     onSendReminder = onSendReminder,
                 )
+
+                // Below the actions, and only once the read has landed: a chart drawn from a
+                // read that has not happened is a flat line at zero, which reads as "no income
+                // for two weeks" rather than as "not asked yet".
+                if (!state.isLoading) {
+                    DashboardChartsSection(
+                        charts = state.charts,
+                        onSeeAllTransactions = onSeeAllTransactions,
+                    )
+                }
             }
         }
 

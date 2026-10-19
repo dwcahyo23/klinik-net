@@ -289,7 +289,6 @@ fun KontrakScreen(
                         // empty-looks-like-a-new-account failure the story exists
                         // to prevent.
                         state.isLoading -> KnSkeletonList(
-                            rows = SKELETON_ROWS,
                             modifier = Modifier.padding(
                                 start = spacing.lg,
                                 end = spacing.lg,
@@ -773,16 +772,6 @@ internal const val TAG_ADD = "kontrak-add"
 internal const val TAG_ADD_ACTION = "kontrak-add-action"
 internal const val TAG_BANNER = "kontrak-banner"
 internal const val TAG_EMPTY = "kontrak-empty"
-
-/**
- * How many placeholder rows the skeleton draws.
- *
- * A count rather than one block so the loading state has the *shape* of the list
- * it stands in for. Six matches the stated fleet scale without pretending to
- * know the real count — a skeleton showing exactly the final row count would
- * need the count, which is what is still loading.
- */
-private const val SKELETON_ROWS = 6
 
 @Preview(showBackground = true)
 @Composable

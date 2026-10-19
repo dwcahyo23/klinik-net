@@ -137,7 +137,7 @@ fun KendaraanScreen(
                             onClear = onClearQuery,
                             placeholder = stringResource(R.string.kendaraan_search_placeholder),
                             modifier = Modifier
-                                .widthIn(max = SearchPillMaxWidth)
+                                .widthIn(max = net.klinik.rental.ui.components.TopBarSearchMaxWidth)
                                 .testTag(TAG_SEARCH),
                         )
                     },
@@ -180,7 +180,7 @@ fun KendaraanScreen(
                         modifier = Modifier.weight(1f),
                         list = {
                             when {
-                                state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+                                state.isLoading -> KnSkeletonList()
                                 state.isEmptyFleet -> KendaraanEmptyFleet(onAdd = onAdd)
                                 state.isEmptySearch -> KendaraanEmptySearch(
                                     query = state.query,
@@ -665,27 +665,8 @@ internal const val TAG_SUMMARY = "kendaraan-summary"
 /** The edit verb inside the detail pane; the row selects rather than edits. */
 internal const val TAG_DETAIL_EDIT = "kendaraan-detail-edit"
 
-/**
- * `cars.html:29` — the field's `max-width`.
- *
- * Capped rather than weighted, so the field looks the same on a 360dp phone and a 711dp tablet
- * instead of eating the bar on one and shrinking to nothing on the other.
- */
-private val SearchPillMaxWidth = 280.dp
-
 /** The single banner, whatever its tone — so one test can address it. */
 internal const val TAG_BANNER = "kendaraan-banner"
-
-/**
- * How many placeholder rows the skeleton draws.
- *
- * A count rather than one block so the loading state has the *shape* of the list
- * it is standing in for, which is the story's AC ("skeleton dengan bentuk yang
- * sama dengan isi akhirnya"). Six matches the stated fleet scale of 20 vehicles
- * without pretending to know the real count — a skeleton that showed exactly the
- * final row count would need the count, which is what is still loading.
- */
-private const val SKELETON_ROWS = 6
 
 @Preview(showBackground = true)
 @Composable

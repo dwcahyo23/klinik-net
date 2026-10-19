@@ -263,7 +263,7 @@ fun PengaturanScreen(
                             // No modifier: the gutter and the gap are the column's now, so a
                             // second set of padding here would offset the skeleton from the cards
                             // it stands in for.
-                            state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+                            state.isLoading -> KnSkeletonList()
 
                             state.isEmpty -> PengaturanEmpty(onAdd = onAdd)
 
@@ -796,18 +796,6 @@ private fun PengaturanEmpty(onAdd: () -> Unit) {
         modifier = Modifier.testTag(TAG_EMPTY),
     )
 }
-
-/**
- * How many skeleton rows the loading state draws.
- *
- * **Six, matching every other screen** — not three, which is roughly how many accounts a rental
- * business holds. The count is a *shell-wide* fact rather than a per-screen one: `FourStatesTest`
- * asserts the same skeleton row count for all four screens, so a screen that drew its own number
- * would be the one the cross-cutting contract could not cover. A skeleton's job is to occupy the
- * space the content will, and a count that differs per screen makes the shared placeholder a
- * claim about each screen instead of one about the app.
- */
-private const val SKELETON_ROWS = 6
 
 /** A row's tag, derived from the account id so two rows cannot collide. */
 internal fun accountRowTag(id: String): String = "pengaturan-row-$id"

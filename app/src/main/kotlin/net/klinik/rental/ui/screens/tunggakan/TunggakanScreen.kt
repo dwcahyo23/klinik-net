@@ -405,7 +405,7 @@ private fun ArrearsList(
             // emission is an empty list, so without this the owner reads "Tidak ada
             // tunggakan" on every load — which on *this* screen is the claim "nobody owes
             // you anything", read on a screen that has not looked yet.
-            state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+            state.isLoading -> KnSkeletonList()
 
             // A failed calculation draws **nothing at all**, not even the empty
             // state. The empty state says "semua sewa sudah lunas" — that nobody owes
@@ -653,9 +653,6 @@ private fun DetailLine(label: String, value: String, testTag: String) {
         )
     }
 }
-
-/** Rows drawn while loading. A list's worth, not one. */
-private const val SKELETON_ROWS = 5
 
 /** Row tags, keyed on the contract id so a test can address one row. */
 internal const val TAG_ROW_PREFIX = "tunggakan-row-"

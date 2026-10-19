@@ -454,8 +454,7 @@ fun KnTopBar(
     onNavigationClick: (() -> Unit)? = null,
     search: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
-) {
-    val kn = MaterialTheme.knColors
+) {    val kn = MaterialTheme.knColors
     val spacing = MaterialTheme.knSpacing
     val shape = RoundedCornerShape(MaterialTheme.knRadii.md)
     val navDescription = stringResource(R.string.action_back)
@@ -671,3 +670,15 @@ private val BOTTOM_NAV_ITEM_WIDTH = 64.dp
 
 /** `--topbar-h` */
 private val TopBarHeight = 72.dp
+
+/**
+ * `cars.html:29`, `renters.html:29` — the search field's `max-width` inside the top bar.
+ *
+ * ## Why this is one constant and not a copy per screen
+ *
+ * Because it is one rule in the prototype's CSS (`.search-bar { max-width:280px }`) and it was
+ * copied into two screens that cannot see each other. The field is capped rather than weighted so
+ * it looks the same on a 360dp phone and a 711dp tablet instead of eating the bar on one and
+ * shrinking to nothing on the other — a decision about the *bar*, which this file owns.
+ */
+internal val TopBarSearchMaxWidth = 280.dp

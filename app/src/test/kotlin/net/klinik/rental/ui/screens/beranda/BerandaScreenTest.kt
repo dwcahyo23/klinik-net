@@ -330,6 +330,7 @@ class BerandaScreenTest {
         // reminder pass them explicitly.
         onBackupReminderTap: () -> Unit = {},
         onBackupExport: () -> Unit = {},
+        onSeeAllTransactions: () -> Unit = {},
     ) {
         BerandaScreen(
             state = state,
@@ -339,6 +340,7 @@ class BerandaScreenTest {
             onSendReminder = onSendReminder,
             onBackupReminderTap = onBackupReminderTap,
             onBackupExport = onBackupExport,
+            onSeeAllTransactions = onSeeAllTransactions,
         )
     }
 

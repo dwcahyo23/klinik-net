@@ -933,6 +933,20 @@ class PaymentRepository(
         }
 
     /**
+     * Every day's confirmed income, grouped, with **no** window — the dashboard's chart source.
+     *
+     * ## Why the caller filters rather than this
+     *
+     * Because a `start`/`end` parameter here would be **bound into the subscription**: Room
+     * re-runs the query with the same bounds when the table changes, so the chart's right-hand
+     * edge would freeze at whatever day the ViewModel was built on — and the defect
+     * [observeTodaysIncome]'s own KDoc was written to fix. So this returns the whole grouping and
+     * the caller picks its 14 days, which is also where the clock is read.
+     */
+    fun observeIncomeByDay(): Flow<List<DailyIncome>> =
+        paymentDao.observeIncomeByDate()
+
+    /**
      * Confirmed income from [start] to [end] inclusive, observed — Story 4.5's period total.
      *
      * ## Why this filters the **existing** grouping rather than running its own query
@@ -974,6 +988,28 @@ class PaymentRepository(
             start.datesUntil(end.plusDays(1))
                 .map { day -> byDate.firstOrNull { it.date == day } ?: DailyIncome(day, 0L) }
                 .toList()
+        }
+
+    /**
+     * Income per contract, all dates, observed — the dashboard's per-vehicle donut
+     * (`dashboard.html:294-320`).
+     *
+     * ## Why this is not derived from [observeIncomeByDay]
+     *
+     * Because the date grouping has already discarded the contract: a daily bucket is two columns
+     * with no contract id, so the donut's question — which *car* earned this — cannot be answered
+     * from it. The query groups by the other axis and the join to a plate happens in the ViewModel,
+     * like every other join in this app.
+     *
+     * ## Why no date range
+     *
+     * The caller narrows by summing; a range parameter here would freeze the bounds in the
+     * subscription for the same reason `observeIncomeByDate` has none — the dashboard's window
+     * moves with the day and the flow must follow it.
+     */
+    fun observeIncomeByContract(): Flow<Map<String, Long>> =
+        paymentDao.observeIncomeByContract().map { rows ->
+            rows.associate { it.contractId to it.total }
         }
 
     /**

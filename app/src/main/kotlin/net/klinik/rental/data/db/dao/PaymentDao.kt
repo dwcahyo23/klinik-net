@@ -129,6 +129,33 @@ interface PaymentDao {
     fun observeContractIds(): Flow<List<String>>
 
     /**
+     * Confirmed income grouped by **contract** — the dashboard's per-vehicle donut
+     * (`dashboard.html:294-320`).
+     *
+     * ## Why this is a second query and not a filter over [observeIncomeByDate]
+     *
+     * Because the date grouping has already thrown the contract away: `SELECT date, SUM(amount)
+     * GROUP BY date` returns two columns and no contract, so a per-car figure cannot be recovered
+     * from it at all. The donut needs a different grouping, not a different filter — and it is
+     * the *contract* that names the vehicle, so the join to a plate happens in the ViewModel
+     * exactly as every other join in this app does.
+     *
+     * ## Why the status filter is here too
+     *
+     * For the same reason and with the same wording as [observeIncomeByDate]: a cancelled
+     * deposit is not income, and a donut that counted one would put a car on the chart that
+     * earned nothing.
+     */
+    @Query(
+        """
+        SELECT contractId, SUM(amount) AS total FROM payment
+        WHERE status = 'confirmed'
+        GROUP BY contractId
+        """,
+    )
+    fun observeIncomeByContract(): Flow<List<ContractIncome>>
+
+    /**
      * Every deposit on **every** contract, newest first — the Setoran screen's cross-contract
      * history.
      *
@@ -208,5 +235,20 @@ interface PaymentDao {
  */
 data class DailyIncome(
     val date: LocalDate,
+    val total: Long,
+)
+
+/**
+ * One contract's confirmed income in total — the per-vehicle donut's row.
+ *
+ * The sibling of [DailyIncome] for the other axis: that one buckets by *when* the money arrived,
+ * this one by *who* earned it. Same shape on purpose, so the repository's two readers read alike.
+ *
+ * @property contractId the rental the money is attributed to; the plate is joined downstream,
+ *   which is the pattern every other reader in this app follows.
+ * @property total the confirmed rupiah that contract has received, all dates.
+ */
+data class ContractIncome(
+    val contractId: String,
     val total: Long,
 )

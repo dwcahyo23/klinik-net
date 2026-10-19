@@ -123,7 +123,7 @@ fun PenyewaScreen(
                             onClear = onClearQuery,
                             placeholder = stringResource(R.string.penyewa_search_placeholder),
                             modifier = Modifier
-                                .widthIn(max = SearchPillMaxWidth)
+                                .widthIn(max = net.klinik.rental.ui.components.TopBarSearchMaxWidth)
                                 .testTag(TAG_SEARCH),
                         )
                     },
@@ -147,7 +147,7 @@ fun PenyewaScreen(
                     KnMasterDetail(
                         list = {
                             when {
-                                state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+                                state.isLoading -> KnSkeletonList()
                                 state.isEmptyList -> PenyewaEmptyList(onAdd = onAdd)
                                 state.isEmptySearch -> PenyewaEmptySearch(
                                     query = state.query,
@@ -486,21 +486,8 @@ internal const val TAG_DETAIL_EDIT = "penyewa-detail-edit"
 /** The screen's own search field, now in the top bar rather than a row beneath it. */
 internal const val TAG_SEARCH = "penyewa-search"
 
-/** `renters.html:29` — the field's `max-width`. */
-private val SearchPillMaxWidth = 280.dp
-
 /** The single banner, whatever its tone — so one test can address it. */
 internal const val TAG_BANNER = "penyewa-banner"
-
-/**
- * How many placeholder rows the skeleton draws.
- *
- * A count rather than one block so the loading state has the *shape* of the list
- * it stands in for. Six matches the stated fleet scale without pretending to
- * know the real count — a skeleton showing exactly the final row count would
- * need the count, which is what is still loading.
- */
-private const val SKELETON_ROWS = 6
 
 @Preview(showBackground = true)
 @Composable
