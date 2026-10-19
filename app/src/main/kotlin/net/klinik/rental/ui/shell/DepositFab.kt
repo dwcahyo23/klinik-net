@@ -1,10 +1,14 @@
 package net.klinik.rental.ui.shell
 
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.SmallFloatingActionButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
@@ -13,6 +17,7 @@ import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.NotebookPen
 import net.klinik.rental.R
+import net.klinik.rental.ui.theme.knSpacing
 
 /**
  * The shell's quick-action button: `fab-mini`, at 54dp.
@@ -43,6 +48,24 @@ import net.klinik.rental.R
  * gesture the owner has to recognise. The label sits beside it in the pill the epic's
  * `.fab-mini` describes, so the action is readable rather than guessed — the same reason
  * the contract row's end verb spells `Akhiri` instead of drawing an icon.
+ *
+ * ## Why the label is a child of a `Row` rather than a sibling of the button
+ *
+ * Because "beside" is a layout relationship, and it has to be expressed by one. The label
+ * used to be emitted as a second top-level composable in this function, which made it a
+ * sibling of *nothing* — the `Box` in `AppShell` aligns the whole of `DepositFab` to
+ * `Alignment.BottomEnd`, so the bare `Text` was laid out at that `Box`'s **top-left**,
+ * over the first screen's content. On the audited tablet "Catat Setoran" overlapped
+ * "Pengaturan", and no test caught it: both nodes existed, and nothing asserted where
+ * either was.
+ *
+ * Wrapping them in one `Row` is the fix, and it is the whole fix. The caller's `align`
+ * then moves the pair, rather than moving the button and stranding the label.
+ *
+ * ## Why the gap between them is a spacing token
+ *
+ * Because `--sp-2` (8dp) is the prototype's gap for an icon-plus-text pairing, and a
+ * literal here would be a second answer to "how far apart are these".
  */
 @Composable
 internal fun DepositFab(
@@ -51,29 +74,40 @@ internal fun DepositFab(
     modifier: Modifier = Modifier,
 ) {
     if (!visible) return
-    SmallFloatingActionButton(
-        onClick = onOpen,
-        // 54dp, which is UX-DR17's `.fab-mini` figure and also `KnButtonSize.Small`'s
-        // floor — so it clears the same 48dp minimum every other control in the app is
-        // measured against.
-        modifier = modifier
-            .size(54.dp)
-            .testTag(TAG_DEPOSIT_FAB),
+    val spacing = MaterialTheme.knSpacing
+    // A `Row`, and the reason the KDoc used to get wrong is worth recording: the label
+    // is drawn **beside** the button, so it has to be a *child of the same layout* as
+    // the button. It used to be a second top-level composable, which made it a sibling
+    // of nothing — `AppShell` aligns the FAB to `Alignment.BottomEnd`, so the bare
+    // `Text` landed at that `Box`'s top-left corner, over the first screen's content,
+    // rather than next to the button it names.
+    Row(
+        modifier = modifier,
+        verticalAlignment = Alignment.CenterVertically,
     ) {
-        Icon(
-            imageVector = Lucide.NotebookPen,
-            contentDescription = null,
+        SmallFloatingActionButton(
+            onClick = onOpen,
+            // 54dp, which is UX-DR17's `.fab-mini` figure and also `KnButtonSize.Small`'s
+            // floor — so it clears the same 48dp minimum every other control in the app is
+            // measured against.
+            modifier = Modifier
+                .size(54.dp)
+                .testTag(TAG_DEPOSIT_FAB),
+        ) {
+            Icon(
+                imageVector = Lucide.NotebookPen,
+                contentDescription = null,
+            )
+        }
+        Text(
+            text = stringResource(R.string.deposito_action),
+            style = MaterialTheme.typography.labelSmall,
+            textAlign = TextAlign.Start,
+            modifier = Modifier
+                .padding(start = spacing.sm)
+                .testTag(TAG_DEPOSIT_FAB_LABEL),
         )
     }
-    // The label is a separate composable in this file rather than inside the button,
-    // because a `SmallFloatingActionButton`'s content slot is a single icon-sized box and
-    // putting text in it would fight that constraint.
-    Text(
-        text = stringResource(R.string.deposito_action),
-        style = androidx.compose.material3.MaterialTheme.typography.labelSmall,
-        textAlign = TextAlign.Start,
-        modifier = Modifier.testTag(TAG_DEPOSIT_FAB_LABEL),
-    )
 }
 
 /**

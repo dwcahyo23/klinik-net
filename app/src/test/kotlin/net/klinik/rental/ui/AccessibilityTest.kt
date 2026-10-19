@@ -331,7 +331,7 @@ class AccessibilityTest {
     fun `every clickable node in the nav rail clears the floor`() {
         compose.setContent {
             KlinikNetTheme(darkTheme = false) {
-                AppShell(screens = navScreens(), isLandscape = true)
+                AppShell(screens = navScreens(), showRail = true)
             }
         }
         // The *real* shell, not a hand-built `KnNavRail`.
@@ -355,7 +355,7 @@ class AccessibilityTest {
     fun `every clickable node in the bottom nav clears the floor`() {
         compose.setContent {
             KlinikNetTheme(darkTheme = false) {
-                AppShell(screens = navScreens(), isLandscape = false)
+                AppShell(screens = navScreens(), showRail = false)
             }
         }
         compose.onAllNodes(

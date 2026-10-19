@@ -1,0 +1,3 @@
+- source_spec: `_bmad-output/implementation-artifacts/spec-audit-restyle-ui.md`
+  summary: Fix the six visual defects that need scrolling or measuring to see — the KPI `FlowRow` weight, the 36sp colliding label, the 16px gutter versus the prototype's 24px, the skeleton/tile height mismatch, the 840dp centred content column, and the stale seven-destination KDoc.
+  evidence: Split from the audit because every one of these needs a scroll, a measurement or a grep to notice, while the four in the parent spec are visible on the first screen. None depends on the others; the parent spec's shell, FAB, rail and card work can merge and ship without this.

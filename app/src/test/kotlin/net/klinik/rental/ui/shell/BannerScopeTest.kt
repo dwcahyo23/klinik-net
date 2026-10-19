@@ -5,8 +5,8 @@ import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasTestTag
-import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.ui.screens.kendaraan.TAG_BANNER
@@ -45,7 +45,7 @@ class BannerScopeTest {
         // A refusal raised on the fleet, then the owner goes to renters and back.
         // The fleet's banner must not have been destroyed by the round trip —
         // that is exactly what destination-scoped ViewModels would do.
-        compose.setContent { theme { AppShell(screens = refusingScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = refusingScreens(), showRail = true) } }
 
         // The app opens on Beranda now, so the fleet is reached the way the owner
         // would reach it — through the rail. The refusal is the fleet's own.
@@ -54,10 +54,9 @@ class BannerScopeTest {
         // It is up on arrival.
         compose.onAllNodesWithTag(TAG_BANNER).assertCountEquals(1)
 
-        // Scoped to the rail. "Kendaraan" is both a rail label and the fleet
-        // screen's own title, so an unscoped `onNodeWithText` matches two nodes and
-        // throws for being ambiguous rather than navigating — and the same applies
-        // to "Penyewa". The chrome is what is being tapped here.
+        // Scoped to the rail, and by content description: the compact rail draws no
+        // labels, and "Kendaraan"/"Penyewa" are also their own screens' titles, so an
+        // unscoped text match would be ambiguous. The chrome is what is being tapped here.
         tapRailItem("Penyewa")
         tapRailItem("Kendaraan")
 
@@ -69,7 +68,7 @@ class BannerScopeTest {
         // The recorded limit. The fleet's refusal is not rendered over the
         // renters' screen, because `state.errorMessage` belongs to the fleet's
         // own state and the renters' screen reads its own.
-        compose.setContent { theme { AppShell(screens = refusingScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = refusingScreens(), showRail = true) } }
 
         tapRailItem("Penyewa")
 
@@ -80,17 +79,20 @@ class BannerScopeTest {
     }
 
     /**
-     * Taps the rail item labelled [label].
+     * Taps the rail item named [label].
      *
-     * Scoped to [TAG_RAIL] because every one of these three destinations is also
-     * the name of its own screen: "Kendaraan" is the fleet screen's title, and
-     * "Penyewa" the renters screen's. An unscoped `onNodeWithText` therefore
-     * matches two nodes and fails for being ambiguous rather than tapping
-     * anything — and the chrome is what these assertions are about.
+     * By **content description** rather than by text, because the shell mounts the prototype's
+     * compact rail and a compact rail draws no labels (`shared.css:1031`); the name is what it
+     * keeps instead.
+     *
+     * Scoped to [TAG_RAIL] for a second reason, which held before this one: every destination
+     * used here is also the name of its own screen — "Kendaraan" is the fleet screen's title and
+     * "Penyewa" the renters screen's — so an unscoped `onNodeWithText` matches two nodes and
+     * fails for being ambiguous rather than tapping anything.
      */
     private fun tapRailItem(label: String) {
         compose.onAllNodes(
-            hasText(label) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
+            hasContentDescriptionExactly(label) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
         )[0].performClick()
         compose.waitForIdle()
     }

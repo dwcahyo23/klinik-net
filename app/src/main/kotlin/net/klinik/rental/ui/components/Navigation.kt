@@ -36,6 +36,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -90,6 +92,9 @@ data class KnNavItem(
  * Presentation only — a rail draws destinations and reports taps. It does not
  * decide which is reachable, or what a badge means.
  *
+ * @param compact the prototype's narrow rail: `--rail-w-compact` (72dp) with the
+ *   item labels hidden (`shared.css:1030-1032`). It narrows the rail and removes the
+ *   *label*; it never shrinks a touch target — see [KnNavRailItem].
  * @param logoSlot the brand mark, drawn in a 52dp band at the top of the rail.
  *   A slot rather than a fixed logo because the mark is an asset Story 2.x
  *   supplies; until then the caller passes nothing and the band stays empty.
@@ -158,6 +163,7 @@ fun KnNavRail(
                     KnNavRailItem(
                         item = item,
                         selected = index == selectedIndex,
+                        compact = compact,
                         onClick = { onSelect(index) },
                     )
                 }
@@ -176,11 +182,35 @@ fun KnNavRail(
  * No explicit `contentDescription` here — the label `Text` is the destination's
  * name, and setting one on the surface as well would make a screen reader say it
  * twice.
+ *
+ * @param compact hides the label, per `.device-frame.portrait .rail-item span
+ *   { display: none }`. The label is *not* rendered rather than made transparent or
+ *   zero-height: a transparent one still occupies the row and still gets read out,
+ *   which is the opposite of what the rule is for.
+ *
+ * ## Why hiding the label does not shrink the target
+ *
+ * Because the floor is applied to the `Surface` by [minTouchTarget] and not derived from
+ * the item's contents. With the label gone the icon alone is 24dp, and the surface
+ * falls back to the 48dp minimum — so the compact rail is 72dp wide, not 48dp.
+ * Shrinking the target to match the visible content is how the compact mode would have
+ * become an accessibility regression: the whole point of `--rail-w-compact` is to save
+ * horizontal space, and the 48dp floor is about vertical reach.
+ *
+ * ## Why the name survives the label
+ *
+ * Because a screen reader still has to announce the destination. The `Icon` is
+ * `contentDescription = null` on the strength that "the label `Text` is the
+ * destination's name" — which stops being true the moment the label is hidden. So in
+ * compact mode the `Surface` carries the label itself as a merged
+ * `contentDescription`, and the visible `Text` is not drawn. Non-compact keeps the
+ * `Text` and takes no description, so the name is spoken exactly once either way.
  */
 @Composable
 private fun KnNavRailItem(
     item: KnNavItem,
     selected: Boolean,
+    compact: Boolean,
     onClick: () -> Unit,
 ) {
     val kn = MaterialTheme.knColors
@@ -206,7 +236,18 @@ private fun KnNavRailItem(
             modifier = Modifier
                 .weight(1f)
                 .minTouchTarget()
-                .focusRing(focused, MaterialTheme.knRadii.md),
+                .focusRing(focused, MaterialTheme.knRadii.md)
+                .then(
+                    // Only in compact, and only because the label it would otherwise
+                    // duplicate is not drawn there — see this function's KDoc.
+                    if (compact) {
+                        Modifier.semantics(mergeDescendants = true) {
+                            contentDescription = item.label
+                        }
+                    } else {
+                        Modifier
+                    },
+                ),
             shape = shape,
             color = if (selected) kn.brandSurface else Color.Transparent,
             contentColor = if (selected) kn.onBrand else kn.textTertiary,
@@ -222,13 +263,15 @@ private fun KnNavRailItem(
                     contentDescription = null,
                     modifier = Modifier.size(RailIconSize),
                 )
-                Text(
-                    text = item.label,
-                    style = MaterialTheme.knTypography.overline.copy(fontSize = RailLabelSp, lineHeight = 14.sp),
-                    color = if (selected) kn.onBrand else kn.textTertiary,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
-                )
+                if (!compact) {
+                    Text(
+                        text = item.label,
+                        style = MaterialTheme.knTypography.overline.copy(fontSize = RailLabelSp, lineHeight = 14.sp),
+                        color = if (selected) kn.onBrand else kn.textTertiary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                    )
+                }
                 if (item.badgeCount != null && item.badgeCount > 0) {
                     RailBadge(count = item.badgeCount)
                 }
@@ -286,7 +329,7 @@ fun KnBottomNav(
             .background(kn.bgRail)
             .padding(horizontal = spacing.sm, vertical = spacing.xs),
     ) {
-        // Seven destinations on a 360dp phone leave each tab a 44dp share, under the
+        // Eight destinations on a 360dp phone leave each tab a 45dp share, under the
         // 48dp floor — `weight` constrains a child in a `Row` whether it comes before or
         // after `minTouchTarget`, because the minimum is measured *inside* an already-fixed
         // share. Ordering the modifiers does not help; the Row's own width has to be able
@@ -483,10 +526,24 @@ private val RailIconSize = 24.dp
  */
 private val RailLabelSp = 11.sp
 
-/** `--rail-w` */
+/**
+ * `--rail-w`
+ *
+ * The full rail, with labels. Reachable only when a caller passes `compact = false`,
+ * which today the shell never does — it draws the bottom nav instead. It stays because
+ * the CSS defines it and a screen that wants the wide rail on a large display should not
+ * have to re-derive 88dp.
+ */
 private val KnNavRailWidth = 88.dp
 
-/** `--rail-w-compact` */
+/**
+ * `--rail-w-compact`
+ *
+ * `shared.css:1030` — the narrow rail, and `shared.css:1031` hides the item labels with
+ * it. Until this story the constant was dead: `AppShell` never passed `compact = true`, so
+ * nothing in the app rendered at this width. The layout it describes was in the prototype
+ * and in this file, and on no screen between them.
+ */
 private val KnNavRailWidthCompact = 72.dp
 
 /**
@@ -495,7 +552,7 @@ private val KnNavRailWidthCompact = 72.dp
  * ## Why a fixed width rather than a weighted share
  *
  * Because `weight(1f)` hands each destination whatever is left after the others, and with
- * seven destinations on a narrow phone that share is **44dp** — under the 48dp floor the
+ * eight destinations on a narrow phone that share is **43dp** — under the 48dp floor the
  * whole app is measured against. `minTouchTarget` cannot save it: a child's minimum is
  * measured *inside* an already-fixed share, so the floor was declared and then not reached.
  * Reordering the two modifiers changes nothing, for the same reason — which is worth

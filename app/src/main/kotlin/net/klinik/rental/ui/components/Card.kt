@@ -42,6 +42,19 @@ import net.klinik.rental.ui.theme.minTouchTarget
  * Presentation only. Nothing here computes arrears, risk tier, credit or
  * status; a card renders what it is handed.
  *
+ * ## Why the card fills its parent's width
+ *
+ * Because a card that sized to its own longest child is the defect `PengaturanScreen`
+ * shipped: its four section surfaces rendered at roughly 45% and 100% of the page on the
+ * same screen, because a `Surface` with no width modifier wraps its content and the
+ * content happened to differ. A card is a page section, not an inline chip, so
+ * [Modifier.fillMaxWidth] belongs to the component rather than to each call site — and
+ * putting it here means a screen cannot forget, which is the failure this replaces.
+ *
+ * A caller that genuinely wants a narrower card constrains the *parent*, not this: the
+ * modifier is applied before [padding] so it sizes the outer box the shadow traces, not
+ * the padded content rect.
+ *
  * @param onClick when non-null the card becomes a clickable surface. Clickable
  *   cards are not the default: a card that *looks* tappable but is not is a
  *   gesture-only path to an important action, which the epic context forbids.
@@ -98,6 +111,31 @@ fun KnCard(
         )
     }
 }
+
+/**
+ * The widest a screen's content column is allowed to be.
+ *
+ * ## Why this exists
+ *
+ * The prototype has no max-width, and the reason is in its frame: `shared.css` was only
+ * ever previewed at 1280x800, where a full-width card is already a comfortable measure. On
+ * the audited 711dp tablet a full-width card puts a single sentence 700dp long on screen —
+ * long enough that the eye loses the line on the return sweep, which is the one thing a
+ * reading column is supposed to prevent.
+ *
+ * 840dp rather than a token, because it is not in the spacing scale and adding one would be
+ * pretending it is one of the four-pixels-per-step sizes it is not. It lives here, beside
+ * [KnCard], rather than in a screen because the cap and [KnCard]'s [Modifier.fillMaxWidth]
+ * are the same decision seen from two ends: the card fills whatever the column gives it,
+ * and the column refuses to give more than this. Declared `internal` so a screen reads a
+ * named constant instead of repeating `840.dp`.
+ *
+ * A screen opts in by wrapping its body in
+ * `Modifier.widthIn(max = KnContentMaxWidth).align(Alignment.CenterHorizontally)` — the
+ * width modifier first, then `fillMaxWidth`, because in the other order the fill has
+ * already fixed the width before the cap can narrow it.
+ */
+internal val KnContentMaxWidth = 840.dp
 
 /** `.card-header` — title on the leading side, optional trailing slot. */
 @Composable

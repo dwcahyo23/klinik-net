@@ -11,10 +11,12 @@ import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasAnyAncestor
 import androidx.compose.ui.test.hasClickAction
+import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
@@ -34,13 +36,14 @@ import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.screens.tunggakan.TunggakanUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
+import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
 
 /**
- * The shell: one graph, and chrome that changes with orientation.
+ * The shell: one graph, and chrome that changes with **window width**.
  *
  * ## Why destinations are *clicked* here and not merely asserted to exist
  *
@@ -53,6 +56,15 @@ import org.robolectric.annotation.Config
  *
  * So the assertion is behavioural: tap a destination, then assert the screen that
  * destination names is now on top.
+ *
+ * ## Why rail taps go through a content description and not a label
+ *
+ * Because the rail this shell mounts is the prototype's **compact** one, and a compact rail
+ * hides its labels (`shared.css:1031`). Every test here that navigates by tapping a rail
+ * destination therefore addresses it by the name the rail exposes to a screen reader, not
+ * by visible text — which is the only thing a compact rail has. Before this story the rail
+ * drew its labels and the tests could use them; that is the one thing about them that had to
+ * change.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
@@ -62,28 +74,73 @@ class AppShellTest {
     val compose = createComposeRule()
 
     @Test
-    fun `landscape shows the rail and not the bottom nav`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+    fun `a wide window shows the rail and not the bottom nav`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         compose.onNodeWithTag(TAG_RAIL).assertExists()
         compose.onAllNodesWithTag(TAG_BOTTOM_NAV).assertCountEquals(0)
     }
 
     @Test
-    fun `portrait shows the bottom nav and not the rail`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
+    fun `a narrow window shows the bottom nav and not the rail`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
 
         compose.onNodeWithTag(TAG_BOTTOM_NAV).assertExists()
         compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(0)
     }
 
     /**
+     * The rail the shell mounts is the **compact** one, so it does not draw its labels.
+     *
+     * `shared.css:1030-1032` narrows the rail to `--rail-w-compact` and hides
+     * `.rail-item span`. `KnNavRailWidthCompact` existed in `Navigation.kt` and nothing passed
+     * it, so this is the assertion that the compact rail is reachable at all — a failure here
+     * means the constant went back to being dead code with its labels back on.
+     *
+     * Asserted as *absence*, because the presence of a hidden label would be a different bug:
+     * a transparent or zero-height label still occupies the item and is still announced, which
+     * is the opposite of what the rule is for.
+     */
+    @Test
+    fun `the compact rail draws no destination labels`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
+
+        Destination.entries.forEach { destination ->
+            compose.onAllNodes(
+                hasText(labelOf(destination), substring = true) and
+                    hasAnyAncestor(hasTestTag(TAG_RAIL)),
+            ).assertCountEquals(0)
+        }
+    }
+
+    /**
+     * And every destination is still *named*, because a compact rail is icons only.
+     *
+     * The rail's `Icon` is `contentDescription = null` on the strength that the label text is
+     * the destination's name — a premise a compact rail falsifies. So this asserts the name
+     * reaches the accessibility tree through the surface itself, which is the only remaining
+     * route to it. Without this, `the compact rail draws no destination labels` would be
+     * satisfied by eight anonymous buttons.
+     */
+    @Test
+    fun `the compact rail still names every destination`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
+
+        Destination.entries.forEach { destination ->
+            compose.onAllNodes(
+                hasContentDescriptionExactly(labelOf(destination)) and
+                    hasAnyAncestor(hasTestTag(TAG_RAIL)),
+            ).assertCountEquals(1)
+        }
+    }
+
+    /**
      * Story 3.2's FAB is on the shell, so it appears over **every** destination — and the
      * branch that puts it somewhere else would be a control the owner reaches on some
-     * tablets and not others, which is what AR-18's "identical graph in both
-     * orientations" exists to prevent.
+     * devices and not others, which is what AR-18's "identical graph in both widths"
+     * exists to prevent.
      *
-     * One test per orientation rather than both in one, because a `ComposeTestRule`
+     * One test per chrome rather than both in one, because a `ComposeTestRule`
      * accepts exactly one `setContent` per method — the reason this file's own harness
      * drives a single tree per pass.
      *
@@ -92,18 +149,16 @@ class AppShellTest {
      * these two tests navigate to the fleet first — otherwise they would be asserting the
      * FAB is present on the screen that deliberately has no FAB.
      *
-     * The navigation goes through `Destination.Kendaraan.route` rather than a label typed as
-     * text. `"Armada"` was never a nav label — the label is `"Kendaraan"` — and the tap only
-     * worked before because that word appeared in the fleet screen's own title bar, so the
-     * assertion passed while navigating to whatever happened to carry the word. Now that
-     * Beranda is the start destination and owns no FAB, a test that clicks the title bar
-     * instead of the rail lands on the start screen and finds nothing.
+     * The rail case taps by **content description**, because the compact rail draws no
+     * labels; the bottom-nav case taps by text, because that bar still draws them. Both name
+     * `"Kendaraan"` and neither touches the fleet screen's own `"Armada"` title, which is
+     * what made an earlier version of this pass while navigating to the wrong screen.
      */
     @Test
-    fun `the deposit FAB appears in landscape`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+    fun `the deposit FAB appears over the rail`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        compose.onNodeWithText("Kendaraan").performClick()
+        compose.onNodeWithContentDescription("Kendaraan").performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
@@ -111,8 +166,8 @@ class AppShellTest {
     }
 
     @Test
-    fun `the deposit FAB appears in portrait`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
+    fun `the deposit FAB appears over the bottom nav`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
 
         compose.onNodeWithText("Kendaraan").performClick()
         compose.waitForIdle()
@@ -131,7 +186,7 @@ class AppShellTest {
      */
     @Test
     fun `the deposit FAB is absent on the morning summary`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         // The app opens on Beranda, so the FAB is already gone.
         compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
@@ -147,9 +202,9 @@ class AppShellTest {
      */
     @Test
     fun `the deposit FAB is absent on the deposit screen`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        compose.onNodeWithText("Setoran").performClick()
+        compose.onNodeWithContentDescription("Setoran").performClick()
         compose.waitForIdle()
 
         compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
@@ -159,18 +214,72 @@ class AppShellTest {
     @Test
     @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
     fun `the deposit FAB clears the touch floor`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         // The fleet, because the FAB is deliberately absent on Beranda — see the
-        // absence test above. The nav label is `"Kendaraan"`, not the screen's
-        // `"Armada"` title; see the note on the FAB's landscape test.
-        compose.onNodeWithText("Kendaraan").performClick()
+        // absence test above. The nav destination is `"Kendaraan"`, not the screen's
+        // `"Armada"` title; see the note on the FAB's rail test.
+        compose.onNodeWithContentDescription("Kendaraan").performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag(TAG_DEPOSIT_FAB)
             .assertExists()
             .assertWidthIsAtLeast(48.dp)
             .assertHeightIsAtLeast(48.dp)
+    }
+
+    /**
+     * The FAB's label sits **beside** the button, and nowhere else.
+     *
+     * The defect this closes is a pure layout one and no presence assertion could see it: the
+     * label used to be emitted as a second top-level composable in `DepositFab`, which made it a
+     * sibling of nothing. `AppShell` aligns the FAB to `Alignment.BottomEnd`, so the bare `Text`
+     * was laid out at that `Box`'s **top-left** — over the first screen's content — while both
+     * nodes existed and every `assertExists()` passed. On the audited tablet "Catat Setoran"
+     * overlapped "Pengaturan".
+     *
+     * So the assertion is geometric, not existential: the two nodes are fetched and their
+     * positions compared. "Exists", "exists somewhere near the button" and "exists in the
+     * opposite corner of the screen" are three different states, and only the third one is the
+     * bug.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w711dp-h1138dp-port")
+    fun `the FAB label is beside the button and nowhere else`() {
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
+
+        compose.onNodeWithContentDescription("Kendaraan").performClick()
+        compose.waitForIdle()
+
+        val button = compose.onNodeWithTag(TAG_DEPOSIT_FAB).fetchSemanticsNode().positionInRoot
+        val label = compose.onNodeWithTag(TAG_DEPOSIT_FAB_LABEL)
+            .fetchSemanticsNode()
+            .positionInRoot
+
+        // Beside: the same row. "Beside" for a label to the button's right means the label's
+        // vertical centre is within the button's own height of the button's vertical centre.
+        val buttonHeight = compose.onNodeWithTag(TAG_DEPOSIT_FAB)
+            .fetchSemanticsNode()
+            .size
+            .height
+        val labelCentre = label.y + compose.onNodeWithTag(TAG_DEPOSIT_FAB_LABEL)
+            .fetchSemanticsNode()
+            .size
+            .height / 2f
+        val buttonCentre = button.y + buttonHeight / 2f
+        assertEquals(
+            "the label is not vertically aligned with the button it names",
+            0f,
+            labelCentre - buttonCentre,
+            1f,
+        )
+
+        // And on the button's right, which is what "beside" means for this layout — the label
+        // reads after the action it names.
+        assertTrue(
+            "the label sits to the left of the button it names",
+            label.x > button.x,
+        )
     }
 
     /**
@@ -192,7 +301,7 @@ class AppShellTest {
                 ),
             ),
         )
-        compose.setContent { theme { AppShell(screens = open, isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = open, showRail = true) } }
 
         compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
     }
@@ -208,7 +317,7 @@ class AppShellTest {
      */
     @Test
     fun `the app opens on the morning summary`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         // The summary's own figure label, which no other screen draws.
         compose.onNodeWithText("Pendapatan hari ini").assertExists()
@@ -216,9 +325,9 @@ class AppShellTest {
 
     @Test
     fun `tapping a rail destination opens that screen`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        compose.onNodeWithText("Penyewa").performClick()
+        compose.onNodeWithContentDescription("Penyewa").performClick()
         compose.waitForIdle()
 
         // Not the title: "Penyewa" is both the rail label and the screen's own
@@ -230,7 +339,7 @@ class AppShellTest {
 
     @Test
     fun `tapping a bottom-nav destination opens that screen`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
 
         compose.onNodeWithText("Kontrak").performClick()
         compose.waitForIdle()
@@ -265,7 +374,7 @@ class AppShellTest {
             searchRenters = listOf(sitiRenter(), budiRenter())
         }
         compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
         }
 
         compose.onNodeWithTag(searchResultTag("Siti Aminah")).performClick()
@@ -297,7 +406,7 @@ class AppShellTest {
             searchRenters = listOf(sitiRenter())
         }
         compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
         }
 
         // First search: land on the renters screen narrowed to Siti.
@@ -306,7 +415,7 @@ class AppShellTest {
         assertEquals("first jump narrowed to Siti", "Siti Aminah", wiring.penyewaQuery)
 
         // Leave, then search for someone else and take that one instead.
-        compose.onNodeWithText("Kendaraan").performClick()
+        compose.onNodeWithContentDescription("Kendaraan").performClick()
         compose.waitForIdle()
         wiring.searchQuery = "budi"
         wiring.searchRenters = listOf(sitiRenter(), budiRenter())
@@ -343,7 +452,7 @@ class AppShellTest {
             kendaraanFilter = VehicleFilter.Tersedia,
         )
         compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
         }
 
         compose.onNodeWithTag(searchResultTag("B 1235 TF")).performClick()
@@ -371,15 +480,19 @@ class AppShellTest {
      */
     @Test
     fun `the search field is present on every destination`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         Destination.entries.forEach { destination ->
             // Scoped to the **rail**, not `onNodeWithText`: once a destination's name is also
             // its screen's own title — which Beranda now is, being both the start destination
             // and the first rail item — a bare text match finds two nodes and the injection
             // fails. The rail is what this test is walking.
+            //
+            // By content description rather than by text, because this rail is the compact one
+            // and a compact rail draws no labels — see `tapRailItem`.
             compose.onNode(
-                hasText(destinationLabel(destination)) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
+                hasContentDescriptionExactly(destinationLabel(destination)) and
+                    hasAnyAncestor(hasTestTag(TAG_RAIL)),
             ).performClick()
             compose.waitForIdle()
             compose.onNodeWithTag(TAG_GLOBAL_SEARCH_FIELD).assertExists()
@@ -399,12 +512,12 @@ class AppShellTest {
             searchRenters = listOf(sitiRenter())
         }
         compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), isLandscape = true) }
+            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
         }
 
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertExists()
 
-        compose.onNodeWithText("Kontrak").performClick()
+        compose.onNodeWithContentDescription("Kontrak").performClick()
         compose.waitForIdle()
 
         compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertDoesNotExist()
@@ -412,12 +525,12 @@ class AppShellTest {
 
     @Test
     fun `tapping the already-selected destination does not stack a duplicate`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         // The app opens on Beranda now, so the *already-selected* destination is the
         // summary — and this still asserts the fleet's own screen after tapping its
         // label, because the claim is about the back stack rather than about the start.
-        compose.onNodeWithText("Kendaraan").performClick()
+        compose.onNodeWithContentDescription("Kendaraan").performClick()
         compose.waitForIdle()
 
         // `launchSingleTop` plus `restoreState`: re-tapping is a no-op, not a
@@ -428,20 +541,28 @@ class AppShellTest {
         compose.onNodeWithText("Belum ada Kendaraan").assertExists()
     }
 
+    /**
+     * Every destination the graph declares is reachable **in the chrome**, by name.
+     *
+     * Scoped to the rail, not to the screen: "Kendaraan" is also the fleet screen's own title,
+     * so an unscoped query matches two nodes and says nothing about the chrome. The chrome is
+     * what is under test.
+     *
+     * Because the rail and the graph are generated from one table, a
+     * destination cannot be in the chrome and missing from the graph —
+     * `NAV_DESTINATION_UNREACHABLE` answered by construction.
+     *
+     * Matched on the destination's **name** — the content description — because this rail is
+     * the compact one and does not draw labels. The name is what the owner is actually given
+     * here, so it is what "the chrome carries this destination" has to mean.
+     */
     @Test
     fun `the rail carries every destination the graph declares`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        // Scoped to the rail, not to the screen: "Kendaraan" is both a rail label
-        // and the fleet screen's own title, so an unscoped text query matches two
-        // nodes and says nothing about the chrome. The chrome is what is under test.
-        //
-        // Because the rail and the graph are generated from one table, a
-        // destination cannot be in the chrome and missing from the graph —
-        // `NAV_DESTINATION_UNREACHABLE` answered by construction.
         Destination.entries.forEach { destination ->
             compose.onAllNodes(
-                hasText(labelOf(destination), substring = true) and
+                hasContentDescriptionExactly(labelOf(destination)) and
                     hasAnyAncestor(hasTestTag(TAG_RAIL)),
             ).assertCountEquals(1)
         }
@@ -463,7 +584,7 @@ class AppShellTest {
      */
     @Test
     fun `every rail target clears the 48dp touch floor`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = true) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         val targets = compose.onAllNodes(
             hasClickAction() and (
@@ -485,7 +606,7 @@ class AppShellTest {
     /** The same floor on the bottom nav, which is a different component. */
     @Test
     fun `every bottom-nav target clears the 48dp touch floor`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), isLandscape = false) } }
+        compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
 
         val targets = compose.onAllNodes(
             hasClickAction() and (
@@ -504,18 +625,17 @@ class AppShellTest {
     }
 
     /**
-     * `isLandscape` omitted: the production default picks the chrome.
+     * `showRail` omitted: the production default picks the chrome.
      *
-     * Every other test in this file passes `isLandscape` explicitly, which is the
-     * right way to reach a branch — and which would leave `MainActivity`'s single
-     * call site, the only one that *does* omit it, completely unexecuted. So this
-     * composes `AppShell` the way the Activity does, once under a landscape
-     * qualifier and once under a portrait one, and asserts the default lands on
-     * the chrome that orientation names.
+     * Every other test in this file passes `showRail` explicitly, which is the right way to
+     * reach a branch — and which would leave `MainActivity`'s single call site, the only one
+     * that *does* omit it, completely unexecuted. So these compose `AppShell` the way the
+     * Activity does and assert the default reads **width**, one window either side of the
+     * 600dp breakpoint.
      */
     @Test
     @Config(sdk = [34], qualifiers = "w1280dp-h720dp-land")
-    fun `the default orientation reads landscape as a rail`() {
+    fun `the default reads a wide window as a rail`() {
         compose.setContent { theme { AppShell(screens = testScreens()) } }
 
         compose.onNodeWithTag(TAG_RAIL).assertExists()
@@ -523,8 +643,55 @@ class AppShellTest {
     }
 
     @Test
-    @Config(sdk = [34], qualifiers = "w800dp-h1280dp-port")
-    fun `the default orientation reads portrait as a bottom nav`() {
+    @Config(sdk = [34], qualifiers = "w360dp-h640dp-port")
+    fun `the default reads a narrow window as a bottom nav`() {
+        compose.setContent { theme { AppShell(screens = testScreens()) } }
+
+        compose.onNodeWithTag(TAG_BOTTOM_NAV).assertExists()
+        compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(0)
+    }
+
+    /**
+     * And the breakpoint is width rather than orientation, which is the whole reason this
+     * change exists.
+     *
+     * Both of these windows are **portrait**, and the old `Configuration.ORIENTATION_LANDSCAPE`
+     * rule put both of them on the bottom nav — which on the audited 711x1138dp tablet
+     * contradicted the prototype, which keeps a compact rail in portrait (`shared.css:1030`)
+     * and hides the bottom nav outright (`shared.css:292`).
+     *
+     * Asserted on both sides of 600dp *in portrait* rather than across orientations, because
+     * a test that varied orientation would pass under the old rule for one of its two cases
+     * and prove nothing about which input the shell actually reads.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w711dp-h1138dp-port")
+    fun `the audited tablet in portrait gets the compact rail`() {
+        compose.setContent { theme { AppShell(screens = testScreens()) } }
+
+        compose.onNodeWithTag(TAG_RAIL).assertExists()
+        compose.onAllNodesWithTag(TAG_BOTTOM_NAV).assertCountEquals(0)
+    }
+
+    @Test
+    @Config(sdk = [34], qualifiers = "w360dp-h800dp-port")
+    fun `a phone in portrait gets the bottom nav`() {
+        compose.setContent { theme { AppShell(screens = testScreens()) } }
+
+        compose.onNodeWithTag(TAG_BOTTOM_NAV).assertExists()
+        compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(0)
+    }
+
+    /**
+     * And a **landscape** window narrower than the breakpoint still gets the bottom nav.
+     *
+     * The case the orientation rule got wrong the other way: an 800dp landscape phone is
+     * sideways, and the old rule gave it the rail purely for being sideways. This asserts the
+     * rule reads the axis the layout actually depends on.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w560dp-h320dp-land")
+    fun `a narrow landscape window gets the bottom nav too`() {
         compose.setContent { theme { AppShell(screens = testScreens()) } }
 
         compose.onNodeWithTag(TAG_BOTTOM_NAV).assertExists()
@@ -619,7 +786,7 @@ class AppShellTest {
                 AppShell(
                     screens = testScreens(),
                     navController = navController,
-                    isLandscape = true,
+                    showRail = true,
                 )
                 val entry by navController.currentBackStackEntryAsState()
                 seen = entry?.destination?.route
@@ -627,7 +794,7 @@ class AppShellTest {
         }
         compose.waitForIdle()
 
-        compose.onNodeWithText("Kontrak").performClick()
+        compose.onNodeWithContentDescription("Kontrak").performClick()
         compose.waitForIdle()
 
         assertEquals(Destination.Kontrak.route, seen)
@@ -662,16 +829,19 @@ class AppShellTest {
     }
 
     /**
-     * Taps a rail item by its **label**.
+     * Taps a rail item by the name the rail gives it.
      *
-     * Scoped to the rail, because the fleet's rail label ("Kendaraan") and its screen
-     * title ("Armada") are different words — and an unscoped text query for the title
-     * matches the screen's own heading, which is not what a rail tap is. A query scoped
-     * to the rail cannot reach the screen's title at all.
+     * By **content description**, not by visible text, because the rail the shell mounts is the
+     * prototype's compact one and a compact rail draws no labels (`shared.css:1031`). The
+     * description is where a compact rail keeps the destination's name — see `KnNavRailItem`.
+     *
+     * Scoped to the rail for the reason it always was: the fleet's destination is "Kendaraan"
+     * while its screen title is "Armada", and an unscoped query for the screen's own heading
+     * would tap the heading instead of the rail. Scoping keeps the tap on the chrome.
      */
     private fun tapRailItem(label: String) {
         compose.onAllNodes(
-            hasText(label) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
+            hasContentDescriptionExactly(label) and hasAnyAncestor(hasTestTag(TAG_RAIL)),
         )[0].performClick()
         compose.waitForIdle()
     }

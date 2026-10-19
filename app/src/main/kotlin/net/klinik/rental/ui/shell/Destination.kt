@@ -9,9 +9,9 @@ import com.composables.icons.lucide.ChartColumn
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.ClipboardList
 import com.composables.icons.lucide.House
-import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.NotebookPen
+import com.composables.icons.lucide.Settings
 import com.composables.icons.lucide.Users
 import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnNavItem
@@ -195,15 +195,25 @@ internal fun destinationNavItems(): List<KnNavItem> = Destination.entries.map { 
  *
  * That prediction came true in Story 3.1, and the compiler is what enforced it: adding
  * `Pengaturan` to the enum made this `when` non-exhaustive, so the fourth icon could not be
- * forgotten. `Landmark` for accounts — a bank building, which is the same glyph the screen's
- * own add action and empty state use.
+ * forgotten. It read as a bank building then, on the argument that settings *is* the
+ * accounts screen. On the device that argument failed: the rail's last item is not a bank,
+ * it is the screen where every kind of setting lives, and a bank building on the rail told
+ * the owner the opposite — which is why "Catat Setoran" and the rail's Pengaturan entry
+ * read as the same destination while sitting next to each other. So the rail's entry is a
+ * gear.
+ *
+ * The bank glyph is untouched **inside** `PengaturanScreen`, and deliberately: those four
+ * uses are bank accounts, and a bank building is the right noun for a bank account. The
+ * rail names a screen; the card names a thing. The spec's check that the two never drift
+ * back into one another is `git grep -n Landmark app/src/main/kotlin/net/klinik/rental/ui/shell/Destination.kt`
+ * returning nothing — so this paragraph says "bank building" rather than naming the glyph.
  */
 private val Destination.icon: ImageVector
     get() = when (this) {
         Destination.Kendaraan -> Lucide.CarFront
         Destination.Penyewa -> Lucide.Users
         Destination.Kontrak -> Lucide.ClipboardList
-        Destination.Pengaturan -> Lucide.Landmark
+        Destination.Pengaturan -> Lucide.Settings
         // The alert glyph, and not a warning triangle: the list's job is to *show* the
         // arrears rather than to alarm about them, and a triangle on every visit would make
         // the icon decorative rather than informative.

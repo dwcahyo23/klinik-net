@@ -19,6 +19,7 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.model.BusinessAccount
+import net.klinik.rental.ui.components.KnContentMaxWidth
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -785,6 +786,90 @@ class PengaturanScreenTest {
         compose.onNodeWithTag(TAG_BANNER).assertDoesNotExist()
     }
 
+    // ------------------------------------------------- card width (UI audit 1)
+
+    /**
+     * All four section cards are the **same width**.
+     *
+     * This is the assertion the repo had no way to make before this change. Every previous test
+     * in this file asserted that a card *exists* — `assertExists()` — which a `Surface` sized to
+     * its longest child satisfies perfectly well. The defect was that the four cards rendered at
+     * about 45% and 100% of the page on the same screen, and 971 assertions still passed.
+     *
+     * So the claim is measured rather than asserted by presence: the four sections' widths are
+     * read off the rendered tree and compared to each other. All four render here, which is why
+     * the fixture carries a `pin` and a `cutoff` — with only two of the four present, "all the
+     * same" is a claim about two nodes.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w711dp-h1138dp-port")
+    fun `the four section cards are all the same width`() {
+        compose.setContent { theme { Screen(state = allFourSections()) } }
+
+        val widths = SECTION_TAGS.map { tag ->
+            compose.onNodeWithTag(tag).fetchSemanticsNode().size.width
+        }
+
+        assertEquals(
+            "the section cards are not all the same width: " +
+                SECTION_TAGS.zip(widths).joinToString { "${it.first}=${it.second}" },
+            1,
+            widths.distinct().size,
+        )
+    }
+
+    /**
+     * And they reach the gutter — the width the prototype's page padding allows.
+     *
+     * `--sp-6` (24dp) on each side of a 711dp window leaves 663dp, and this is what pins that
+     * rather than leaving it to the eye: a column that filled the window edge-to-edge would also
+     * pass "all the same width", and that is the layout the cap exists to prevent.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w711dp-h1138dp-port")
+    fun `the cards leave the prototype's gutter on both sides`() {
+        compose.setContent { theme { Screen(state = allFourSections()) } }
+
+        val expected = 711 - 2 * 24
+        compose.onNodeWithTag(TAG_IDENTITY_SECTION)
+            .fetchSemanticsNode()
+            .size
+            .width
+            .also { width ->
+                assertTrue(
+                    "the identity card measured ${width}dp, expected $expected (711dp less two 24dp gutters)",
+                    kotlin.math.abs(width - expected) < 1f,
+                )
+            }
+    }
+
+    /**
+     * The column is **capped**, so a wide tablet does not stretch a sentence across it.
+     *
+     * Asserted on a 1280dp window against [KnContentMaxWidth]. At 711dp the cap never binds —
+     * the gutter test above already covers that case — so without a wide window this whole
+     * branch would be unmeasured code.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h800dp-land")
+    fun `the column is capped at the maximum content width`() {
+        compose.setContent { theme { Screen(state = allFourSections()) } }
+
+        val width = compose.onNodeWithTag(TAG_IDENTITY_SECTION).fetchSemanticsNode().size.width
+        assertTrue(
+            "the card measured ${width}dp on a 1280dp window, expected at most " +
+                "${KnContentMaxWidth} less two 24dp gutters",
+            width <= (KnContentMaxWidth.value - 48).toFloat(),
+        )
+    }
+
+    /** The four sections at once — two of them are conditional, so a plain fixture shows two. */
+    private fun allFourSections() = populatedState().copy(
+        identity = IdentityRow(name = "Sewa Motor Azul"),
+        pin = PinSettingsUi(enabled = false, autoLockMinutes = 5),
+        cutoff = CutoffSettingsUi(day = 25),
+    )
+
     // ------------------------------------------------------------------ helpers
 
     private fun previewUi() = CutoffPreviewUi(
@@ -910,5 +995,19 @@ class PengaturanScreenTest {
 
     private companion object {
         val MIN_TARGET: Dp = 48.dp
+
+        /**
+         * The four section cards, in the order they appear down the page.
+         *
+         * A list rather than four local variables so the "all the same width" assertion is a
+         * loop: a fifth section added later is then covered by the same test, which is the
+         * mechanism the rest of this file relies on.
+         */
+        val SECTION_TAGS = listOf(
+            TAG_IDENTITY_SECTION,
+            TAG_BACKUP_SECTION,
+            TAG_SECURITY_SECTION,
+            TAG_CUTOFF_SECTION,
+        )
     }
 }

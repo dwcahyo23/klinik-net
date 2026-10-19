@@ -8,8 +8,8 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
@@ -35,7 +35,9 @@ import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnCard
 import net.klinik.rental.ui.components.KnChip
+import net.klinik.rental.ui.components.KnContentMaxWidth
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSkeletonList
@@ -43,7 +45,6 @@ import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
-import net.klinik.rental.ui.theme.knRadii
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
 
@@ -180,88 +181,109 @@ fun PengaturanScreen(
                         },
                     )
 
-                    // Story 4.4's identity block, **above** the list and outside its `when`.
+                    // ## Why the body sits in a capped, centred column
                     //
-                    // Outside, because the list's four states are the *account list's*, and the
-                    // identity is a separate thing whose visibility has nothing to do with how
-                    // many accounts exist: a fresh install with no accounts still needs to be
-                    // able to name its business. Putting it inside the `isEmpty` branch would
-                    // hide the very form a first run most needs.
-                    IdentitySection(
-                        name = state.identity?.name,
-                        // Disabled until the identity has been read. The action is not a
-                        // navigation — it opens a form seeded from storage — so a tap before the
-                        // read lands would open the form on the **default** and the owner's next
-                        // save would write that over their real business name. The same reason
-                        // `KnNumPad`'s Save is gated rather than merely flashing.
-                        enabled = state.identity != null,
-                        onOpen = onOpenIdentity,
-                    )
-
-                    // Story 5.1's backup, beside the identity block and **outside** the list's
-                    // `when` for the same reason the identity is: the backup action's
-                    // availability has nothing to do with how many accounts exist. Inside
-                    // `isEmpty` it would be hidden on a fresh install — which is exactly the
-                    // moment the owner most wants it, before there is anything to lose.
-                    BackupSection(
-                        isExporting = state.isExporting,
-                        isRestoring = state.isRestoring,
-                        onExport = onExport,
-                        onRestore = onRestore,
-                    )
-
-                    // Story 5.3's security card. Rendered only when the lock state has been read:
-                    // a switch drawn in a guessed position is a switch the owner flips the wrong
-                    // way, and `null` is how this state says "not read yet".
-                    state.pin?.let { pin ->
-                        SecuritySection(
-                            state = pin,
-                            onToggle = if (pin.enabled) onDisablePin else onOpenPinSetup,
-                            onAutoLockChange = onAutoLockChange,
-                        )
-                    }
-
-                    // Story 5.4's billing day, below the security card: it is a consequence the
-                    // owner should find after the lock, not between the identity and the backup
-                    // buttons they came for.
-                    state.cutoff?.let { cutoff ->
-                        CutoffSection(state = cutoff, onPickDay = onCutoffPick)
-                    }
-
-                    when {
-                        state.isLoading -> KnSkeletonList(
-                            rows = SKELETON_ROWS,
-                            modifier = Modifier.padding(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                            ),
-                        )
-
-                        state.isEmpty -> PengaturanEmpty(onAdd = onAdd)
-
-                        // A plain `Column` of rows rather than a `LazyColumn`.
+                    // The prototype sets no max-width, and the reason is in its frame:
+                    // `shared.css` only ever previewed 1280x800, where a full-width card is a
+                    // comfortable measure. On the audited 711dp tablet a full-width card puts one
+                    // sentence 700dp long on screen, and on a 1280dp landscape tablet the cards
+                    // would stretch the full window. So the body is capped at
+                    // [KnContentMaxWidth] and centred, and the gutter moves onto this one column
+                    // rather than staying on each section.
+                    //
+                    // One owner for the gutter is the point. It used to be four: each section
+                    // padded itself `spacing.lg` horizontally and wrapped its content, so the four
+                    // cards rendered at whatever width their longest child happened to be — about
+                    // 45% for "Identitas usaha" beside 100% for "Data & cadangan" — and no two
+                    // lined up. `KnCard` fills, `KnCard` carries `--el-1`, and this column decides
+                    // how wide a card is allowed to be.
+                    Column(
+                        modifier = Modifier
+                            // `widthIn` **before** `fillMaxWidth`: in the other order the fill has
+                            // already fixed the width at the full window and the cap has nothing
+                            // left to narrow.
+                            .widthIn(max = KnContentMaxWidth)
+                            .fillMaxWidth()
+                            // `--sp-6`, the prototype's page gutter (`shared.css:285-289`) — one
+                            // gutter for the whole body rather than four.
+                            .padding(horizontal = spacing.xxl)
+                            .align(Alignment.CenterHorizontally),
+                        verticalArrangement = Arrangement.spacedBy(spacing.lg),
+                    ) {
+                        // Story 4.4's identity block, **above** the list and outside its `when`.
                         //
-                        // The list cannot be lazily composed inside a scrolling `Column` — a
-                        // `LazyColumn` with unbounded height throws — and it was a `LazyColumn`
-                        // because the list used to be the only thing that scrolled. A handful of
-                        // bank accounts is not a list that needs windowing: `PengaturanScreen`'s
-                        // own KDoc calls it "a handful of accounts". If that ever stops being
-                        // true, the fix is to pull the two cards *out* of the scroll and give the
-                        // list its own bounded `Box` again — not to reintroduce nesting.
-                        else -> Column(
-                            modifier = Modifier
-                                .fillMaxWidth()
-                                .padding(
-                                    start = spacing.lg,
-                                    end = spacing.lg,
-                                    top = spacing.lg,
-                                    bottom = spacing.colossal,
-                                ),
-                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                        ) {
-                            state.rows.forEach { row ->
-                                AccountListRow(row = row, onEdit = { onEdit(row) })
+                        // Outside, because the list's four states are the *account list's*, and the
+                        // identity is a separate thing whose visibility has nothing to do with how
+                        // many accounts exist: a fresh install with no accounts still needs to be
+                        // able to name its business. Putting it inside the `isEmpty` branch would
+                        // hide the very form a first run most needs.
+                        IdentitySection(
+                            name = state.identity?.name,
+                            // Disabled until the identity has been read. The action is not a
+                            // navigation — it opens a form seeded from storage — so a tap before
+                            // the read lands would open the form on the **default** and the
+                            // owner's next save would write that over their real business name.
+                            // The same reason `KnNumPad`'s Save is gated rather than merely
+                            // flashing.
+                            enabled = state.identity != null,
+                            onOpen = onOpenIdentity,
+                        )
+
+                        // Story 5.1's backup, beside the identity block and **outside** the list's
+                        // `when` for the same reason the identity is: the backup action's
+                        // availability has nothing to do with how many accounts exist. Inside
+                        // `isEmpty` it would be hidden on a fresh install — which is exactly the
+                        // moment the owner most wants it, before there is anything to lose.
+                        BackupSection(
+                            isExporting = state.isExporting,
+                            isRestoring = state.isRestoring,
+                            onExport = onExport,
+                            onRestore = onRestore,
+                        )
+
+                        // Story 5.3's security card. Rendered only when the lock state has been
+                        // read: a switch drawn in a guessed position is a switch the owner flips
+                        // the wrong way, and `null` is how this state says "not read yet".
+                        state.pin?.let { pin ->
+                            SecuritySection(
+                                state = pin,
+                                onToggle = if (pin.enabled) onDisablePin else onOpenPinSetup,
+                                onAutoLockChange = onAutoLockChange,
+                            )
+                        }
+
+                        // Story 5.4's billing day, below the security card: it is a consequence the
+                        // owner should find after the lock, not between the identity and the backup
+                        // buttons they came for.
+                        state.cutoff?.let { cutoff ->
+                            CutoffSection(state = cutoff, onPickDay = onCutoffPick)
+                        }
+
+                        when {
+                            // No modifier: the gutter and the gap are the column's now, so a
+                            // second set of padding here would offset the skeleton from the cards
+                            // it stands in for.
+                            state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+
+                            state.isEmpty -> PengaturanEmpty(onAdd = onAdd)
+
+                            // A plain `Column` of rows rather than a `LazyColumn`.
+                            //
+                            // The list cannot be lazily composed inside a scrolling `Column` — a
+                            // `LazyColumn` with unbounded height throws — and it was a
+                            // `LazyColumn` because the list used to be the only thing that
+                            // scrolled. A handful of bank accounts is not a list that needs
+                            // windowing: `PengaturanScreen`'s own KDoc calls it "a handful of
+                            // accounts". If that ever stops being true, the fix is to pull the
+                            // two cards *out* of the scroll and give the list its own bounded
+                            // `Box` again — not to reintroduce nesting.
+                            else -> Column(
+                                modifier = Modifier.padding(bottom = spacing.colossal),
+                                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                            ) {
+                                state.rows.forEach { row ->
+                                    AccountListRow(row = row, onEdit = { onEdit(row) })
+                                }
                             }
                         }
                     }
@@ -425,17 +447,10 @@ private fun IdentitySection(
 ) {
     val spacing = MaterialTheme.knSpacing
 
-    Surface(
-        modifier = modifier
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.lg)
-            .testTag(TAG_IDENTITY_SECTION),
-        color = MaterialTheme.knColors.bgCard,
-        contentColor = MaterialTheme.knColors.textPrimary,
-        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    KnCard(
+        modifier = modifier.testTag(TAG_IDENTITY_SECTION),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
@@ -516,17 +531,10 @@ private fun BackupSection(
 ) {
     val spacing = MaterialTheme.knSpacing
 
-    Surface(
-        modifier = modifier
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.lg)
-            .testTag(TAG_BACKUP_SECTION),
-        color = MaterialTheme.knColors.bgCard,
-        contentColor = MaterialTheme.knColors.textPrimary,
-        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    KnCard(
+        modifier = modifier.testTag(TAG_BACKUP_SECTION),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
@@ -607,17 +615,10 @@ private fun SecuritySection(
 ) {
     val spacing = MaterialTheme.knSpacing
 
-    Surface(
-        modifier = modifier
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.lg)
-            .testTag(TAG_SECURITY_SECTION),
-        color = MaterialTheme.knColors.bgCard,
-        contentColor = MaterialTheme.knColors.textPrimary,
-        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    KnCard(
+        modifier = modifier.testTag(TAG_SECURITY_SECTION),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
@@ -698,17 +699,10 @@ private fun CutoffSection(
 ) {
     val spacing = MaterialTheme.knSpacing
 
-    Surface(
-        modifier = modifier
-            .padding(horizontal = spacing.lg)
-            .padding(top = spacing.lg)
-            .testTag(TAG_CUTOFF_SECTION),
-        color = MaterialTheme.knColors.bgCard,
-        contentColor = MaterialTheme.knColors.textPrimary,
-        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    KnCard(
+        modifier = modifier.testTag(TAG_CUTOFF_SECTION),
     ) {
         Column(
-            modifier = Modifier.padding(spacing.lg),
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             Text(
@@ -796,9 +790,10 @@ private fun PengaturanEmpty(onAdd: () -> Unit) {
                 modifier = Modifier.testTag(TAG_ADD),
             )
         },
-        modifier = Modifier
-            .padding(horizontal = spacing.lg)
-            .testTag(TAG_EMPTY),
+        // No horizontal padding: the body's capped column owns the gutter now, so padding
+        // it here as well would double the inset and put this one out of line with the
+        // four cards above it.
+        modifier = Modifier.testTag(TAG_EMPTY),
     )
 }
 
