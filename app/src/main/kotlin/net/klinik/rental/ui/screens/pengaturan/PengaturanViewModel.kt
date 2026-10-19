@@ -25,10 +25,17 @@ import net.klinik.rental.data.repository.BusinessIdentity
 import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.PinLockRepository
 import net.klinik.rental.data.repository.BlankIdentityNameException
+import net.klinik.rental.data.repository.CutoffChangePreview
+import net.klinik.rental.data.repository.PaymentRepository
+import net.klinik.rental.domain.validation.InvalidCutoffDayException
+import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.domain.model.BusinessAccount
 import net.klinik.rental.domain.validation.InvalidAccountNumberException
 import net.klinik.rental.ui.backup.BackupFileWriter
+import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.strings.RStrings
+import java.time.Clock
+import java.time.LocalDate
 
 /**
  * The settings screen: the business accounts the owner receives transfers into.
@@ -85,6 +92,21 @@ class PengaturanViewModel(
      * configure, rather than drawing a switch wired to nothing.
      */
     private val pinLock: PinLockRepository? = null,
+    /**
+     * Story 5.4's cutoff, and the one repository that computes arrears.
+     *
+     * Optional on the same argument as [pinLock]: a settings ViewModel built without a
+     * payment repository simply has no cutoff card, rather than one whose button does nothing.
+     */
+    private val payments: PaymentRepository? = null,
+    /**
+     * The clock the preview computes "as of".
+     *
+     * Read from the caller rather than from the repository because the repository's own clock is
+     * used for writes; a preview that silently used a different "today" than the arrears list
+     * would show the owner a figure for a period they are not in.
+     */
+    private val clock: Clock? = null,
 ) : ViewModel() {
 
     /** The open form, or `null` when the sheet is closed. */
@@ -203,6 +225,21 @@ class PengaturanViewModel(
     private var setupPin = ""
     private var setupConfirm = ""
 
+    /** Story 5.4's cutoff day, re-read after every write. `null` until the first read. */
+    private val cutoffSettings = MutableStateFlow<CutoffSettingsUi?>(null)
+
+    /** A refused cutoff change. Its own slot, so it cannot clear the form's message. */
+    private val cutoffErrorMessage = MutableStateFlow<String?>(null)
+
+    /**
+     * The computed preview awaiting a decision, or `null`.
+     *
+     * The `CutoffChangePreview` itself rather than the formatted text, so [confirmCutoffChange]
+     * writes the very figures the owner saw — a second preview on confirm could disagree with the
+     * one that was approved.
+     */
+    private val pendingCutoffPreview = MutableStateFlow<CutoffChangePreview?>(null)
+
     /**
      * The accounts plus "has the read happened yet", as one flow.
      *
@@ -220,28 +257,40 @@ class PengaturanViewModel(
     /**
      * The screen state.
      *
-     * Nesting two `combine` calls rather than one over three flows, for the same reason
-     * `PenyewaViewModel` nests: it keeps every source typed rather than reaching for the
-     * `vararg` overload, which would hand the lambda an `Array<Any?>`.
+     * ## Why the sources are bundled by concern rather than passed one by one
+     *
+     * `combine` has typed overloads up to five sources and a sixth falls through to the `vararg`
+     * one whose lambda takes an `Array<Any?>` — the untyped shape this class's own KDoc warns
+     * about. Nesting pairs of them kept it typed until Story 5.4 added a seventh concern and the
+     * nesting itself became a `Pair<Pair<A, B>, C>` this file could no longer read.
+     *
+     * So each concern bundles **once**, into a value class of its own, and the outer `combine`
+     * takes four typed sources. The alternative — a ninth `combine` nesting level — is exactly the
+     * kind of shape that survives until someone adds a field and the whole expression falls over.
      */
     val uiState: StateFlow<PengaturanUiState> = combine(
-        accountsWithLoadFlag(),
+        accountsWithLoadFlag().map { (accounts, emitted) -> accounts to emitted },
         combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) },
         combine(identityForm, storedIdentity, identityError) { form, stored, error ->
             IdentitySnapshot(form, stored, error)
         },
-        combine(exporting, exportErrorMessage) { busy, failure -> ExportSnapshot(busy, failure) },
-        // The last three nested into one source: `combine` has typed overloads up to five, and a
-        // sixth falls through to the `vararg` one whose lambda takes an `Array<Any?>` — which is
-        // exactly the untyped shape `PenyewaViewModel`'s KDoc warns about. Nesting keeps every
-        // source typed.
         combine(
-            combine(pendingRestore, restoring, restoreErrorMessage) { pending, busy, failure ->
-                RestoreSnapshot(pending?.preview?.toUi(), busy, failure)
+            combine(exporting, exportErrorMessage) { busy, failure -> ExportSnapshot(busy, failure) },
+            combine(
+                combine(pendingRestore, restoring, restoreErrorMessage) { pending, busy, failure ->
+                    RestoreSnapshot(pending?.preview?.toUi(), busy, failure)
+                },
+                combine(pinSettings, pinSetup) { pin, setup -> PinSnapshot(pin, setup) },
+            ) { restore, pin -> restore to pin },
+            combine(cutoffSettings, pendingCutoffPreview, cutoffErrorMessage) { cut, pending, failure ->
+                CutoffSnapshot(cut, pending?.toUi(), failure)
             },
-            combine(pinSettings, pinSetup) { pin, setup -> PinSnapshot(pin, setup) },
-        ) { restore, pin -> restore to pin },
-    ) { (accounts, hasEmitted), formSnapshot, identitySnapshot, exportSnapshot, (restoreSnapshot, pinSnapshot) ->
+        ) { export, restoreAndPin, cutoff ->
+            DatalessTriple(export, restoreAndPin, cutoff)
+        },
+    ) { accountsAndEmitted, formSnapshot, identitySnapshot, extras ->
+        val (accounts, hasEmitted) = accountsAndEmitted
+        val (restoreSnapshot, pinSnapshot) = extras.restoreAndPin
         PengaturanUiState(
             // The projection to a row happens here, once per emission, so the screen renders
             // what it is handed and no composable formats a value.
@@ -255,11 +304,14 @@ class PengaturanViewModel(
             // transient bar rather than a field either sheet owns.
             identitySuccessMessage = null,
             errorMessage = formSnapshot.error,
-            isExporting = exportSnapshot.busy,
-            exportErrorMessage = exportSnapshot.failure,
+            isExporting = extras.export.busy,
+            exportErrorMessage = extras.export.failure,
             restorePreview = restoreSnapshot.preview,
             isRestoring = restoreSnapshot.busy,
             restoreErrorMessage = restoreSnapshot.failure,
+            cutoff = extras.cutoff.settings,
+            cutoffPreview = extras.cutoff.preview,
+            cutoffErrorMessage = extras.cutoff.failure,
             pin = pinSnapshot.settings,
             pinSetup = pinSnapshot.setup,
             isLoading = !hasEmitted,
@@ -328,6 +380,49 @@ class PengaturanViewModel(
         val setup: PinSetupUi?,
     )
 
+    /** Story 5.4's half: the card's day, the pending preview, and its refusal. */
+    private data class CutoffSnapshot(
+        val settings: CutoffSettingsUi?,
+        val preview: CutoffPreviewUi?,
+        val failure: String?,
+    )
+
+    /**
+     * Three sources where `combine` has no three-argument overload worth reaching for.
+     *
+     * A named class rather than a `Triple` because a `Triple` of snapshots reads as
+     * `extras.third` at the use site, and this file has five of those. Named fields mean a
+     * reordering of the arguments is a compile error rather than a silent swap.
+     */
+    private data class DatalessTriple(
+        val export: ExportSnapshot,
+        val restoreAndPin: Pair<RestoreSnapshot, PinSnapshot>,
+        val cutoff: CutoffSnapshot,
+    )
+
+    /**
+     * The repository's preview, formatted for the dialog.
+     *
+     * Every sentence here is the AC's own two numbers plus the period labels. The delta's sign is
+     * stated in words rather than left to a `+`/`−` glyph: an owner reading "Rp 750.000" with no
+     * direction cannot tell a rise from a fall, and a signed figure in a sentence is a sentence
+     * that survives being read aloud.
+     */
+    private fun CutoffChangePreview.toUi() = CutoffPreviewUi(
+        day = newCutoffDay,
+        changedLine = when (changedContractCount) {
+            0 -> strings.pengaturanCutoffNoContracts()
+            1 -> strings.pengaturanCutoffOneContract()
+            else -> strings.pengaturanCutoffManyContracts(changedContractCount)
+        },
+        deltaLine = when {
+            totalDelta == 0L -> strings.pengaturanCutoffNoChange()
+            totalDelta > 0 -> strings.pengaturanCutoffUp(formatRupiah(totalDelta))
+            else -> strings.pengaturanCutoffDown(formatRupiah(-totalDelta))
+        },
+        periodLine = periodLineFor(oldCutoffDay, newCutoffDay),
+    )
+
     init {
         // Read once on construction rather than per screen-open: the name is pre-filled into
         // the form from here, so a read on open would leave the field empty for the frame
@@ -349,6 +444,14 @@ class PengaturanViewModel(
                     enabled = lock.isEnabled(),
                     autoLockMinutes = lock.autoLockMinutes(),
                 )
+            }
+        }
+
+        // Story 5.4's cutoff, read once for the same reason: the card must show the owner's
+        // real day on the first frame, not the default followed by a correction.
+        viewModelScope.launch {
+            payments?.let { repository ->
+                cutoffSettings.value = CutoffSettingsUi(day = repository.cutoffDay())
             }
         }
     }
@@ -1037,15 +1140,110 @@ class PengaturanViewModel(
      * That is the same argument this story applies to `BusinessAccountRepository.save`, and it is
      * worth being consistent about: dead validation is worse than none, because it looks like
      * protection while never running.
-     *
-     * One `when` over [AccountField] rather than two call sites, so adding a field later means
-     * adding a branch here and nowhere else.
      */
     private fun AccountFormState.withBlankRefusal(field: AccountField): AccountFormState =
         when (field) {
             AccountField.BankName -> copy(bankError = strings.pengaturanErrorBlankBank())
             AccountField.Number -> copy(numberError = strings.pengaturanErrorBlankNumber())
         }
+
+    // ------------------------------------------------------- Story 5.4: the cutoff
+
+    /**
+     * Story 5.4: picks a day, computes what it would change, and asks.
+     *
+     * ## Why there is **no** public function that writes the cutoff directly
+     *
+     * Because the AC makes the preview mandatory: *"pratinjau ini wajib, bukan opsional"*. The only
+     * way to write the setting is [confirmCutoffChange], and the only way to reach that is a
+     * pending preview. A `setCutoffDay` on this ViewModel would be a path from "pick a day" to
+     * "written" that skips the question, and a reviewer would have to notice its existence.
+     */
+    fun requestCutoffChange(day: Int) {
+        val repository = payments ?: return
+        val clock = clock ?: return
+
+        // Refused here rather than by the repository alone, so the card can say so on the
+        // control the owner is holding. The repository's own check is the backstop, and
+        // `CutoffChangeTest` asserts it fires for a direct call.
+        if (day < CutoffPeriod.MIN_CUTOFF_DAY || day > CutoffPeriod.MAX_CUTOFF_DAY) {
+            cutoffErrorMessage.value = strings.pengaturanCutoffInvalid()
+            return
+        }
+
+        viewModelScope.launch {
+            try {
+                pendingCutoffPreview.value = repository.previewCutoffChange(
+                    newCutoffDay = day,
+                    asOf = LocalDate.now(clock),
+                )
+                cutoffErrorMessage.value = null
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: InvalidCutoffDayException) {
+                cutoffErrorMessage.value = strings.pengaturanCutoffInvalid()
+            } catch (_: Exception) {
+                cutoffErrorMessage.value = strings.pengaturanErrorUnexpected()
+            }
+        }
+    }
+
+    /** Closes the preview without writing anything. */
+    fun dismissCutoffPreview() {
+        pendingCutoffPreview.value = null
+    }
+
+    /**
+     * Writes the day whose consequences the owner just saw.
+     *
+     * One settings row. **No allocation row is touched**, and that is structural: the repository's
+     * `setCutoffDay` has no statement that could reach the allocation table, and every arrears
+     * read after this uses the new day because `previewAllocation` reads the cutoff from storage
+     * on each call — so there is no recalculation step and nothing to trigger one.
+     */
+    fun confirmCutoffChange() {
+        val preview = pendingCutoffPreview.value ?: return
+        val repository = payments ?: return
+
+        viewModelScope.launch {
+            try {
+                repository.setCutoffDay(preview.newCutoffDay)
+                cutoffSettings.value = CutoffSettingsUi(day = preview.newCutoffDay)
+                pendingCutoffPreview.value = null
+                message.value = strings.pengaturanCutoffSaved(preview.newCutoffDay)
+            } catch (e: CancellationException) {
+                throw e
+            } catch (_: InvalidCutoffDayException) {
+                pendingCutoffPreview.value = null
+                cutoffErrorMessage.value = strings.pengaturanCutoffInvalid()
+            } catch (_: Exception) {
+                // The card keeps the day it showed: a figure that flipped without the write
+                // succeeding is a card lying about the owner's billing cycle.
+                cutoffErrorMessage.value = strings.pengaturanErrorUnexpected()
+            }
+        }
+    }
+
+    /** Dismisses the cutoff's refusal. */
+    fun consumeCutoffError() {
+        cutoffErrorMessage.value = null
+    }
+
+    /**
+     * The two period labels the shift produces, for the preview's `periodLine`.
+     *
+     * Built from [CutoffPeriod.containing] — the one function that owns "which period is this
+     * cutoff's" — so the dialog's labels cannot be built by a second rule and disagree with the
+     * periods the preview actually computed.
+     */
+    private fun periodLineFor(oldCutoffDay: Int, newCutoffDay: Int): String {
+        val clock = clock ?: return ""
+        val today = LocalDate.now(clock)
+        return strings.pengaturanCutoffPeriods(
+            CutoffPeriod.containing(oldCutoffDay, today).label,
+            CutoffPeriod.containing(newCutoffDay, today).label,
+        )
+    }
 
     /**
      * Projects one account into its row.

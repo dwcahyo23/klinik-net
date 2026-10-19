@@ -643,6 +643,18 @@ internal class Screens(
         val onConfirmPinCodeWritten: () -> Unit,
         /** Closes the setup flow without writing anything. */
         val onDismissPinSetup: () -> Unit,
+        /**
+         * Story 5.4: a day was picked. Computes the preview and shows the dialog — **never
+         * writes**, which is what makes the AC's *"pratinjau ini wajib"* true rather than
+         * aspirational.
+         */
+        val onCutoffPick: (Int) -> Unit,
+        /** Writes the day whose consequences the owner just saw. */
+        val onConfirmCutoff: () -> Unit,
+        /** Closes the preview without writing anything. */
+        val onDismissCutoffPreview: () -> Unit,
+        /** Dismisses a refused cutoff change, through its own channel. */
+        val onCutoffErrorDismiss: () -> Unit,
     )
 
     /**
@@ -920,6 +932,12 @@ private fun PengaturanRoute(
         onPinSetupDelete = wiring.onPinSetupDelete,
         onConfirmPinCodeWritten = wiring.onConfirmPinCodeWritten,
         onDismissPinSetup = wiring.onDismissPinSetup,
+        // Story 5.4's. The pick never writes: it computes a preview and shows the dialog, so
+        // the only action that changes the setting is the dialog's confirm.
+        onCutoffPick = wiring.onCutoffPick,
+        onConfirmCutoff = wiring.onConfirmCutoff,
+        onDismissCutoffPreview = wiring.onDismissCutoffPreview,
+        onCutoffErrorDismiss = wiring.onCutoffErrorDismiss,
     )
 }
 

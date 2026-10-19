@@ -29,6 +29,7 @@ import com.composables.icons.lucide.Upload
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
 import net.klinik.rental.data.repository.PinLockRepository
+import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.ui.components.KnAvatar
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
@@ -127,6 +128,12 @@ fun PengaturanScreen(
     onPinSetupDelete: () -> Unit,
     onConfirmPinCodeWritten: () -> Unit,
     onDismissPinSetup: () -> Unit,
+    // Story 5.4's four. Required, not defaulted — a defaulted `onCutoffPick` would leave 28
+    // chips that render and ignore the tap, which is the defect this repo has shipped most often.
+    onCutoffPick: (Int) -> Unit,
+    onConfirmCutoff: () -> Unit,
+    onDismissCutoffPreview: () -> Unit,
+    onCutoffErrorDismiss: () -> Unit,
     // Required, not defaulted. A defaulted lambda produces a control that renders and
     // silently does nothing — the failure the required-parameter rule exists to prevent, and
     // it has caught unwired call sites in five test files across two stories.
@@ -214,6 +221,13 @@ fun PengaturanScreen(
                         )
                     }
 
+                    // Story 5.4's billing day, below the security card: it is a consequence the
+                    // owner should find after the lock, not between the identity and the backup
+                    // buttons they came for.
+                    state.cutoff?.let { cutoff ->
+                        CutoffSection(state = cutoff, onPickDay = onCutoffPick)
+                    }
+
                     when {
                         state.isLoading -> KnSkeletonList(
                             rows = SKELETON_ROWS,
@@ -272,6 +286,7 @@ fun PengaturanScreen(
                 // same reason, and goes ahead of both: a refused restore is the one message that
                 // tells the owner their data is still there.
                 state.restoreErrorMessage?.let { it to KnBadgeTone.Danger }
+                    ?: state.cutoffErrorMessage?.let { it to KnBadgeTone.Danger }
                     ?: state.exportErrorMessage?.let { it to KnBadgeTone.Danger }
                     ?: state.errorMessage?.let { it to KnBadgeTone.Danger }
                     ?: snackbarMessage?.let { it to KnBadgeTone.Success }
@@ -291,6 +306,7 @@ fun PengaturanScreen(
                         .testTag(
                             when {
                                 state.restoreErrorMessage != null -> TAG_RESTORE_ERROR
+                                state.cutoffErrorMessage != null -> TAG_CUTOFF_ERROR
                                 state.exportErrorMessage != null -> TAG_EXPORT_ERROR
                                 else -> TAG_BANNER
                             },
@@ -298,6 +314,7 @@ fun PengaturanScreen(
                     onDismiss = {
                         when {
                             state.restoreErrorMessage != null -> onRestoreErrorDismiss()
+                            state.cutoffErrorMessage != null -> onCutoffErrorDismiss()
                             state.exportErrorMessage != null -> onExportErrorDismiss()
                             tone == KnBadgeTone.Danger -> onErrorDismiss()
                             else -> onSnackbarDismiss()
@@ -368,6 +385,15 @@ fun PengaturanScreen(
                 onDelete = onPinSetupDelete,
                 onConfirmWritten = onConfirmPinCodeWritten,
                 onDismiss = onDismissPinSetup,
+            )
+        }
+
+        // Story 5.4's preview, in the same window as the cards whose values it moves.
+        state.cutoffPreview?.let { preview ->
+            CutoffPreviewDialog(
+                preview = preview,
+                onConfirm = onConfirmCutoff,
+                onDismiss = onDismissCutoffPreview,
             )
         }
     }
@@ -647,6 +673,80 @@ private fun SecuritySection(
     }
 }
 
+/**
+ * Story 5.4's billing-day card: 28 days, a chip each, and a preview on every pick.
+ *
+ * ## Why **28 chips** and not a dropdown
+ *
+ * Because the app has no dropdown anywhere, and the whole set fits in a `FlowRow` — the same
+ * `KnChip` control the fleet filter and the Setoran tabs already use. A picker that asked the
+ * owner to remember whether 28 is the maximum would be a worse version of a list that shows
+ * every legal day.
+ *
+ * ## Why a pick opens a **preview**, not a write
+ *
+ * Because the AC says the preview is mandatory, and the honest way to make "mandatory" true is to
+ * have no path from a tap to a write that skips the dialog. `onPickDay` is the only action this
+ * card offers.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun CutoffSection(
+    state: CutoffSettingsUi,
+    onPickDay: (Int) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+
+    Surface(
+        modifier = modifier
+            .padding(horizontal = spacing.lg)
+            .padding(top = spacing.lg)
+            .testTag(TAG_CUTOFF_SECTION),
+        color = MaterialTheme.knColors.bgCard,
+        contentColor = MaterialTheme.knColors.textPrimary,
+        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+    ) {
+        Column(
+            modifier = Modifier.padding(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            Text(
+                text = stringResource(R.string.pengaturan_cutoff_section),
+                style = MaterialTheme.knTypography.label,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            Text(
+                text = stringResource(R.string.pengaturan_cutoff_section_body),
+                style = MaterialTheme.knTypography.body,
+                color = MaterialTheme.knColors.textSecondary,
+            )
+            Text(
+                text = stringResource(R.string.pengaturan_cutoff_current, state.day),
+                style = MaterialTheme.knTypography.title,
+                color = MaterialTheme.knColors.textPrimary,
+                modifier = Modifier.testTag(TAG_CUTOFF_CURRENT),
+            )
+            // `null` here would be a static list, and a static list is a second copy of the
+            // 1..28 rule that `CutoffPeriod` owns. The card reads the range it must offer from
+            // the same constants the validation uses, so the two cannot disagree.
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                (CutoffPeriod.MIN_CUTOFF_DAY..CutoffPeriod.MAX_CUTOFF_DAY).forEach { day ->
+                    KnChip(
+                        text = day.toString(),
+                        selected = day == state.day,
+                        onClick = { onPickDay(day) },
+                        modifier = Modifier.testTag(cutoffDayTag(day)),
+                    )
+                }
+            }
+        }
+    }
+}
+
 /** One account: the bank as the title, the number beneath it. */
 @Composable
 private fun AccountListRow(
@@ -746,6 +846,12 @@ internal const val TAG_RESTORE_ERROR = "pengaturan-restore-error"
 internal const val TAG_SECURITY_SECTION = "pengaturan-security-section"
 internal const val TAG_PIN_TOGGLE = "pengaturan-pin-toggle"
 internal fun autoLockTag(minutes: Int): String = "pengaturan-autolock-$minutes"
+
+/** Story 5.4's card. Keyed on the day so a chip cannot be confused with its neighbours. */
+internal const val TAG_CUTOFF_SECTION = "pengaturan-cutoff-section"
+internal const val TAG_CUTOFF_CURRENT = "pengaturan-cutoff-current"
+internal fun cutoffDayTag(day: Int): String = "pengaturan-cutoff-day-$day"
+internal const val TAG_CUTOFF_ERROR = "pengaturan-cutoff-error"
 internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"
 internal const val TAG_IDENTITY_ACTION = "pengaturan-identity-action"
 
@@ -804,6 +910,10 @@ private fun PengaturanScreenPreview() {
             onPinSetupDelete = {},
             onConfirmPinCodeWritten = {},
             onDismissPinSetup = {},
+            onCutoffPick = {},
+            onConfirmCutoff = {},
+            onDismissCutoffPreview = {},
+            onCutoffErrorDismiss = {},
             onErrorDismiss = {},
         )
     }

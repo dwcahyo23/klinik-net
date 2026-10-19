@@ -3,6 +3,7 @@ package net.klinik.rental.data.repository
 import androidx.room.withTransaction
 import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.combine
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
 import net.klinik.rental.data.db.KlinikDatabase
 import net.klinik.rental.data.db.dao.AllocationDao
@@ -17,6 +18,7 @@ import net.klinik.rental.data.db.dao.DailyIncome
 import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.PaymentEntity
+import net.klinik.rental.data.db.entity.SettingEntity
 import net.klinik.rental.domain.calculate.ArrearsEntry
 import net.klinik.rental.domain.calculate.ChargeSchedule
 import net.klinik.rental.domain.calculate.CutoffPeriod
@@ -252,6 +254,17 @@ class PaymentRepository(
          * [correctDeposit] for the same hazard reached from the other side.
          */
         placeholderAmountIsDiscarded: Boolean = false,
+        /**
+         * A cutoff day to compute against **instead of** the stored one.
+         *
+         * `null` means "read `settings`", which is what every caller before Story 5.4 wants and
+         * what they get by not passing this. The override exists for exactly one caller —
+         * `previewCutoffChange` — which has to compute the same contracts under a day the owner
+         * has *not* saved yet. Without it, a preview would have to write the setting first and
+         * roll it back, and a rollback that failed would leave the owner's books on a cutoff they
+         * never confirmed.
+         */
+        cutoffDayOverride: Int? = null,
     ): ComputedAllocation {
         // 1. The stored contract, for its frozen rate, its period and its schedule.
         //    Read rather than taken from the caller: a `Contract` handed in may be
@@ -262,7 +275,11 @@ class PaymentRepository(
 
         // 2. The cutoff day, with the default supplied on read. A fresh install has no
         //    settings row at all and must still record a deposit.
-        val cutoffDay = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
+        //
+        //    The override is Story 5.4's preview: it asks what a contract would owe under a day
+        //    the owner has not saved yet. `?:` rather than a separate branch, so the stored read
+        //    stays the one path everything else takes.
+        val cutoffDay = cutoffDayOverride ?: settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
 
         // 3. The charge days this contract owes in the current period, with its stored
         //    exceptions applied. `contractEnd` comes from the row, so an ended contract
@@ -748,6 +765,14 @@ class PaymentRepository(
         contractId: String,
         asOf: LocalDate,
         extraSettledThroughDate: LocalDate? = null,
+        /**
+         * A cutoff day to compute against instead of the stored one — Story 5.4's preview.
+         *
+         * Threaded through rather than read here for the reason [previewAllocation]'s KDoc gives:
+         * one function reads the cutoff, so a preview and a real read cannot disagree about which
+         * day is in force.
+         */
+        cutoffDayOverride: Int? = null,
     ): ArrearsEntry {
         // The `RECOMPUTE_ID` placeholder is **wrong here**, and the KDoc on
         // [correctDeposit] names why: the allocator has to be given a payment, so a
@@ -768,6 +793,7 @@ class PaymentRepository(
             // The placeholder's own row, dropped before the allocator can hand a
             // rupiah of a real day to it.
             placeholderAmountIsDiscarded = true,
+            cutoffDayOverride = cutoffDayOverride,
         )
         val stored = computed.contract.settledThroughDate
         val days = when {
@@ -1004,6 +1030,108 @@ class PaymentRepository(
 
     private fun newAllocationId(): String = UUID.randomUUID().toString()
 
+    // ------------------------------------------------- Story 5.4: the cutoff day
+
+    /**
+     * The cutoff day in force — the stored one, or [DEFAULT_CUTOFF_DAY] when none is stored.
+     *
+     * Read through the same `findInt` every computation uses, so the figure the settings screen
+     * shows and the figure the allocator applies cannot disagree about "unset".
+     */
+    suspend fun cutoffDay(): Int = settingDao.findInt(KEY_CUTOFF_DAY, DEFAULT_CUTOFF_DAY)
+
+    /**
+     * What changing the cutoff to [newCutoffDay] would do to every contract's arrears.
+     *
+     * ## Why this runs `arrearsEntry` twice per contract rather than calling `cutoffShift`
+     *
+     * Because the app's arrears read **re-derives** allocation rows from the deposits instead of
+     * reading the stored ones — `previewAllocation`'s KDoc explains why, and the reason is that a
+     * stored read would let the preview disagree with the save the moment history and
+     * re-derivation drifted. So the two day lists come from two `previewAllocation` calls over
+     * the same deposits, which is the same property `cutoffShift` proves at the domain level:
+     * the deposits are the input, the range is what moves.
+     *
+     * ## Why a contract that cannot be computed is skipped rather than failing the preview
+     *
+     * The same rule `observeArrearsForAllContracts` follows: one bad row costs that contract and
+     * not the answer. An owner about to change their billing cycle needs a figure, and a preview
+     * that refused entirely because one contract was mid-write would be worse than one that
+     * counted the rest.
+     *
+     * @throws InvalidCutoffDayException when [newCutoffDay] is outside 1..28.
+     */
+    suspend fun previewCutoffChange(
+        newCutoffDay: Int,
+        asOf: LocalDate,
+    ): CutoffChangePreview {
+        CutoffPeriod.requireValidCutoffDay(newCutoffDay)
+        val oldCutoffDay = cutoffDay()
+
+        var changed = 0
+        var before = 0L
+        var after = 0L
+
+        contractDao.observeAll().first().forEach { contract ->
+            val entryBefore = runCatching {
+                arrearsEntry(contract.id, asOf, cutoffDayOverride = oldCutoffDay)
+            }.getOrNull() ?: return@forEach
+            val entryAfter = runCatching {
+                arrearsEntry(contract.id, asOf, cutoffDayOverride = newCutoffDay)
+            }.getOrNull() ?: return@forEach
+
+            before += entryBefore.amount
+            after += entryAfter.amount
+            // The AC's count is of contracts whose **arrears figure moves**, not of contracts
+            // examined: fourteen contracts where two change is "2 kontrak berubah", because the
+            // owner's question is what this does to their books.
+            if (entryBefore.amount != entryAfter.amount || entryBefore.days != entryAfter.days) {
+                changed += 1
+            }
+        }
+
+        return CutoffChangePreview(
+            oldCutoffDay = oldCutoffDay,
+            newCutoffDay = newCutoffDay,
+            changedContractCount = changed,
+            totalBefore = before,
+            totalAfter = after,
+        )
+    }
+
+    /**
+     * Writes the cutoff day. **The only write Story 5.4 performs.**
+     *
+     * ## Why there is no recalculation here
+     *
+     * Because there is nothing to recalculate. Every arrears read calls `previewAllocation`, which
+     * reads the cutoff from `settings` on each call — so the next read after this write already
+     * uses the new day. A batch rewrite would be a second way to reach the same figures and a
+     * second thing to keep in step with the first.
+     *
+     * ## Why this is one statement inside a transaction
+     *
+     * The AC requires the change be written in one transaction, and it is: one `putSetting`. The
+     * transaction wrapper is there because it is the shape every multi-row write in this app
+     * takes, and a future change that added a second row should inherit atomicity rather than
+     * having to remember to add it.
+     *
+     * **No allocation row is touched, and that is structural rather than tested-by-review**: this
+     * function has no statement that could reach the allocation table. `CutoffChangeTest` asserts
+     * every row is identical before and after anyway, because a structural property is only worth
+     * claiming if something would notice it breaking.
+     *
+     * @throws InvalidCutoffDayException when [newCutoffDay] is outside 1..28.
+     */
+    suspend fun setCutoffDay(newCutoffDay: Int) {
+        CutoffPeriod.requireValidCutoffDay(newCutoffDay)
+        inTransaction {
+            settingDao.putSetting(
+                SettingEntity(key = KEY_CUTOFF_DAY, value = newCutoffDay.toString()),
+            )
+        }
+    }
+
     companion object {
         /** The settings key holding the cutoff day. Story 5.4 is what changes it. */
         const val KEY_CUTOFF_DAY = "cutoffDay"
@@ -1114,6 +1242,38 @@ class MissingDepositRelationException(val paymentId: String, val relation: Strin
  * not fit". Deriving it as `amount − what was owed` would be a second derivation of a fact
  * the rows already hold, and a second derivation is a second thing that can be wrong.
  */
+/**
+ * What a cutoff change would do, computed before anything is written — Story 5.4.
+ *
+ * ## Why a count and a delta rather than per-contract rows
+ *
+ * Because the decision the owner is making is binary. A list of fourteen contracts with
+ * before/after figures is a screen to read; the AC asks for *"berapa Kontrak dan berapa rupiah"*,
+ * which is the two numbers that answer "is this worth doing".
+ *
+ * ## Why both totals, not only the difference
+ *
+ * Because the difference alone is ambiguous: `Rp 0` is both "nothing changes" and "everything
+ * changed and cancelled out". The dialog shows the delta prominently and the two totals beneath,
+ * so an owner who sees a zero delta still sees whether the books moved.
+ */
+data class CutoffChangePreview(
+    val oldCutoffDay: Int,
+    val newCutoffDay: Int,
+    /** How many contracts' arrears **figure** changes — not how many were examined. */
+    val changedContractCount: Int,
+    /** Every contract's arrears under the day currently in force. */
+    val totalBefore: Long,
+    /** Every contract's arrears under the day the owner picked. */
+    val totalAfter: Long,
+) {
+    /** `totalAfter - totalBefore`: positive means the owner would owe more after the change. */
+    val totalDelta: Long get() = totalAfter - totalBefore
+
+    /** Whether the change moves anything at all. */
+    val isNoOp: Boolean get() = changedContractCount == 0 && totalDelta == 0L
+}
+
 data class DepositPreview(
     /** Arrears in whole rupiah before this deposit lands. */
     val arrearsBefore: Long,

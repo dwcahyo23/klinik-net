@@ -137,6 +137,34 @@
     <string name="pin_setup_body_enter">Pilih PIN 4 angka. PIN ini diminta setiap aplikasi dibuka.</string>
     <string name="pin_setup_body_confirm">Masukkan PIN yang sama sekali lagi, supaya tidak salah ketik.</string>
 
+    <!--
+      Story 5.4 — the cutoff. The preview is mandatory, so every sentence below is something the
+      owner reads *before* the change rather than after it.
+
+      The delta's direction is in words, not a sign glyph: an owner reading "Rp 750.000" with no
+      direction cannot tell a rise from a fall, and "naik"/"turun" survives being read aloud.
+    -->
+    <string name="pengaturan_cutoff_section">Tanggal tagihan</string>
+    <string name="pengaturan_cutoff_section_body">Menentukan hari pertama periode tagihan. Mengubahnya menggeser periode, bukan mengubah catatan setoran.</string>
+    <string name="pengaturan_cutoff_current">Tanggal cutoff sekarang: %1$d</string>
+    <string name="pengaturan_cutoff_preview_title">Perkiraan dampak</string>
+    <string name="pengaturan_cutoff_no_contracts">Tidak ada kontrak yang tunggakannya berubah.</string>
+    <string name="pengaturan_cutoff_one_contract">1 kontrak berubah tunggakannya.</string>
+    <string name="pengaturan_cutoff_many">%1$d kontrak berubah tunggakannya.</string>
+    <string name="pengaturan_cutoff_no_change">Total tunggakan tidak berubah.</string>
+    <string name="pengaturan_cutoff_up">Total tunggakan naik %1$s.</string>
+    <string name="pengaturan_cutoff_down">Total tunggakan turun %1$s.</string>
+    <string name="pengaturan_cutoff_periods">%1$s → %2$s</string>
+    <string name="pengaturan_cutoff_confirm">Simpan tanggal ini</string>
+    <string name="pengaturan_cutoff_saved">Tanggal cutoff diubah ke %1$d</string>
+    <string name="pengaturan_cutoff_invalid">Tanggal cutoff harus antara 1 dan 28.</string>
+    <!--
+      The consequence, in the same window as the button that charges it. An owner who believes
+      changing the date rewrites their deposit ledger would refuse a correct change; one who
+      believes nothing is affected would make it without reading the delta.
+    -->
+    <string name="pengaturan_cutoff_ledger_note">Catatan setoran tidak diubah — hanya periode tagihan yang bergeser.</string>
+
     <!-- Logo / iconography -->
     <string name="logo_lockup_description">Klinik.Net</string>
     <string name="logo_mono_description">Klinik.Net</string>

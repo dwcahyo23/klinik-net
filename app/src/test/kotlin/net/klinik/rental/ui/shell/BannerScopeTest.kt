@@ -217,6 +217,10 @@ class BannerScopeTest {
             onPinSetupDelete = {},
             onConfirmPinCodeWritten = {},
             onDismissPinSetup = {},
+            onCutoffPick = {},
+            onConfirmCutoff = {},
+            onDismissCutoffPreview = {},
+            onCutoffErrorDismiss = {},
         ),
         deposito = Screens.Deposito(
             state = SetoranUiState(),

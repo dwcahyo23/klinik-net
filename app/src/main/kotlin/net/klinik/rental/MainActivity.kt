@@ -425,6 +425,18 @@ internal fun createPengaturanViewModel(context: Context): PengaturanViewModel {
             clock = clock,
             database = database,
         ),
+        // Story 5.4's cutoff. The **same** `PaymentRepository` the arrears screens read, over the
+        // same `clock` — a preview computed against a different "today" than the arrears list
+        // would show the owner a figure for a period they are not in.
+        payments = PaymentRepository(
+            paymentDao = database.paymentDao(),
+            allocationDao = database.allocationDao(),
+            contractDao = database.contractDao(),
+            exceptionDao = database.serviceExceptionDao(),
+            settingDao = database.settingDao(),
+            database = database,
+        ),
+        clock = clock,
         // Story 5.1's export, over the same singleton — eight readers, no writer. It is built
         // here rather than in `KlinikNetApp` because the filename the picker is offered needs
         // the same [Clock] the rest of the app's dates use, and a second clock is a second
@@ -854,6 +866,12 @@ private fun KlinikNetApp(
                     onPinSetupDelete = pengaturan::onSetupDelete,
                     onConfirmPinCodeWritten = pengaturan::confirmPinCodeWritten,
                     onDismissPinSetup = pengaturan::dismissPinSetup,
+                    // Story 5.4's cutoff. `onCutoffPick` computes and shows; only
+                    // `onConfirmCutoff` writes, so the preview cannot be skipped.
+                    onCutoffPick = pengaturan::requestCutoffChange,
+                    onConfirmCutoff = pengaturan::confirmCutoffChange,
+                    onDismissCutoffPreview = pengaturan::dismissCutoffPreview,
+                    onCutoffErrorDismiss = pengaturan::consumeCutoffError,
                 ),
                 // Story 3.2's deposit sheet. No route — the shell mounts it over
                 // whichever destination is showing, because a deposit is a quick

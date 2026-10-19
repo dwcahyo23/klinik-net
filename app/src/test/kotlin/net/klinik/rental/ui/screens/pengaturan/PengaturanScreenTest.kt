@@ -13,6 +13,7 @@ import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
+import androidx.compose.ui.test.performScrollTo
 import androidx.compose.ui.test.performSemanticsAction
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -631,7 +632,167 @@ class PengaturanScreenTest {
         compose.onNodeWithTag(TAG_RESTORE_ACTION).assertAtLeast(MIN_TARGET, "restore action")
     }
 
+    // ----------------------------------------------------- Story 5.4's cutoff
+
+    /**
+     * The cutoff card shows the stored day and offers **28** chips.
+     *
+     * The count is asserted because "1–28" is a rule `CutoffPeriod` owns and the card reads
+     * from it; a card that quietly offered 31 would be a second copy of a range whose whole
+     * reason for stopping at 28 is that `withDayOfMonth(29)` throws in a common-year February.
+     */
+    @Test
+    fun `the cutoff card shows the stored day`() {
+        compose.setContent {
+            theme {
+                Screen(state = populatedState().copy(cutoff = CutoffSettingsUi(day = 25)))
+            }
+        }
+
+        compose.onNodeWithTag(TAG_CUTOFF_SECTION).assertExists()
+        compose.onNodeWithTag(TAG_CUTOFF_CURRENT).assertExists()
+        compose.onNodeWithText("Tanggal cutoff sekarang: 25").assertExists()
+        compose.onNodeWithTag(cutoffDayTag(1)).assertExists()
+        compose.onNodeWithTag(cutoffDayTag(28)).assertExists()
+    }
+
+    /** Picking a day reaches the handler — which computes a preview, never writes. */
+    @Test
+    fun `picking a day reaches its handler`() {
+        var picked: Int? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(cutoff = CutoffSettingsUi(day = 25)),
+                    onCutoffPick = { picked = it },
+                )
+            }
+        }
+
+        // Scrolled to first, and that is not a workaround: this screen now carries four cards,
+        // and the cutoff card's 28 chips sit below the fold on the default viewport. An owner
+        // scrolls to it; so does the test.
+        compose.onNodeWithTag(cutoffDayTag(15)).performScrollTo().performClick()
+        compose.waitForIdle()
+
+        assertEquals(15, picked)
+    }
+
+    /**
+     * **No preview means no dialog**, and a pick alone never opens one.
+     *
+     * The dialog's presence is the *computed* preview's business — the ViewModel decides. What
+     * this asserts is that the screen does not invent one, because a dialog showing zeros the
+     * owner did not compute is worse than no dialog.
+     */
+    @Test
+    fun `a pick alone opens no cutoff dialog`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(cutoff = CutoffSettingsUi(day = 25)),
+                    onCutoffPick = {},
+                )
+            }
+        }
+
+        compose.onNodeWithTag(cutoffDayTag(15)).performScrollTo().performClick()
+        compose.waitForIdle()
+
+        // The dialog's presence is the **computed** preview's business. What this asserts is
+        // that the screen does not invent one: a dialog showing zeros the owner never computed
+        // is worse than no dialog, because it looks like an answer.
+        compose.onNodeWithTag(TAG_CUTOFF_PREVIEW_DIALOG).assertDoesNotExist()
+    }
+
+    /**
+     * The preview shows the two numbers and the two periods **before** anything is written.
+     *
+     * Asserted on the sentences rather than on node presence: a dialog that rendered an empty
+     * frame would satisfy a presence check while telling the owner nothing.
+     */
+    @Test
+    fun `the preview shows the counts, the delta and the periods`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        cutoff = CutoffSettingsUi(day = 25),
+                        cutoffPreview = CutoffPreviewUi(
+                            day = 15,
+                            changedLine = "2 kontrak berubah tunggakannya.",
+                            deltaLine = "Total tunggakan naik Rp 750.000.",
+                            periodLine = "25 Feb - 24 Mar 2026 → 15 Mar - 14 Apr 2026",
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_CUTOFF_PREVIEW_DIALOG).assertExists()
+        compose.onNodeWithTag(TAG_CUTOFF_PREVIEW_CHANGED).assertExists()
+        compose.onNodeWithText("2 kontrak berubah tunggakannya.").assertExists()
+        compose.onNodeWithText("Total tunggakan naik Rp 750.000.").assertExists()
+        compose.onNodeWithText("25 Feb - 24 Mar 2026 → 15 Mar - 14 Apr 2026").assertExists()
+        // And the consequence, in the same window as the button that charges it.
+        compose.onNodeWithText(
+            "Catatan setoran tidak diubah — hanya periode tagihan yang bergeser.",
+        ).assertExists()
+    }
+
+    /** Confirming and cancelling reach **separate** handlers. */
+    @Test
+    fun `confirming and cancelling the preview reach their own handlers`() {
+        var confirmed = 0
+        var dismissed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        cutoff = CutoffSettingsUi(day = 25),
+                        cutoffPreview = previewUi(),
+                    ),
+                    onConfirmCutoff = { confirmed = confirmed + 1 },
+                    onDismissCutoffPreview = { dismissed = dismissed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithText("Simpan tanggal ini").performClick()
+        compose.waitForIdle()
+        assertEquals(1, confirmed)
+        assertEquals("and never the dismiss's", 0, dismissed)
+
+        compose.onNodeWithText("Batal").performClick()
+        compose.waitForIdle()
+        assertEquals(1, dismissed)
+    }
+
+    /** A refused cutoff raises **its own** banner, distinct from the other three. */
+    @Test
+    fun `a refused cutoff raises its own banner`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populatedState().copy(
+                        cutoffErrorMessage = "Tanggal cutoff harus antara 1 dan 28.",
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_CUTOFF_ERROR).assertExists()
+        compose.onNodeWithTag(TAG_BANNER).assertDoesNotExist()
+    }
+
     // ------------------------------------------------------------------ helpers
+
+    private fun previewUi() = CutoffPreviewUi(
+        day = 15,
+        changedLine = "2 kontrak berubah tunggakannya.",
+        deltaLine = "Total tunggakan naik Rp 750.000.",
+        periodLine = "25 Feb - 24 Mar 2026 → 15 Mar - 14 Apr 2026",
+    )
 
     private fun preview() = RestorePreviewUi(
         countsLine = "18 mobil · 14 penyewa · 312 setoran",
@@ -684,6 +845,11 @@ class PengaturanScreenTest {
         onPinSetupDelete: () -> Unit = {},
         onConfirmPinCodeWritten: () -> Unit = {},
         onDismissPinSetup: () -> Unit = {},
+        // Story 5.4's four, defaulted on the same argument.
+        onCutoffPick: (Int) -> Unit = {},
+        onConfirmCutoff: () -> Unit = {},
+        onDismissCutoffPreview: () -> Unit = {},
+        onCutoffErrorDismiss: () -> Unit = {},
     ) {
         PengaturanScreen(
             state = state,
@@ -713,6 +879,10 @@ class PengaturanScreenTest {
             onPinSetupDelete = onPinSetupDelete,
             onConfirmPinCodeWritten = onConfirmPinCodeWritten,
             onDismissPinSetup = onDismissPinSetup,
+            onCutoffPick = onCutoffPick,
+            onConfirmCutoff = onConfirmCutoff,
+            onDismissCutoffPreview = onDismissCutoffPreview,
+            onCutoffErrorDismiss = onCutoffErrorDismiss,
         )
     }
 

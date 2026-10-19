@@ -103,6 +103,22 @@ data class PengaturanUiState(
     val pin: PinSettingsUi? = null,
     /** The PIN setup flow, or `null` when it is closed. */
     val pinSetup: PinSetupUi? = null,
+    /**
+     * Story 5.4's cutoff day, or `null` before the first read.
+     *
+     * `null` rather than a defaulted 25 for the same reason [pin] is: the card must not draw a day
+     * the owner did not choose for the frame before the read lands.
+     */
+    val cutoff: CutoffSettingsUi? = null,
+    /**
+     * The mandatory preview, when the owner has picked a day and not decided yet.
+     *
+     * Non-null is what makes the dialog visible. It carries the **computed** preview, so the
+     * confirm writes the day whose consequences the owner actually saw.
+     */
+    val cutoffPreview: CutoffPreviewUi? = null,
+    /** A refused cutoff change, or `null`. Its own slot: a refusal is not a form error. */
+    val cutoffErrorMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
     /**
@@ -169,6 +185,34 @@ enum class PinSetupStep {
     /** The recovery code, shown once, with the confirmation that it was written down. */
     ShowCode,
 }
+
+/**
+ * Story 5.4's cutoff card: the day in force.
+ *
+ * @property day 1–28, the value every arrears computation reads.
+ */
+data class CutoffSettingsUi(
+    val day: Int,
+)
+
+/**
+ * The cutoff change preview, already formatted.
+ *
+ * Built by the ViewModel for the reason every `*Ui` type here is: the sentence is three numbers
+ * and two period labels, and a composable that assembled it would rebuild it on every
+ * recomposition.
+ *
+ * @property day the day the owner picked — what [PengaturanViewModel.confirmCutoffChange] writes.
+ * @property changedLine `2 kontrak berubah tunggakannya`, or the no-op sentence.
+ * @property deltaLine `Tunggakan naik Rp 750.000`, or the no-change sentence.
+ * @property periodLine `25 Feb – 24 Mar 2026 → 15 Mar – 14 Apr 2026`.
+ */
+data class CutoffPreviewUi(
+    val day: Int,
+    val changedLine: String,
+    val deltaLine: String,
+    val periodLine: String,
+)
 
 /**
  * The account form's own state, held by the ViewModel.

@@ -693,6 +693,51 @@ class RStrings(private val context: Context) {
     /** The lock was turned off. */
     fun pinDisabledMessage(): String = context.getString(R.string.pin_disabled_message)
 
+    // -------------------------------------------------------------- Story 5.4
+
+    /** The card's own line: which day is in force. */
+    fun pengaturanCutoffCurrent(day: Int): String =
+        context.getString(R.string.pengaturan_cutoff_current, day)
+
+    /**
+     * How many contracts move — and the plural is three separate strings rather than a count
+     * folded into one sentence.
+     *
+     * Indonesian has one plural form for a counted noun, so `0`/`1`/`n` collapse naturally; but
+     * "0 kontrak" and "1 kontrak" read as *complete* claims, and the preview's whole job is to
+     * say whether anything moves. Three strings make that unmistakable.
+     */
+    fun pengaturanCutoffNoContracts(): String =
+        context.getString(R.string.pengaturan_cutoff_no_contracts)
+
+    fun pengaturanCutoffOneContract(): String =
+        context.getString(R.string.pengaturan_cutoff_one_contract)
+
+    fun pengaturanCutoffManyContracts(count: Int): String =
+        context.getString(R.string.pengaturan_cutoff_many, count)
+
+    /** The delta, with its direction **in words**. */
+    fun pengaturanCutoffUp(amount: String): String =
+        context.getString(R.string.pengaturan_cutoff_up, amount)
+
+    fun pengaturanCutoffDown(amount: String): String =
+        context.getString(R.string.pengaturan_cutoff_down, amount)
+
+    fun pengaturanCutoffNoChange(): String =
+        context.getString(R.string.pengaturan_cutoff_no_change)
+
+    /** The two period labels, from `CutoffPeriod.label` — never spelled here. */
+    fun pengaturanCutoffPeriods(old: String, new: String): String =
+        context.getString(R.string.pengaturan_cutoff_periods, old, new)
+
+    /** The refusal for a day outside 1–28, naming the range. */
+    fun pengaturanCutoffInvalid(): String =
+        context.getString(R.string.pengaturan_cutoff_invalid)
+
+    /** The confirmation, naming the day that was written. */
+    fun pengaturanCutoffSaved(day: Int): String =
+        context.getString(R.string.pengaturan_cutoff_saved, day)
+
     // -------------------------------------------------------------- Story 3.2
 
     /**

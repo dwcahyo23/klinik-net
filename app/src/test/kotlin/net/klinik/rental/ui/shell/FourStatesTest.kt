@@ -528,6 +528,10 @@ class FourStatesTest {
             onPinSetupDelete = {},
             onConfirmPinCodeWritten = {},
             onDismissPinSetup = {},
+            onCutoffPick = {},
+            onConfirmCutoff = {},
+            onDismissCutoffPreview = {},
+            onCutoffErrorDismiss = {},
         )
     }
 

@@ -782,6 +782,10 @@ class AccessibilityTest {
             onPinSetupDelete = {},
             onConfirmPinCodeWritten = {},
             onDismissPinSetup = {},
+            onCutoffPick = {},
+            onConfirmCutoff = {},
+            onDismissCutoffPreview = {},
+            onCutoffErrorDismiss = {},
         ),
         deposito = Screens.Deposito(
             state = SetoranUiState(),
