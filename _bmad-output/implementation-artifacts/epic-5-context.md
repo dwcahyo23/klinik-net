@@ -31,10 +31,64 @@ and `OpenDocument` need nothing declared in the manifest. `MANAGE_EXTERNAL_STORA
 `READ_EXTERNAL_STORAGE` and `WRITE_EXTERNAL_STORAGE` are all forbidden — on `targetSdk` 36 the
 legacy two are silently ineffective anyway, so asking would be both wrong and pointless.
 
-**A backup is manual, never automatic.** No WorkManager, no nightly file the owner may not know
+**No automatic or scheduled backup.** No WorkManager, no nightly file the owner may not know
 exists. Story 5.5 adds the reminder instead, because "forgot" is what needs solving and a silent
 automated copy solves a different problem at the price of a dependency and a file nobody chose the
 location of.
+
+**Store the ledger, never a `creditBalance` column.** `verify-fr10.md` Kasus 4 found that a
+Rp 20.000.000 deposit against a Rp 7.000.000 period leaves Rp 13.000.000 that the period-based
+formula could not see, because it counted only deposits dated inside the period. Two fixes were
+available — store a balance, or store which days each deposit closes — and option B was chosen
+because it is a fact rather than a recomputation: credit becomes a consequence, changing the
+cutoff or the rate leaves the stored rows consistent, and a cancellation releases them and
+re-derives.
+
+**The last-export date travels in a backup, and is the one preference that must.** A date is not a
+secret, and dropping it would make the first reminder on a restored install fire against a backup
+the owner demonstrably has. Every **lock** key is excluded; `lastBackupDate` is deliberately not.
+
+**Story 5.4 changes the billing day by writing one row.** `setCutoffDay` calls `putSetting` and
+nothing else, so *"tidak ada baris alokasi yang dihapus atau ditulis ulang"* is satisfied by not
+having code that could do it. There is no recalculation step either: every arrears read calls
+`previewAllocation`, which reads the cutoff from storage on each call, so the next read after the
+write already uses the new day.
+
+**The preview is mandatory structurally, not by convention.** There is no public function on the
+settings ViewModel that writes the cutoff; the only path runs through `confirmCutoffChange`, and the
+only way to reach that is a pending preview. A `setCutoffDay` on the ViewModel would be a path
+from "pick a day" to "written" that skips the question, and a reviewer would have to notice its
+existence.
+
+**A younger backup is refused, and so is an older one.** NFR-3 requires a newer file to be
+rejected with a message rather than a parse failure that destroys existing data. An *older* file is
+also refused today, because Story 5.1 is the first thing in this repository that ever wrote a
+backup — at v8 — so no older file exists. Writing a migration now would mean fabricating a schema
+nobody chose and validating against an invented input, which proves code paths execute rather than
+that they are correct. The refusal is inert: the version is checked before any row is read, so a
+refused file leaves the owner's database and their lock exactly as they were.
+
+## Performance Baseline
+
+NFR-1's figure is **"50 milidetik"**, and Epic 5's closing gate re-ran Story 1.6's benchmark
+rather than taking the number on trust.
+
+| Measure | Value | Bound |
+|---|---|---|
+| On-device target (NFR-1) | **50 ms** | Redmi Pad 2, debug mode, JIT warmed |
+| CI proxy (`BenchmarkTest.CI_THRESHOLD_MS`) | **500 ms** | 10× the device target |
+| **Measured, 2026-10-19, build machine** | **7 ms** | 2,000 allocation rows across 20 contracts, 2,000 payments, 500 charge days |
+
+The measured figure is roughly **7× inside** the on-device target and roughly **70× inside** the
+CI bound. It is a **build-machine number**, not a device number, and the two are not the same
+measurement — a warmed JIT on a tablet and a cold JVM on a build server are different conditions,
+which is why the CI bound exists at all and why this story records both rather than reconciling
+them.
+
+**The threshold has not been changed.** NFR-1's rule is *"tidak boleh dihapus diam-diam"*: any
+change to `CI_THRESHOLD_MS`, up or down, is a spec-level decision recorded here, not a drive-by
+edit. Story 1.6's `BenchmarkTest` KDoc carries the same rule at the point where someone would be
+tempted to change it.
 
 **The PIN hash and the recovery-code hash never reach a backup file.** The exclusion is an
 explicit deny-list in the writer, not a memory, and the test inserts a `pinHash` row that nothing
@@ -139,7 +193,20 @@ deny-list are the two parts of that contract that a later story would otherwise 
 epic is the interaction between two rules pulling in opposite directions: *"the PIN hash is not
 exported"* says a restore must leave the app unlocked, and *"restore brings everything back"* says
 it must bring the PIN back too. Both are true and they cannot both hold, and the resolution —
-the hash is not in the file — only holds if a test checks the file rather than the behaviour.
+the hash is not in the file — only holds if a test checks the **file** rather than the behaviour.
+
+Two failure directions, and only one is loud: a hash reaching a backup is visible if anyone looks;
+a setting *missing* from a restore is not, because the app restores and runs and the owner finds
+out weeks later. `BackupLockInterplayTest` weights the over-filter half as heavily as the leak
+half for that reason, and asserts `NEVER_EXPORTED` **equals** the lock's own key set so the two
+cannot drift apart quietly.
+
+**The seven `verify-fr10.md` cases are re-run as the epic's closing gate, in one file.** The epic's
+condition is *"Tujuh kasus verify-fr10.md semua hijau sebelum epic ini dinyatakan selesai"* — a
+criterion, not a link. Those cases were spread across three engine suites under names written for
+the engine's structure; `Fr10AcceptanceTest` states each document number beside its document name,
+including the two the document flagged with ⚠️ (Kredit Rp 13.000.000, and the backdated contract).
+A gate that quietly dropped the two hard rows would be a gate for the easy five.
 
 **Story 5.4 reads Epic 3.6's settled-through marker and writes `settings`.** It does not re-derive
 anything the allocation ledger already knows, which is the same rule Epic 4 followed.

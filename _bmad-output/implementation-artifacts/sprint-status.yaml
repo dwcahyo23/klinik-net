@@ -73,14 +73,14 @@ development_status:
   4-6-pencarian-global: done
   epic-4-retrospective: optional # all 6 stories done and the two Epic 3 carry-overs they were waiting on closed (spec-riwayat-setoran). One open item: the rail re-order UX-DR17 named as a deferral landed under spec-setoran-screen rather than here
 
-  epic-5: in-progress
+  epic-5: done
   5-1-mengekspor-seluruh-data-ke-satu-berkas: done # 8 tables (not the AC's 5), allocations copied not re-derived, PIN deny-list shipped before the rows exist. Manifest still declares zero permissions, now asserted by ExportPermissionTest
   5-2-memulihkan-data-dari-cadangan: done # strict reader (optJSONArray nowhere: a missing key read as [] turns a corrupt file into a successful wipe), one-transaction replace, preview before confirm. 1002 app tests green
   5-3-mengunci-aplikasi-dengan-pin-dan-kode-pemulihan: done # PBKDF2 + 20-char recovery code shown once; NEVER_EXPORTED grew to all 9 PIN keys (a restored pinEnabled with no hash is a lock nobody can open)
   5-4-mengubah-tanggal-cutoff-dengan-melihat-dampaknya: done # mandatory preview (no ViewModel path writes without it); one settings row, zero allocation rows — proven by mutation
   5-5-mengingat-kalau-backup-belum-dibuat: done # banner on Beranda, three gates (data exists, nudge hour passed, not exported today). lastBackupDate written inside BackupRepository.build(), never in the ViewModel's success branch
-  5-6-pemulihan-dan-pin-diuji-bersama-sama: backlog
-  epic-5-retrospective: optional
+  5-6-pemulihan-dan-pin-diuji-bersama-sama: done # verification story, NO production code changed. 9 interlock cases + 7 FR-10 cases; NFR-1 benchmark re-run at 7ms
+  epic-5-retrospective: optional # all 6 done, 5.6 the cross-feature verification story. Two gaps recorded rather than claimed: BackupFileReader and BackupFileWriter are untested (faking a ContentResolver is a pattern this repo has never used), and every manual check across Epic 5 is unrun - there is no device
 
   # Two records outside the epic story list, because they are not stories:
   #   - spec-setoran-screen-dua-tab-urutan-rail (Setoran became a screen; rail reordered to
