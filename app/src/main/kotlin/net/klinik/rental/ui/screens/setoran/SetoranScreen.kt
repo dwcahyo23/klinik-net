@@ -20,16 +20,24 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import com.composables.icons.lucide.CircleAlert
+import com.composables.icons.lucide.CircleX
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.NotebookPen
+import com.composables.icons.lucide.Pencil
 import net.klinik.rental.R
+import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
+import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
+import net.klinik.rental.ui.components.KnSearchBar
 import net.klinik.rental.ui.components.KnSnackbar
-import net.klinik.rental.ui.screens.kontrak.DepositHistoryBlock
+import net.klinik.rental.ui.components.KnTableHeaderRow
+import net.klinik.rental.ui.components.KnTableCell
+import net.klinik.rental.ui.components.KnTableRow
+import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
@@ -77,6 +85,11 @@ import net.klinik.rental.ui.theme.knTypography
  * @param onRequestDepositEdit opens Story 3.5's correction form. Required, likewise.
  * @param onDismissError clears the history read's failure banner. Required: a defaulted
  *   dismiss leaves a banner that cannot be closed.
+ * @param onHistoryQueryChange records what the owner typed into the history search box.
+ *   Required, for the reason above — a search box wired to `{}` renders and filters nothing.
+ * @param onClearHistoryQuery clears it. Required, likewise.
+ * @param onSelectHistoryFilter selects one of the three status chips, or `null` for all.
+ *   Required, likewise.
  */
 @Composable
 fun SetoranScreen(
@@ -86,6 +99,9 @@ fun SetoranScreen(
     onRequestDepositCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
     onRequestDepositEdit: (paymentId: String) -> Unit,
     onDismissError: () -> Unit,
+    onHistoryQueryChange: (String) -> Unit,
+    onClearHistoryQuery: () -> Unit,
+    onSelectHistoryFilter: (HistoryFilter?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -96,42 +112,34 @@ fun SetoranScreen(
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
         Column(Modifier.fillMaxSize()) {
-            Column(
-                modifier = Modifier
-                    .fillMaxWidth()
-                    .padding(horizontal = spacing.lg),
-            ) {
-                Text(
-                    text = stringResource(R.string.setoran_screen_title),
-                    style = MaterialTheme.knTypography.title,
-                    color = MaterialTheme.knColors.textPrimary,
-                    modifier = Modifier
-                        .padding(top = spacing.lg)
-                        .testTag(TAG_SETORAN_TITLE),
-                )
-
-                // The two tabs, as a pair of chips — the app's own tab control (no
-                // `TabRow` exists anywhere in this app; the filter chips are the
-                // established pattern). Input is selected first.
-                @OptIn(ExperimentalLayoutApi::class)
-                FlowRow(
-                    modifier = Modifier
-                        .fillMaxWidth()
-                        .padding(top = spacing.md)
-                        .testTag(TAG_SETORAN_TABS),
-                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                ) {
-                    SetoranTab.entries.forEach { tab ->
-                        KnChip(
-                            text = stringResource(tab.labelRes()),
-                            selected = tab == state.selectedTab,
-                            onClick = { onSelectTab(tab) },
-                            modifier = Modifier.testTag(setoranTabTag(tab)),
-                        )
+            // The screen's title and its two tabs live in the **top bar**, matching
+            // `payments.html:23-35`: the tabs are `.chips` inside `.top-bar-actions`, not a row
+            // under a bare heading. Two reasons it matters beyond fidelity — the bar is where the
+            // theme toggle is mounted, so a screen with a hand-rolled heading loses that control;
+            // and the bar's own gutter is the one the page body below it uses, which is what makes
+            // the title and the first card start on the same line.
+            KnTopBar(
+                title = stringResource(R.string.setoran_screen_title),
+                actions = {
+                    FlowRow(
+                        modifier = Modifier
+                            .padding(end = spacing.xxl)
+                            .testTag(TAG_SETORAN_TABS),
+                        horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                        verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                    ) {
+                        SetoranTab.entries.forEach { tab ->
+                            KnChip(
+                                text = stringResource(tab.labelRes()),
+                                selected = tab == state.selectedTab,
+                                onClick = { onSelectTab(tab) },
+                                modifier = Modifier.testTag(setoranTabTag(tab)),
+                            )
+                        }
                     }
-                }
-            }
+                },
+                modifier = Modifier.testTag(TAG_SETORAN_TITLE),
+            )
 
             when (state.selectedTab) {
                 SetoranTab.Input -> InputTab(
@@ -144,6 +152,9 @@ fun SetoranScreen(
                     onRequestDepositCancel = onRequestDepositCancel,
                     onRequestDepositEdit = onRequestDepositEdit,
                     onDismissError = onDismissError,
+                    onHistoryQueryChange = onHistoryQueryChange,
+                    onClearHistoryQuery = onClearHistoryQuery,
+                    onSelectHistoryFilter = onSelectHistoryFilter,
                     modifier = Modifier.weight(1f),
                 )
             }
@@ -185,11 +196,27 @@ private fun InputTab(
 }
 
 /**
- * The Riwayat tab: the summary strip, the error banner, and the cross-contract rows.
+ * The Riwayat tab: the summary strip, the search box, the status chips, and the table.
  *
- * The rows are `DepositHistoryBlock` — the **same** composable the contract sheet mounts,
- * given cross-contract rows. Reusing it is the point: the row shape, the cancelled
- * marker, the absent verbs and the empty state were all built and tested once.
+ * ## Why a table and not the per-contract block here
+ *
+ * The prototype draws this tab as `table.data` (`payments.html`'s `hist-rows`): one line per
+ * deposit, columns for date, renter, plate, bank, reference and amount. The per-contract block
+ * — a card per deposit with its own heading and verbs — is the right shape **inside** a contract
+ * sheet, where the owner is reading one rental. Here the question is "what came in", and sixty
+ * cards answer it worse than sixty rows.
+ *
+ * ## What this table does not carry, and why
+ *
+ * The prototype has a restore button on every cancelled row. This app has no restore: Story 3.4
+ * cancels a deposit by deleting its allocations, and the contract KDoc is explicit that undoing
+ * that means re-entering the deposit rather than flipping a flag. A restore button wired to `{}`
+ * is the defect this repo has shipped repeatedly, so the column is an **edit** verb instead — the
+ * correction form Story 3.5 built, which is a real action on a real row.
+ *
+ * @param onHistoryQueryChange records the search box's text.
+ * @param onClearHistoryQuery empties it.
+ * @param onSelectHistoryFilter narrows to one of the three statuses, or `null` for all.
  */
 @Composable
 private fun HistoryTab(
@@ -197,6 +224,9 @@ private fun HistoryTab(
     onRequestDepositCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
     onRequestDepositEdit: (paymentId: String) -> Unit,
     onDismissError: () -> Unit,
+    onHistoryQueryChange: (String) -> Unit,
+    onClearHistoryQuery: () -> Unit,
+    onSelectHistoryFilter: (HistoryFilter?) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -239,6 +269,28 @@ private fun HistoryTab(
             }
         }
 
+        // The two controls sit above the table at every state — including empty and failed —
+        // because a search box that disappears when the list is empty is a box the owner
+        // cannot use to find out why. The prototype draws them the same way.
+        item(key = "search") {
+            KnSearchBar(
+                query = state.historyQuery,
+                onQueryChange = onHistoryQueryChange,
+                onClear = onClearHistoryQuery,
+                placeholder = stringResource(R.string.setoran_search_placeholder),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(TAG_SETORAN_SEARCH),
+            )
+        }
+
+        item(key = "filters") {
+            HistoryFilterRow(
+                selected = state.historyFilter,
+                onSelect = onSelectHistoryFilter,
+            )
+        }
+
         when {
             // Failed: the banner above is the whole answer. Drawing the empty state
             // beside it would say "no deposits anywhere" and then apologise.
@@ -253,41 +305,192 @@ private fun HistoryTab(
                 )
             }
 
-            else -> items(
-                items = state.rows,
-                key = { it.paymentId },
-            ) { row ->
-                // One block per row is deliberate: the block's empty/error states belong
-                // to the per-contract surface, and this screen owns both here. A block
-                // carrying exactly one row keeps the cross-contract list a list, and the
-                // block's cancel callback reads that row — so the handler receives the
-                // tapped row's own contract, renter and payment id, which is the
-                // property the wiring test pins.
-                DepositHistoryBlock(
-                    state = DepositHistoryUi(
-                        contractId = row.contractId,
-                        contractLabel = row.contractLabel,
-                        renterName = row.renterName,
-                        rows = listOf(row),
-                    ),
-                    onRequestCancel = onRequestDepositCancel,
-                    onRequestEdit = onRequestDepositEdit,
-                    // The **row's own** `renterName · plate`, which is what makes this list
-                    // cross-contract rather than a second per-contract sheet: without it a
-                    // rupiah figure beside a date says nothing about whose money it was.
-                    // `titleText` rather than a new parameter because the block already draws
-                    // a heading above its rows, and a second heading would say the same thing.
-                    titleText = row.contractLabel,
-                    // The block's own banner is never raised here: `DepositHistoryUi`'s
-                    // `errorMessage` is left at its `null` default because the screen owns
-                    // the one failure this list has, above. Forwarded rather than `{}` so
-                    // that state has a way out if a caller ever fills it.
-                    onErrorDismiss = onDismissError,
+            // Narrowed to nothing. A different sentence from "nothing came in", because the
+            // money did come in — the box is what found no match.
+            state.isFilteredToNothing -> item(key = "no-match") {
+                KnEmptyState(
+                    title = stringResource(R.string.setoran_history_no_match_title),
+                    body = stringResource(R.string.setoran_history_no_match_body),
+                    icon = Lucide.CircleAlert,
+                    modifier = Modifier.testTag(TAG_SETORAN_NO_MATCH),
+                )
+            }
+
+            else -> {
+                item(key = "header") {
+                    KnTableHeaderRow(
+                        headers = listOf(
+                            stringResource(R.string.setoran_table_date),
+                            stringResource(R.string.setoran_table_renter),
+                            stringResource(R.string.setoran_table_plate),
+                            stringResource(R.string.setoran_table_amount),
+                            stringResource(R.string.setoran_table_status),
+                        ),
+                        modifier = Modifier.testTag(TAG_SETORAN_TABLE_HEADER),
+                    )
+                }
+                items(
+                    items = state.visibleRows,
+                    key = { it.paymentId },
+                ) { row ->
+                    DepositTableRow(
+                        row = row,
+                        onRequestCancel = onRequestDepositCancel,
+                        onRequestEdit = onRequestDepositEdit,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * One deposit as a table row, plus the verbs that belong to it.
+ *
+ * The verbs sit **below** the row rather than inside it as a sixth column: `KnTableRow` gives
+ * every cell an equal weight, and a column of one 48dp icon in a five-column table is a column
+ * that squeezes the four that carry data. The row is still one deposit — the buttons are its
+ * own actions, keyed by its own id.
+ */
+@Composable
+private fun DepositTableRow(
+    row: DepositHistoryRowUi,
+    onRequestCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
+    onRequestEdit: (paymentId: String) -> Unit,
+) {
+    val spacing = MaterialTheme.knSpacing
+    // `renterName · plate` is the label; the plate column shows the half after the dot. Parsing
+    // it back out of the label would be a second derivation of the same string, so the row's
+    // owner formats it once — `SetoranUiState`'s rule. The label is `"<renter> · <plate>"`, and
+    // a contract the ViewModel could not resolve has no dot, in which case the whole label is
+    // the best answer there is.
+    val plate = row.contractLabel.substringAfter(" · ", row.contractLabel)
+
+    Column(verticalArrangement = Arrangement.spacedBy(spacing.xs)) {
+        KnTableRow(
+            cells = listOf(
+                KnTableCell(row.dateText, bold = true),
+                KnTableCell(row.renterName),
+                KnTableCell(plate),
+                KnTableCell(row.amountText, numeric = true),
+                KnTableCell(
+                    text = stringResource(row.statusRes()),
+                    // The status cell's own tag, so a test can ask what **this row** says
+                    // without matching the filter chip and the summary strip's labels, which
+                    // use the same two words.
+                    tag = depositTableStatusTag(row.paymentId),
+                ),
+            ),
+            modifier = Modifier.testTag(depositTableRowTag(row.paymentId)),
+        )
+        // Two sentences the table columns have no room for, drawn only when they apply:
+        // a partial deposit's reason, and a cancellation's own words.
+        if (row.isPartial) {
+            KnBadge(
+                text = stringResource(R.string.setoran_badge_partial),
+                tone = KnBadgeTone.Warning,
+                modifier = Modifier.testTag(depositPartialTag(row.paymentId)),
+            )
+        }
+        // A cancelled row's own words. `cancelReasonText` is non-null only for a cancelled
+        // row in practice, and `isEditable == false` is this app's definition of "cancelled",
+        // so the two agree by construction.
+        row.cancelReasonText?.takeIf { !row.isEditable }?.let { reason ->
+            Text(
+                // The contract block's own sentence, reused rather than re-spelled: two
+                // wordings of "Alasan pembatalan: …" is two sentences that can drift, and
+                // the sentence is about the same fact in both places.
+                text = stringResource(R.string.kontrak_history_cancel_reason, reason),
+                style = MaterialTheme.knTypography.label,
+                color = MaterialTheme.knColors.textTertiary,
+            )
+        }
+        if (row.isEditable) {
+            FlowRow(
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.xs),
+            ) {
+                KnButton(
+                    label = stringResource(R.string.setoran_row_edit),
+                    onClick = { onRequestEdit(row.paymentId) },
+                    variant = KnButtonVariant.Ghost,
+                    size = KnButtonSize.Small,
+                    icon = Lucide.Pencil,
+                    modifier = Modifier.testTag(depositTableEditTag(row.paymentId)),
+                )
+                KnButton(
+                    label = stringResource(R.string.setoran_row_cancel),
+                    onClick = { onRequestCancel(row.contractId, row.renterName, row.paymentId) },
+                    variant = KnButtonVariant.Ghost,
+                    size = KnButtonSize.Small,
+                    icon = Lucide.CircleX,
+                    modifier = Modifier.testTag(depositTableCancelTag(row.paymentId)),
                 )
             }
         }
     }
 }
+
+/** `Aktif` or `Dibatalkan` — the status column. Partial is a badge beside the amount, not a status. */
+private fun DepositHistoryRowUi.statusRes(): Int =
+    if (isEditable) R.string.setoran_status_active else R.string.setoran_status_cancelled
+
+/**
+ * The three status chips and the "all" chip — `payments.html`'s `[data-hfilter]`.
+ *
+ * "All" is a chip rather than the absence of a chip, so the owner can get back to the whole
+ * list after narrowing: a filter with no way back is a one-way door.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun HistoryFilterRow(
+    selected: HistoryFilter?,
+    onSelect: (HistoryFilter?) -> Unit,
+) {
+    FlowRow(
+        modifier = Modifier
+            .fillMaxWidth()
+            .testTag(TAG_SETORAN_FILTERS),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.xs),
+    ) {
+        KnChip(
+            text = stringResource(R.string.setoran_filter_all),
+            selected = selected == null,
+            onClick = { onSelect(null) },
+            modifier = Modifier.testTag(historyFilterTag(null)),
+        )
+        HistoryFilter.entries.forEach { filter ->
+            KnChip(
+                text = stringResource(filter.labelRes()),
+                selected = selected == filter,
+                onClick = { onSelect(filter) },
+                modifier = Modifier.testTag(historyFilterTag(filter)),
+            )
+        }
+    }
+}
+
+/** A filter's display string — one place maps the enum to its copy. */
+private fun HistoryFilter.labelRes(): Int = when (this) {
+    HistoryFilter.Aktif -> R.string.setoran_filter_active
+    HistoryFilter.Sebagian -> R.string.setoran_filter_partial
+    HistoryFilter.Dibatalkan -> R.string.setoran_filter_cancelled
+}
+
+/** A filter chip's tag. `null` is the "all" chip, hence the explicit `All` spelling. */
+internal fun historyFilterTag(filter: HistoryFilter?): String =
+    "setoran-filter-${filter?.name ?: "All"}"
+
+internal fun depositTableRowTag(paymentId: String): String = "setoran-row-$paymentId"
+internal fun depositTableCancelTag(paymentId: String): String = "setoran-row-cancel-$paymentId"
+internal fun depositTableEditTag(paymentId: String): String = "setoran-row-edit-$paymentId"
+internal fun depositPartialTag(paymentId: String): String = "setoran-row-partial-$paymentId"
+internal fun depositTableStatusTag(paymentId: String): String = "setoran-row-status-$paymentId"
+
+/** A summary figure's own tag, keyed on which figure it is. */
+internal fun setoranSummaryTag(figure: String): String = "setoran-summary-$figure"
+
 
 /**
  * The strip of four plain figures. No chart, no KPI hierarchy — four numbers that answer
@@ -309,29 +512,40 @@ private fun DepositSummaryStrip(
         DepositSummaryFigure(
             label = stringResource(R.string.setoran_summary_total),
             value = summary.total.toString(),
+            tag = setoranSummaryTag("total"),
         )
         DepositSummaryFigure(
             label = stringResource(R.string.setoran_summary_active),
             value = summary.active.toString(),
+            tag = setoranSummaryTag("active"),
         )
         DepositSummaryFigure(
             label = stringResource(R.string.setoran_summary_cancelled),
             value = summary.cancelled.toString(),
+            tag = setoranSummaryTag("cancelled"),
         )
         // The one figure that is money rather than a count — already formatted, so no
         // second spelling of a rupiah figure exists on this screen.
         DepositSummaryFigure(
             label = stringResource(R.string.setoran_summary_received_today),
             value = summary.receivedTodayText,
+            tag = setoranSummaryTag("today"),
         )
     }
 }
 
-/** One label-over-value pair in the strip. */
+/**
+ * One label-over-value pair in the strip.
+ *
+ * The tag is on the **value**, not the pair: "Dibatalkan" and "Aktif" are also the filter
+ * chips' names and the status column's words, so a test that wants to know what this figure
+ * says needs a node that says it — the pair's box would read as empty.
+ */
 @Composable
 private fun DepositSummaryFigure(
     label: String,
     value: String,
+    tag: String,
 ) {
     Column(horizontalAlignment = Alignment.Start) {
         Text(
@@ -344,6 +558,7 @@ private fun DepositSummaryFigure(
             style = MaterialTheme.knTypography.figure,
             color = MaterialTheme.knColors.textPrimary,
             fontFamily = FontFamily.Monospace,
+            modifier = Modifier.testTag(tag),
         )
     }
 }
@@ -365,3 +580,7 @@ internal const val TAG_SETORAN_HISTORY = "setoran-history"
 internal const val TAG_SETORAN_SUMMARY = "setoran-summary"
 internal const val TAG_SETORAN_ERROR = "setoran-error"
 internal const val TAG_SETORAN_EMPTY = "setoran-empty"
+internal const val TAG_SETORAN_SEARCH = "setoran-search"
+internal const val TAG_SETORAN_FILTERS = "setoran-filters"
+internal const val TAG_SETORAN_NO_MATCH = "setoran-no-match"
+internal const val TAG_SETORAN_TABLE_HEADER = "setoran-table-header"

@@ -853,6 +853,9 @@ class AccessibilityTest {
             onRequestDepositCancel = { _, _, _ -> },
             onRequestDepositEdit = {},
             onDismissError = {},
+            onHistoryQueryChange = {},
+            onClearHistoryQuery = {},
+            onSelectHistoryFilter = {},
         ),
     )
 

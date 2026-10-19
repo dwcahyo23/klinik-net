@@ -308,8 +308,25 @@ data class DepositHistoryRowUi(
      * has shipped three times. `DepositHistoryRow.isEditable` is where the decision is made.
      */
     val isEditable: Boolean,
+    /**
+     * Whether this deposit was cancelled — the fact the status column and the filter chips read.
+     *
+     * Separate from [isEditable], which is `false` for a cancelled row **and** would be `false`
+     * for any future non-editable state this app has not built. The filter asks "was it
+     * cancelled", so it reads the fact rather than inferring it from a verb's availability.
+     */
+    val isCanceled: Boolean,
     /** The owner's own reason for cancelling, shown only when cancelled. */
     val cancelReasonText: String?,
+    /**
+     * Paid, but short of the contract's daily rate — `payments.html`'s "Sebagian" badge.
+     *
+     * Derived from `amount < contract.dailyRate`, which the ViewModel reads as a **snapshot**:
+     * the rate is frozen onto the contract at open time, so a later price change cannot make a
+     * historical deposit retroactively partial. A cancelled deposit is never partial — it
+     * cancelled nothing, so "less than a day" is not a fact about it.
+     */
+    val isPartial: Boolean = false,
 )
 
 /**
@@ -482,6 +499,18 @@ data class SetoranScreenState(
      * per-contract block draws.
      */
     val rows: List<DepositHistoryRowUi> = emptyList(),
+    /**
+     * The search box's raw text, exactly as typed.
+     *
+     * Raw, and matched case-insensitively against renter, plate, reference and bank — the four
+     * things `payments.html`'s own `renderHistory` searches. Kept as typed rather than
+     * lowercased so the caret does not jump when the owner types a capital.
+     */
+    val historyQuery: String = "",
+    /** The status the owner narrowed to, or `null` for all. */
+    val historyFilter: HistoryFilter? = null,
+    /** What the table draws: [rows] narrowed by [historyQuery] and [historyFilter]. */
+    val visibleRows: List<DepositHistoryRowUi> = emptyList(),
     /** The four summary figures, derived from [rows] plus `observeTodaysIncome`. */
     val summary: DepositSummaryUi? = null,
     /**
@@ -495,4 +524,22 @@ data class SetoranScreenState(
 ) {
     /** Whether the empty state applies: looked, found nothing, nothing failed. */
     val isEmpty: Boolean get() = rows.isEmpty() && errorMessage == null
+
+    /**
+     * Whether the owner narrowed the list to nothing — the "no match" case, which is a
+     * different sentence from [isEmpty]: "nothing came in" is a claim about the money, and
+     * "no row matches" is a fact about the search box.
+     */
+    val isFilteredToNothing: Boolean get() =
+        visibleRows.isEmpty() && rows.isNotEmpty() && errorMessage == null
 }
+
+/**
+ * The three filters the prototype's history chips offer — `payments.html`'s
+ * `[data-hfilter]`.
+ *
+ * `null` means "all". A separate enum rather than three booleans, for the reason every other
+ * filter in this app is one: three booleans can describe five states, four of which do not
+ * exist.
+ */
+enum class HistoryFilter { Aktif, Sebagian, Dibatalkan }

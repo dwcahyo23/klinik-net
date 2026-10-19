@@ -285,6 +285,9 @@ class BannerScopeTest {
             onRequestDepositCancel = { _, _, _ -> },
             onRequestDepositEdit = {},
             onDismissError = {},
+            onHistoryQueryChange = {},
+            onClearHistoryQuery = {},
+            onSelectHistoryFilter = {},
         ),
     )
 

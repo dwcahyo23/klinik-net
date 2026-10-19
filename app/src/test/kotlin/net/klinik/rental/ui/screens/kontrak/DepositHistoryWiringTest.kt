@@ -323,6 +323,7 @@ class DepositHistoryWiringTest {
         referenceNo = null,
         notes = null,
         isEditable = isEditable,
+        isCanceled = !isEditable,
         cancelReasonText = cancelReason,
     )
 

@@ -531,21 +531,19 @@ class AppShellTest {
     }
 
     /**
-     * `Setoran` has no top bar of its own, so it has no field either — and this records that as
-     * a *known* gap rather than letting it pass silently.
+     * Setoran was the one destination without a bar, so it was the one destination without a
+     * search field. That gap is closed: `SetoranScreen` now draws through `KnTopBar`
+     * (`payments.html:23-35`), so the same field lands there as everywhere else.
      *
-     * ## Why this test exists rather than a comment
+     * ## Why this test still exists
      *
-     * Because the version above walks every destination and would start failing the moment the
-     * Setoran screen is given a bar — and whoever adds it needs to know this is where the claim
-     * will change. `SetoranScreen` draws its title as a bare `Text` (`SetoranScreen.kt:104`), not
-     * through `KnTopBar`, so `LocalTopBarSearch` has nowhere to land.
-     *
-     * **When that screen is restyled, delete this test and let the walk above cover it.** It is a
-     * marker for a gap, not a requirement.
+     * The walk above already covers every destination in `entries`, so this is technically
+     * redundant — but it is kept as the **named** claim rather than a comment, because the gap was
+     * named for long enough that its absence is worth stating out loud. It asserts the two facts
+     * that changed: the screen carries a bar, and the bar carries the field.
      */
     @Test
-    fun `Setoran has no bar and therefore no search field yet`() {
+    fun `Setoran has a bar and therefore a search field`() {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         Destination.Setoran.let {
@@ -557,9 +555,9 @@ class AppShellTest {
         }
 
         assertTrue(
-            "Setoran draws its own title, so it carries no bar field — known gap",
+            "Setoran draws through the same bar every other screen uses",
             compose.onAllNodesWithTag(TAG_SETORAN_TITLE).fetchSemanticsNodes().isNotEmpty() &&
-                compose.onAllNodesWithTag(TAG_GLOBAL_SEARCH_FIELD).fetchSemanticsNodes().isEmpty(),
+                compose.onAllNodesWithTag(TAG_GLOBAL_SEARCH_FIELD).fetchSemanticsNodes().isNotEmpty(),
         )
     }
 
@@ -1211,6 +1209,9 @@ class AppShellTest {
             onRequestDepositCancel = { _, _, _ -> },
             onRequestDepositEdit = {},
             onDismissError = {},
+            onHistoryQueryChange = {},
+            onClearHistoryQuery = {},
+            onSelectHistoryFilter = {},
         ),
     )
 }

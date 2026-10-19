@@ -1034,6 +1034,12 @@ private fun KlinikNetApp(
                     onRequestDepositCancel = setoran::requestCancel,
                     onRequestDepositEdit = setoran::openEditDeposit,
                     onDismissError = setoran::consumeScreenError,
+                    // The history tab's own three: the box, its clear, and the status
+                    // chips. All three are the deposit ViewModel's, because the narrowing
+                    // is a decision about the rows it owns.
+                    onHistoryQueryChange = setoran::setHistoryQuery,
+                    onClearHistoryQuery = setoran::clearHistoryQuery,
+                    onSelectHistoryFilter = setoran::selectHistoryFilter,
                 ),
             ),
         )

@@ -256,6 +256,16 @@ class SetoranViewModel(
         }
 
     /**
+     * The history search box, as typed, and the status chip, as chosen.
+     *
+     * Both are `MutableStateFlow`s for the same reason [selectedTab] is: they are the owner's
+     * input, and they must survive the history re-reading underneath them. Folding them into
+     * the read would reset the search box every time a deposit landed.
+     */
+    private val historyQuery = MutableStateFlow("")
+    private val historyFilter = MutableStateFlow<HistoryFilter?>(null)
+
+    /**
      * The Setoran screen's state — the two-tab destination's own read.
      *
      * ## Why the summary is derived **here**, from the same emission as the rows
@@ -263,22 +273,37 @@ class SetoranViewModel(
      * Because a second counting query would be a second subscription and a second answer
      * to "how many deposits are there" — figures that can drift from the list above them.
      * total/active/cancelled are counts over the loaded rows, and received-today comes
-     * from `observeTodaysIncome`'s own flow, which is the read Beranda uses.
+     * from `observeTodaysIncome`'s own flow, which is the read Beranda uses. The summary
+     * counts **all** rows, not [SetoranScreenState.visibleRows]: it answers "what came in",
+     * and a search box narrowing the table must not rewrite the totals above it.
+     *
+     * ## Why the narrowing happens here and not in the composable
+     *
+     * Because "what the table shows" is a decision about the data, and a screen that filtered
+     * its own list would have to be handed all four matching fields to redo the match. The
+     * rule is the one every other filter in this app follows — the ViewModel answers, the
+     * screen draws.
      */
     val screenState: StateFlow<SetoranScreenState> = combine(
         selectedTab,
         screenHistorySource,
         payments.observeTodaysIncome(clock),
-    ) { tab, source, receivedToday ->
+        historyQuery,
+        historyFilter,
+    ) { tab, source, receivedToday, query, filter ->
+        val allRows = when (source) {
+            // Nothing rendered while loading or failed: an empty list here would be the
+            // claim "no deposits anywhere", made without having looked.
+            ScreenHistorySource.Loading, is ScreenHistorySource.Failed -> emptyList()
+            is ScreenHistorySource.Loaded -> source.rows.map { row -> toScreenRow(row) }
+        }
         SetoranScreenState(
             selectedTab = tab,
-            rows = when (source) {
-                // Nothing rendered while loading or failed: an empty list here would be
-                // the claim "no deposits anywhere", made without having looked.
-                ScreenHistorySource.Loading, is ScreenHistorySource.Failed -> emptyList()
-                is ScreenHistorySource.Loaded -> source.rows.map { row ->
-                    toScreenRow(row)
-                }
+            rows = allRows,
+            historyQuery = query,
+            historyFilter = filter,
+            visibleRows = allRows.filter { row ->
+                matchesFilter(row, filter) && matchesQuery(row, query)
             },
             // Derived from the same emission the rows travel in — one subscription.
             summary = when (source) {
@@ -303,9 +328,61 @@ class SetoranViewModel(
             initialValue = SetoranScreenState(),
         )
 
+    /**
+     * The three status chips' own rule.
+     *
+     * "Aktif" is *reported* rather than *not cancelled alone*, because the chip and the badge on
+     * the row must agree: the table draws a green badge only for an active row, and a filter
+     * that called a partial deposit something else would leave a row visible under "Aktif" with
+     * a badge saying otherwise. Cancelled is its own chip, so it is excluded from [Aktif].
+     */
+    private fun matchesFilter(row: DepositHistoryRowUi, filter: HistoryFilter?): Boolean =
+        when (filter) {
+            null -> true
+            HistoryFilter.Aktif -> !row.isPartial && !row.isCanceled
+            HistoryFilter.Sebagian -> row.isPartial && !row.isCanceled
+            HistoryFilter.Dibatalkan -> row.isCanceled
+        }
+
+    /**
+     * The search box's rule — `renderHistory`'s own match, over the same four fields.
+     *
+     * Renter, plate, reference and bank. The plate is the second half of the row's own
+     * `"renterName · plate"` label, which is why the label is what gets searched rather than a
+     * field that does not exist on the row. Case-insensitive, and an empty box matches
+     * everything — including a box holding only spaces, because a search for " " is not a
+     * search.
+     */
+    private fun matchesQuery(row: DepositHistoryRowUi, query: String): Boolean {
+        val q = query.trim()
+        if (q.isEmpty()) return true
+        return listOfNotNull(
+            row.renterName,
+            row.contractLabel,
+            row.referenceNo,
+            row.accountText,
+            row.methodText,
+        ).any { it.contains(q, ignoreCase = true) }
+    }
+
     /** Selects a tab. The two are the screen's whole chrome, so no guard is needed. */
     fun selectTab(tab: SetoranTab) {
         selectedTab.value = tab
+    }
+
+    /** Records what the owner typed into the history search box. */
+    fun setHistoryQuery(query: String) {
+        historyQuery.value = query
+    }
+
+    /** Clears the history search box. Its own function so "clear" is not a typed empty string. */
+    fun clearHistoryQuery() {
+        historyQuery.value = ""
+    }
+
+    /** Selects a status chip. `null` is "all", which is the default. */
+    fun selectHistoryFilter(filter: HistoryFilter?) {
+        historyFilter.value = filter
     }
 
     /** Dismisses the screen's failure banner by asking the read to try again. */
@@ -321,14 +398,14 @@ class SetoranViewModel(
     private suspend fun toScreenRow(
         row: net.klinik.rental.data.repository.DepositHistoryRow,
     ): DepositHistoryRowUi {
-        val label = resolveContractLabel(row.contractId)
+        val identity = resolveContractLabel(row.contractId)
         val accounts = accountRepository.observeAccounts().first()
             .associate { it.id to "${it.bankName} · ${it.number}" }
         return DepositHistoryRowUi(
             paymentId = row.id,
             contractId = row.contractId,
-            renterName = label.first,
-            contractLabel = label.second,
+            renterName = identity.renterName,
+            contractLabel = identity.label,
             amountText = formatRupiah(row.amount),
             dateText = strings.formatExceptionDate(row.date),
             methodText = if (row.method == PaymentMethod.TransferBank) {
@@ -341,30 +418,46 @@ class SetoranViewModel(
             notes = row.notes,
             // From the row's own derivation, not a flag passed from the screen.
             isEditable = row.isEditable,
+            isCanceled = row.isCanceled,
             cancelReasonText = row.cancelReason,
+            // A cancelled deposit is never "partial": it cancelled nothing, so being short of
+            // a day's rate is not a fact about it. A zero rate means the contract was not in
+            // the snapshot — treated as "not partial" rather than as "everything is partial",
+            // because the second would put the badge on every row of a deleted contract.
+            isPartial = !row.isCanceled && identity.dailyRate > 0L && row.amount < identity.dailyRate,
         )
     }
 
     /**
-     * Resolves a contract id to its renter's name and `renterName · plate` label.
+     * Resolves a contract id to its renter's name, `renterName · plate` label, and daily rate.
      *
      * A **Kotlin join**, not a SQL one — the same rule the contract and arrears screens
      * follow: one reader per table, and the join is over static display facts a stale
      * name cannot make wrong. Falls back to the id, which is a better outcome than a row
      * that shows nothing at all.
+     *
+     * The rate rides along because the row's "Sebagian" badge is `amount < dailyRate`, and
+     * reading the contract twice — once for the label, once for the rate — would be two
+     * snapshots of the same table that a write between them could make disagree. A zero rate
+     * means the contract was not found, which the badge reads as "not partial".
      */
-    private suspend fun resolveContractLabel(
-        contractId: String,
-    ): Pair<String, String> {
+    private suspend fun resolveContractLabel(contractId: String): ContractIdentity {
         val contracts = contractRepository.observeContracts().first()
         val contract = contracts.firstOrNull { it.id == contractId }
-            ?: return contractId to contractId
+            ?: return ContractIdentity(contractId, contractId, dailyRate = 0L)
         val renterName = renterRepository.observeRenters().first()
             .firstOrNull { it.id == contract.renterId }?.name ?: contract.renterId
         val plate = vehicleRepository.observeVehicles().first()
             .firstOrNull { it.id == contract.vehicleId }?.plate ?: contract.vehicleId
-        return renterName to "$renterName · $plate"
+        return ContractIdentity(renterName, "$renterName · $plate", contract.dailyRate)
     }
+
+    /** What [resolveContractLabel] answers — the three facts a cross-contract row needs. */
+    private data class ContractIdentity(
+        val renterName: String,
+        val label: String,
+        val dailyRate: Long,
+    )
 
 
     private data class OptionsSnapshot(
@@ -488,6 +581,7 @@ class SetoranViewModel(
                         // a verb offered on a row the repository would refuse renders live
                         // and ignores the tap.
                         isEditable = row.isEditable,
+                        isCanceled = row.isCanceled,
                         cancelReasonText = row.cancelReason,
                     )
                 }

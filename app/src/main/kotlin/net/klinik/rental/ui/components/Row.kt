@@ -24,6 +24,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -187,6 +188,24 @@ data class KnTableCell(
     val text: String,
     val numeric: Boolean = false,
     val bold: Boolean = false,
+    /**
+     * An optional chip drawn beside [text] — `payments.html`'s "Sebagian" badge on the amount.
+     *
+     * Beside the value rather than in a column of its own, because the badge describes
+     * **this** cell: a table with a badge column would put "Sebagian" one column away from
+     * the figure it is about.
+     */
+    val badge: String? = null,
+    /** The badge's tone. Ignored when [badge] is `null`. */
+    val badgeTone: KnBadgeTone = KnBadgeTone.Neutral,
+    /**
+     * This cell's own tag, applied to the **text**, not to the cell's box.
+     *
+     * On the text, because a test that wants to know what a cell says needs a node that
+     * *says* it: a tag on the cell's container would find the right box and read an empty
+     * string from it. A tag on the text is findable and says the same thing.
+     */
+    val tag: String? = null,
 )
 
 /**
@@ -258,6 +277,15 @@ fun KnTableRow(
     modifier: Modifier = Modifier,
     selected: Boolean = false,
     onClick: (() -> Unit)? = null,
+    /**
+     * The row's own verbs, drawn after the last cell — `payments.html`'s trailing `<td>`.
+     *
+     * A slot rather than a cell, because a cell's text is data and these are controls: the
+     * row's cancel and edit buttons must clear the 48dp floor and carry their own tags, and
+     * a `String` cell cannot. Absent on a row that offers no verb, which is why it is
+     * nullable rather than an empty lambda — an empty lambda would still reserve the gutter.
+     */
+    trailing: (@Composable () -> Unit)? = null,
 ) {
     val kn = MaterialTheme.knColors
     val spacing = MaterialTheme.knSpacing
@@ -274,16 +302,40 @@ fun KnTableRow(
             verticalAlignment = Alignment.CenterVertically,
         ) {
             cells.forEach { cell ->
-                Text(
-                    text = cell.text,
-                    style = tableCellStyle(cell),
-                    color = kn.textPrimary,
-                    textAlign = if (cell.numeric) TextAlign.End else TextAlign.Start,
-                    maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                Row(
                     modifier = Modifier
                         .weight(1f)
                         .padding(horizontal = spacing.lg, vertical = spacing.md),
+                    horizontalArrangement = if (cell.numeric) {
+                        Arrangement.End
+                    } else {
+                        Arrangement.Start
+                    },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        text = cell.text,
+                        style = tableCellStyle(cell),
+                        color = kn.textPrimary,
+                        maxLines = 1,
+                        overflow = TextOverflow.Ellipsis,
+                        modifier = cell.tag?.let { Modifier.testTag(it) } ?: Modifier,
+                    )
+                    cell.badge?.let { badge ->
+                        KnBadge(
+                            text = badge,
+                            tone = cell.badgeTone,
+                            modifier = Modifier.padding(start = 6.dp),
+                        )
+                    }
+                }
+            }
+            trailing?.let { verbs ->
+                Row(
+                    modifier = Modifier.padding(end = spacing.sm),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xs),
+                    verticalAlignment = Alignment.CenterVertically,
+                    content = { verbs() },
                 )
             }
         }

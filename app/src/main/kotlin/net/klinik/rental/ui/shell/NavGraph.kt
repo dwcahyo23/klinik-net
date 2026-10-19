@@ -169,6 +169,9 @@ private fun SetoranRoute(wiring: Screens.Setoran, deposito: Screens.Deposito) {
         onRequestDepositCancel = wiring.onRequestDepositCancel,
         onRequestDepositEdit = wiring.onRequestDepositEdit,
         onDismissError = wiring.onDismissError,
+        onHistoryQueryChange = wiring.onHistoryQueryChange,
+        onClearHistoryQuery = wiring.onClearHistoryQuery,
+        onSelectHistoryFilter = wiring.onSelectHistoryFilter,
     )
 }
 
@@ -768,6 +771,17 @@ internal class Screens(
         ) -> Unit,
         val onRequestDepositEdit: (paymentId: String) -> Unit,
         val onDismissError: () -> Unit,
+        /**
+         * The history search box's three handlers.
+         *
+         * Required, not defaulted — the same rule as every other callback here. A search box
+         * wired to `{}` renders and filters nothing, which is the "control wired to nothing"
+         * defect this repo has shipped three times; and a filter chip that cannot be un-selected
+         * is a one-way door.
+         */
+        val onHistoryQueryChange: (String) -> Unit,
+        val onClearHistoryQuery: () -> Unit,
+        val onSelectHistoryFilter: (net.klinik.rental.ui.screens.setoran.HistoryFilter?) -> Unit,
     )
 }
 

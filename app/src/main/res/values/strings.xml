@@ -1315,6 +1315,32 @@
     <string name="beranda_action_reminder">Kirim Pengingat</string>
 
     <!--
+      The hero card — `index.html:104-123`.
+
+      The prototype's own copy, kept verbatim: the owners approved that wording, and the greeting
+      and the two-line headline are the app's first impression rather than a paraphrase to improve.
+    -->
+    <string name="beranda_hero_badge">Selamat datang kembali</string>
+    <!--
+      The headline, as two lines.
+
+      A newline in the resource rather than two `Text`s stacked: the line break is part of the
+      approved wording (the prototype writes it as `<br />`), and a translator who has a better
+      break gets to choose it here.
+    -->
+    <string name="beranda_hero_title">Sewa harian,\nsetoran tiap hari.</string>
+    <string name="beranda_hero_body">Kelola armada, kontrak sewa harian, dan setoran penyewa dalam satu layar. Semua data tersimpan lokal di tablet — berfungsi penuh tanpa internet.</string>
+    <!--
+      The hero's second button.
+
+      The prototype's label, but not the prototype's meaning: there it navigates to
+      `dashboard.html`, and here the dashboard is the lower half of the page the owner is
+      already on, so the button scrolls to it. The copy stays because the owner asked for a
+      door called "Buka Dashboard" and this is that door.
+    -->
+    <string name="beranda_hero_open_dashboard">Buka Dashboard</string>
+
+    <!--
       The dashboard's charts and transaction table — `dashboard.html:58-117`.
 
       The four card titles are the prototype's own words, kept verbatim: the owners approved that
@@ -1403,6 +1429,46 @@
     -->
     <string name="setoran_history_empty_title">Belum ada setoran</string>
     <string name="setoran_history_empty_body">Catat setoran pertama lewat tab Input Setoran. Semua setoran dari semua kontrak akan tercantum di sini, yang terbaru di atas.</string>
+
+    <!--
+      The history table, its search and its chips — `payments.html`'s `hist-*` block.
+
+      The column headers are the prototype's own words. The five columns are the five facts a
+      deposit has that fit on one line; bank, reference and notes live in the row's own detail
+      where they have room to be read.
+    -->
+    <string name="setoran_search_placeholder">Cari nama, plat, kode, atau bank</string>
+    <!--
+      The narrowed-to-nothing state. A **different sentence** from the empty state: "belum ada
+      setoran" is a claim about the money, and this one is a fact about the box. Saying the
+      first when the second is true would tell the owner their deposits vanished.
+    -->
+    <string name="setoran_history_no_match_title">Tidak ada yang cocok</string>
+    <string name="setoran_history_no_match_body">Ubah kata kuncinya atau pilih "Semua" untuk melihat seluruh riwayat.</string>
+
+    <string name="setoran_filter_all">Semua</string>
+    <string name="setoran_filter_active">Aktif</string>
+    <string name="setoran_filter_partial">Sebagian</string>
+    <string name="setoran_filter_cancelled">Dibatalkan</string>
+
+    <string name="setoran_table_date">Tanggal</string>
+    <string name="setoran_table_renter">Penyewa</string>
+    <string name="setoran_table_plate">Mobil</string>
+    <string name="setoran_table_amount">Jumlah</string>
+    <string name="setoran_table_status">Status</string>
+
+    <!-- The status cell. `Aktif` and `Dibatalkan` are the prototype's own words. -->
+    <string name="setoran_status_active">Aktif</string>
+    <string name="setoran_status_cancelled">Dibatalkan</string>
+    <!--
+      "Sebagian" — paid, but short of the contract's daily rate. The prototype puts it beside
+      the amount rather than in the status column, which is where this app draws it too.
+    -->
+    <string name="setoran_badge_partial">Sebagian</string>
+    <string name="setoran_cancel_reason">Alasan: %1$s</string>
+
+    <string name="setoran_row_edit">Koreksi</string>
+    <string name="setoran_row_cancel">Batalkan</string>
 </resources>
 
 

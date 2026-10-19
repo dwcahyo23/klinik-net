@@ -305,6 +305,61 @@ class BerandaScreenTest {
         lastExportLine = lastExportLine,
     )
 
+    // ----------------------------------------------------------------------- the hero
+
+    /**
+     * The hero draws with its badge and its two lines, **above** the tiles.
+     *
+     * `index.html:104-123` — the greeting is what the owner arrives to, and a welcome below four
+     * figures is not a welcome. Asserted by position rather than by the call site's order: a
+     * composable moved below [TAG_KPI_ROW] would still pass an existence check.
+     */
+    @Test
+    fun `the hero draws above the tiles with its own copy`() {
+        compose.setContent { theme { Screen(state = berandaState()) } }
+
+        compose.onNodeWithTag(TAG_HERO).assertExists()
+        compose.onNodeWithTag(TAG_HERO_BADGE).assertExists()
+        compose.onNodeWithText("Sewa harian,\nsetoran tiap hari.").assertExists()
+
+        val hero = compose.onNodeWithTag(TAG_HERO).fetchSemanticsNode().positionInRoot.y
+        val tiles = compose.onNodeWithTag(TAG_KPI_ROW).fetchSemanticsNode().positionInRoot.y
+        assertTrue("the hero is above the KPI row", hero < tiles)
+    }
+
+    /** The hero's deposit button reaches the **same** handler the grid's first action does. */
+    @Test
+    fun `the hero deposit button reaches its handler`() {
+        var tapped = 0
+        compose.setContent { theme { Screen(state = berandaState(), onDeposit = { tapped += 1 }) } }
+
+        compose.onNodeWithTag(TAG_HERO_DEPOSIT).performClick()
+        compose.waitForIdle()
+
+        assertEquals("one tap, one call", 1, tapped)
+    }
+
+    /**
+     * The hero's second button **moves the page**, which is the whole of what it claims.
+     *
+     * This is the test this repo's rule demands: `assertExists()` would pass against a button
+     * wired to `{}`, and a button that renders and ignores the tap is the defect the screens KDoc
+     * names three times. So the assertion is the scroll offset the button produced, not the
+     * button's presence — compare the charts' offset before and after.
+     */
+    @Test
+    fun `the dashboard button scrolls the page to the charts`() {
+        compose.setContent { theme { Screen(state = berandaState()) } }
+
+        val before = compose.onNodeWithTag(TAG_CHARTS_SECTION).fetchSemanticsNode().positionInRoot.y
+
+        compose.onNodeWithTag(TAG_HERO_DASHBOARD).performClick()
+        compose.waitForIdle()
+
+        val after = compose.onNodeWithTag(TAG_CHARTS_SECTION).fetchSemanticsNode().positionInRoot.y
+        assertTrue("the charts moved up the screen ($before → $after)", after < before)
+    }
+
     // -------------------------------------------------------------------- helpers
 
     @Composable

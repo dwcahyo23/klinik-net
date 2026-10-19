@@ -3,15 +3,16 @@ package net.klinik.rental.ui.screens.setoran
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
+import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performClick
 import androidx.compose.ui.test.performSemanticsAction
+import androidx.compose.ui.test.performTextInput
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import net.klinik.rental.ui.screens.kontrak.depositHistoryCancelTag
-import net.klinik.rental.ui.screens.kontrak.depositHistoryEditTag
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Rule
@@ -36,9 +37,17 @@ import org.robolectric.annotation.Config
  * list whose cancel verb read block-level state would open Story 3.4's dialog — which names a
  * person and an arrears figure — about Budi when the owner tapped Siti's deposit. A render
  * test that only counted rows would pass over exactly that.
+ *
+ * ## Why the tablet qualifier
+ *
+ * Because the history tab is a **five-column table with a header**, and Robolectric's default
+ * window is 320x470dp — a phone in portrait. The rows below the first are not composed at all
+ * in a window that small, so a test asserting "the second row exists" would fail for a reason
+ * that has nothing to do with the screen. The prototype is a 1280x800 tablet, and the tablet
+ * qualifier is the viewport this screen was designed for.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w800dp-h1280dp")
 class SetoranScreenTest {
 
     @get:Rule
@@ -95,12 +104,13 @@ class SetoranScreenTest {
     /**
      * `SETORAN_CROSS` — deposits from **two** contracts appear, each naming its own renter.
      *
-     * The label assertion is the acceptance criterion: *"each row naming its renter · plate"*.
-     * Without it the list would be a column of rupiah figures and dates saying nothing about
-     * whose money it was.
+     * The table has a **renter column** and a **plate column**, so the two facts are separate
+     * cells rather than one `"renter · plate"` string. Asserted per column because a table that
+     * put the whole label in one column would still show Budi's plate on Siti's row — the
+     * cross-contract mistake the two columns exist to prevent.
      */
     @Test
-    fun `rows from two contracts each name their own renter`() {
+    fun `rows from two contracts each name their own renter and plate`() {
         compose.setContent {
             theme {
                 Screen(
@@ -114,8 +124,13 @@ class SetoranScreenTest {
             }
         }
 
-        compose.onNodeWithText("Siti Aminah · B 9999 ZZ").assertExists()
-        compose.onNodeWithText("Budi Santoso · B 1235 TF").assertExists()
+        compose.onNodeWithTag(depositTableRowTag("p3")).assertExists()
+        compose.onNodeWithTag(depositTableRowTag("p2")).assertExists()
+        // Each row carries its own renter and its own plate, and the two are not crossed.
+        compose.onNodeWithText("Siti Aminah").assertExists()
+        compose.onNodeWithText("Budi Santoso").assertExists()
+        compose.onNodeWithText("B 9999 ZZ").assertExists()
+        compose.onNodeWithText("B 1235 TF").assertExists()
     }
 
     /**
@@ -145,7 +160,7 @@ class SetoranScreenTest {
             }
         }
 
-        compose.onNodeWithTag(depositHistoryCancelTag("p2"))
+        compose.onNodeWithTag(depositTableCancelTag("p2"))
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
 
@@ -174,7 +189,7 @@ class SetoranScreenTest {
             }
         }
 
-        compose.onNodeWithTag(depositHistoryEditTag("p3"))
+        compose.onNodeWithTag(depositTableEditTag("p3"))
             .performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
 
@@ -204,10 +219,10 @@ class SetoranScreenTest {
         }
 
         compose.onNodeWithText("Alasan pembatalan: salah tanggal").assertExists()
-        compose.onNodeWithTag(depositHistoryCancelTag("p1")).assertDoesNotExist()
-        compose.onNodeWithTag(depositHistoryEditTag("p1")).assertDoesNotExist()
+        compose.onNodeWithTag(depositTableCancelTag("p1")).assertDoesNotExist()
+        compose.onNodeWithTag(depositTableEditTag("p1")).assertDoesNotExist()
         // The live row still carries both, so the absence above is about the cancellation.
-        compose.onNodeWithTag(depositHistoryCancelTag("p2")).assertExists()
+        compose.onNodeWithTag(depositTableCancelTag("p2")).assertExists()
     }
 
     /** `SETORAN_SUMMARY` — the four figures come from the same emission as the rows. */
@@ -235,8 +250,13 @@ class SetoranScreenTest {
 
         compose.onNodeWithTag(TAG_SETORAN_SUMMARY).assertExists()
         compose.onNodeWithText("Total transaksi").assertExists()
-        compose.onNodeWithText("Dibatalkan").assertExists()
-        compose.onNodeWithText("Rp 500.000").assertExists()
+        // Tagged rather than matched by text: "Dibatalkan" is also the filter chip's name
+        // and the status column's word, so a screen-wide text assertion would match one of
+        // those instead of the figure.
+        compose.onNodeWithTag(setoranSummaryTag("cancelled")).assertTextEquals("1")
+        compose.onNodeWithTag(setoranSummaryTag("active")).assertTextEquals("2")
+        compose.onNodeWithTag(setoranSummaryTag("total")).assertTextEquals("3")
+        compose.onNodeWithTag(setoranSummaryTag("today")).assertTextEquals("Rp 500.000")
     }
 
     /**
@@ -309,6 +329,190 @@ class SetoranScreenTest {
         compose.onAllNodesWithTag(TAG_SETORAN_EMPTY).assertCountEquals(1)
     }
 
+    // ------------------------------------------------------- the history table
+
+    /**
+     * The table draws its **header** and one row per deposit.
+     *
+     * A table without a header is a list of values with no names, and the prototype's five
+     * columns are the owner's answer to "what am I looking at".
+     */
+    @Test
+    fun `the table draws its header and a row per deposit`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(
+                        rows = listOf(
+                            row("p1"),
+                            row("p2", contractId = "contract-2", renterName = "Siti Aminah"),
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_SETORAN_TABLE_HEADER).assertExists()
+        compose.onNodeWithText("TANGGAL").assertExists()
+        compose.onNodeWithText("PENYEWA").assertExists()
+        compose.onNodeWithTag(depositTableRowTag("p1")).assertExists()
+        compose.onNodeWithTag(depositTableRowTag("p2")).assertExists()
+    }
+
+    /**
+     * A **partial** deposit says so, beside its amount.
+     *
+     * Asserted on the badge's own tag rather than on the word: "Sebagian" is also the name of
+     * the filter chip, so a text assertion would match the chip and pass for the wrong reason —
+     * and would pass even if the badge were never drawn.
+     */
+    @Test
+    fun `a partial deposit is badged as partial`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(
+                        rows = listOf(row("p1", isPartial = true), row("p2")),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(depositPartialTag("p1")).assertExists()
+        // And only that row — the badge is about one deposit, not about the list.
+        compose.onNodeWithTag(depositPartialTag("p2")).assertDoesNotExist()
+    }
+
+    /**
+     * A cancelled row says so in the status column.
+     *
+     * Scoped to the row's own subtree: "Dibatalkan" is also the summary strip's label and the
+     * filter chip's name, so a screen-wide text assertion would match those and pass for the
+     * wrong reason.
+     */
+    @Test
+    fun `a cancelled row says so in the status column`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(
+                        rows = listOf(row("p1", isEditable = false), row("p2")),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(depositTableStatusTag("p1")).assertTextEquals("Dibatalkan")
+        compose.onNodeWithTag(depositTableStatusTag("p2")).assertTextEquals("Aktif")
+    }
+
+    // ------------------------------------------------- the search box and chips
+
+    /**
+     * The search box reports what the owner typed.
+     *
+     * The box is a control, so the assertion is the **text reaching the handler** — a box
+     * wired to `{}` renders and filters nothing, which is the defect this repo has shipped
+     * three times. The node typed into is the field itself, found by the placeholder that
+     * names it.
+     */
+    @Test
+    fun `typing in the search box reaches the handler`() {
+        var typed: String? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(rows = listOf(row("p1"))),
+                    onHistoryQueryChange = { typed = it },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Cari nama, plat, kode, atau bank")
+            .performTextInput("siti")
+        compose.waitForIdle()
+
+        assertEquals("siti", typed)
+    }
+
+    /**
+     * The clear button empties the box — and reaches its **own** handler.
+     *
+     * The clear button is its own control with its own content description, so the test can
+     * find it rather than inferring it. A clear wired to the type handler would still work;
+     * the point of a separate handler is that the screen can tell "the owner cleared it" from
+     * "the owner typed an empty string".
+     */
+    @Test
+    fun `clearing the search box reaches the clear handler`() {
+        var cleared = 0
+        var typed: String? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(rows = listOf(row("p1"))).copy(historyQuery = "siti"),
+                    onHistoryQueryChange = { typed = it },
+                    onClearHistoryQuery = { cleared = cleared + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithContentDescription("Hapus pencarian").performClick()
+        compose.waitForIdle()
+
+        assertEquals("the clear handler, not the type one", 1, cleared)
+        assertEquals("the type handler stayed out of it", null, typed)
+    }
+
+    /** Each chip reports **its own** filter — a row of chips all calling one handler is a row
+     * of labels. */
+    @Test
+    fun `each filter chip reports its own filter`() {
+        val chosen = mutableListOf<HistoryFilter?>()
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(rows = listOf(row("p1"))),
+                    onSelectHistoryFilter = { chosen.add(it) },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(historyFilterTag(HistoryFilter.Dibatalkan)).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(historyFilterTag(HistoryFilter.Sebagian)).performClick()
+        compose.waitForIdle()
+        compose.onNodeWithTag(historyFilterTag(null)).performClick()
+        compose.waitForIdle()
+
+        assertEquals(
+            listOf(HistoryFilter.Dibatalkan, HistoryFilter.Sebagian, null),
+            chosen,
+        )
+    }
+
+    /**
+     * Narrowed to nothing is a **different sentence** from "nothing came in".
+     *
+     * Both are drawn from the same screen and they contradict each other: the money did come
+     * in, the box found no match. A screen that showed "Belum ada setoran" here would be
+     * telling the owner their deposits vanished.
+     */
+    @Test
+    fun `a search that matches nothing says so instead of claiming there are no deposits`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    state = historyState(rows = listOf(row("p1"))).copy(visibleRows = emptyList()),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_SETORAN_NO_MATCH).assertExists()
+        compose.onNodeWithText("Tidak ada yang cocok").assertExists()
+        compose.onNodeWithTag(TAG_SETORAN_EMPTY).assertDoesNotExist()
+    }
+
     // ------------------------------------------------------------------ helpers
 
     @Composable
@@ -324,6 +528,9 @@ class SetoranScreenTest {
         onRequestDepositCancel: (String, String, String) -> Unit = { _, _, _ -> },
         onRequestDepositEdit: (String) -> Unit = {},
         onDismissError: () -> Unit = {},
+        onHistoryQueryChange: (String) -> Unit = {},
+        onClearHistoryQuery: () -> Unit = {},
+        onSelectHistoryFilter: (HistoryFilter?) -> Unit = {},
     ) {
         SetoranScreen(
             state = state,
@@ -332,6 +539,9 @@ class SetoranScreenTest {
             onRequestDepositCancel = onRequestDepositCancel,
             onRequestDepositEdit = onRequestDepositEdit,
             onDismissError = onDismissError,
+            onHistoryQueryChange = onHistoryQueryChange,
+            onClearHistoryQuery = onClearHistoryQuery,
+            onSelectHistoryFilter = onSelectHistoryFilter,
         )
     }
 
@@ -347,6 +557,10 @@ class SetoranScreenTest {
     ) = SetoranScreenState(
         selectedTab = SetoranTab.Riwayat,
         rows = rows,
+        // The un-narrowed list, which is what an empty query and the "all" chip mean.
+        // The ViewModel computes this; a fixture that left it empty would draw an empty
+        // table and prove nothing about the rows.
+        visibleRows = rows,
         summary = summary,
         errorMessage = null,
     )
@@ -361,6 +575,7 @@ class SetoranScreenTest {
         renterName: String = "Budi Santoso",
         isEditable: Boolean = true,
         cancelReason: String? = null,
+        isPartial: Boolean = false,
     ) = DepositHistoryRowUi(
         paymentId = paymentId,
         contractId = contractId,
@@ -373,6 +588,8 @@ class SetoranScreenTest {
         referenceNo = null,
         notes = null,
         isEditable = isEditable,
+        isCanceled = !isEditable,
         cancelReasonText = cancelReason,
+        isPartial = isPartial,
     )
 }
