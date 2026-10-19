@@ -836,6 +836,14 @@ class AccessibilityTest {
             state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
             periodOptions = listOf("25 Sep - 24 Okt 2026"),
             onSelectPeriod = {},
+            onSelectMode = {},
+            onCustomFromChange = {},
+            onCustomToChange = {},
+            onApplyCustomRange = {},
+            onExportCsv = {},
+            onPrint = {},
+            onExportFileChosen = {},
+            csvFilename = { "laporan.csv" },
         ),
         // Story 4.6's field: its search input and clear button are exactly the kind of
         // interactive node this walk exists to measure, so it is supplied rather than omitted.

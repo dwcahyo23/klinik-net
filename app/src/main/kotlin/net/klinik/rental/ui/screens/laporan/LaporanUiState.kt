@@ -64,6 +64,40 @@ data class LaporanUiState(
      * have deposits", because a line through only the busy days is a different chart.
      */
     val trend: List<Long> = emptyList(),
+    /**
+     * The per-renter breakdown — the prototype's "Rekap per penyewa & mobil" table.
+     *
+     * One row per **contract**, not per renter: a renter with two cars has two rows, because
+     * the report is about rentals and the arrears belong to each one. Every figure arrives
+     * formatted, for the same reason as the rest of this state.
+     */
+    val breakdown: List<ReportRowUi> = emptyList(),
+    /**
+     * The periods already read, newest first — the prototype's "Riwayat periode".
+     *
+     * Each row is a period's own total and whether it is closed, so the owner can see what
+     * the last few months came to without switching to each of them.
+     */
+    val periodHistory: List<PeriodHistoryUi> = emptyList(),
+    /**
+     * The custom range's two ends, or `null` when the custom picker is closed.
+     *
+     * `null` rather than a "custom period" enum, because the two dates are the whole of it
+     * and the report's own chip says which mode is on.
+     */
+    val customRange: CustomRangeUi? = null,
+    /**
+     * The report's own mode — `current`, `previous` or `custom`.
+     *
+     * Carried rather than inferred from the custom range, because "custom" and "the two
+     * dates" are different facts: a custom range that has not been applied yet is still the
+     * previous period on screen.
+     */
+    val mode: ReportMode = ReportMode.Current,
+    /** The export's own progress, so a button can be disabled while a file is being written. */
+    val isExporting: Boolean = false,
+    /** The export's outcome, as the screen's own banner. */
+    val exportMessage: String? = null,
     val isLoading: Boolean = false,
 ) {
     /**
@@ -173,3 +207,125 @@ fun periodsFor(cutoffDay: Int, today: LocalDate, count: Int = 6): List<CutoffPer
     (0 until count).map { back ->
         CutoffPeriod.containing(cutoffDay, today.minusMonths(back.toLong()))
     }
+
+/**
+ * Which period the report is read at.
+ *
+ * An enum rather than a boolean, because the prototype has **three** chips and a boolean can
+ * only say two things.
+ */
+enum class ReportMode {
+    /** The period the engine is charging for right now. */
+    Current,
+
+    /** The one before it. */
+    Previous,
+
+    /** A range the owner typed. */
+    Custom,
+}
+
+/**
+ * Which period the report is read at — the mode, the period's index, and the applied
+ * custom range, as **one** value.
+ *
+ * ## Why one value and not three
+ *
+ * Because the three are one answer: "which period is on screen". Three separate fields
+ * can describe a combination that does not exist — the mode says custom while the applied
+ * range is last month's — and a report showing one period's figures under another period's
+ * label is the second-derivation defect this screen exists to prevent. One value cannot
+ * disagree with itself.
+ *
+ * @property appliedRange the custom range **once applied**, or `null`. Separate from the
+ *   fields the owner is typing, because editing them must not move the report until
+ *   "Terapkan" is pressed — otherwise the figures would change under a finger that is still
+ *   typing.
+ */
+data class ReportSelection(
+    val mode: ReportMode = ReportMode.Current,
+    /** Which of the six periods, newest first. */
+    val periodIndex: Int = 0,
+    val appliedRange: ClosedRange<LocalDate>? = null,
+)
+
+/**
+ * The export's own state.
+ *
+ * @property message the outcome, already worded, or `null`. A message rather than a boolean
+ *   because the owner needs to know *which* outcome: "saved" and "failed" are different
+ *   facts and the screen says one of them.
+ */
+data class ExportState(
+    val isExporting: Boolean = false,
+    val message: String? = null,
+)
+
+/**
+ * One row of the report's breakdown table.
+ *
+ * ## Why every figure arrives formatted
+ *
+ * The same rule the rest of this state follows: a rupiah amount has exactly one spelling in
+ * this app, and a table that assembled its own would be a second derivation of the figures
+ * the owner just read in the tiles above.
+ *
+ * @property daysBilled the charge days this contract owes **in this period** — the
+ *   allocation's own list, not `period length × rate`. A contract with a rest day owes fewer
+ *   days than the period has, and a table that multiplied would overstate every one of them.
+ * @property billedText what those days come to.
+ * @property receivedText what actually arrived in the period.
+ * @property arrearsText the difference, as the engine computes it.
+ */
+data class ReportRowUi(
+    val renterName: String,
+    val plate: String,
+    val brand: String,
+    /** The days billed in the period, as a number so a test can assert on it. */
+    val daysBilled: Int,
+    val billedText: String,
+    val receivedText: String,
+    val arrearsText: String,
+    /** Whether the contract owes nothing at this period's end. */
+    val isSettled: Boolean,
+    /**
+     * The same three figures as **numbers**.
+     *
+     * Carried beside the formatted text because the CSV wants numbers: a cell reading
+     * `"Rp 250.000"` is **text** in a spreadsheet, and a total column the owner has to strip
+     * the prefix off by hand is a column they will not total.
+     */
+    val billedRupiah: Long = 0L,
+    val receivedRupiah: Long = 0L,
+    val arrearsRupiah: Long = 0L,
+)
+
+/**
+ * One period in the report's history.
+ *
+ * @property statusText `Ditutup` or `Berjalan` — the two states the prototype's badge shows.
+ *   A period that has ended is closed; the one the engine is charging for is still running.
+ */
+data class PeriodHistoryUi(
+    val label: String,
+    val totalText: String,
+    val statusText: String,
+    /** The period this row is. The report can jump to it. */
+    val period: CutoffPeriod,
+)
+
+/**
+ * The custom picker's two dates.
+ *
+ * Carried as **text**, not as `LocalDate`, because the field is a text box the owner types
+ * into: a date the owner half-typed is a real state, and parsing it on every keystroke would
+ * refuse the first character of a year. The parse happens when the range is applied.
+ */
+data class CustomRangeUi(
+    /** The "Dari" field's text, as typed. */
+    val fromText: String,
+    /** The "Sampai" field's text, as typed. */
+    val toText: String,
+    /** The error on the range, or `null`. */
+    val error: String? = null,
+)

@@ -1013,6 +1013,74 @@ class PaymentRepository(
         }
 
     /**
+     * Every confirmed deposit, **with its date** — the period report's own read.
+     *
+     * ## Why not `observeIncomeByContract`
+     *
+     * Because that one sums over **all** dates, and the report's table needs what was
+     * *received inside the period*. A per-period sum has to be a sum over the deposits whose
+     * `date` falls in the range, so the rows have to keep their dates — which means this
+     * read, not the aggregate one.
+     *
+     * ## Why no date range parameter
+     *
+     * For the same reason [observeIncomeByDate] has none: a bound date in the SQL freezes
+     * the range in the subscription, so switching periods would need a new subscription
+     * rather than a new filter. The caller narrows by summing, and the rows arrive whole.
+     */
+    fun observeConfirmedPayments(): Flow<List<ConfirmedPayment>> =
+        paymentDao.observeConfirmedPayments().map { rows ->
+            rows.map {
+                ConfirmedPayment(
+                    id = it.id,
+                    contractId = it.contractId,
+                    date = it.date,
+                    amount = it.amount,
+                )
+            }
+        }
+
+    /**
+     * The charge days one contract owes inside [period] — the report's "Hari sewa" column.
+     *
+     * ## Why this is here and not in the report's own ViewModel
+     *
+     * Because the day list is the **allocation's** answer, and it depends on three things the
+     * report's state has no business knowing: the contract's rest day, its stored service
+     * exceptions, and whether it has ended. Re-deriving the list in the ViewModel would be a
+     * second derivation of the rule the engine charges by — and the two would disagree for
+     * every contract with a rest day, which is most of them.
+     *
+     * ## Why the period is a parameter
+     *
+     * Because the report reads a period the owner chose, and the engine's own read is always
+     * the current one. The same list, at a different period.
+     *
+     * @param asOf the last day to count. The period's own end, so a period that has not
+     *   finished is not billed for days that have not happened.
+     */
+    suspend fun chargeDaysInPeriod(
+        contractId: String,
+        period: CutoffPeriod,
+        asOf: LocalDate,
+    ): List<LocalDate> {
+        val contract = contractDao.findById(contractId) ?: return emptyList()
+        return settledDays(
+            chargeDays = chargeDaysIn(
+                period = period,
+                schedule = ChargeSchedule(
+                    contractStart = contract.startDate,
+                    restDay = contract.restDay,
+                    serviceExceptions = storedExceptions(contract.id),
+                    contractEnd = contract.endDate,
+                ),
+                asOf = asOf,
+            ),
+            settledThroughDate = contract.settledThroughDate,
+        )
+    }
+
+    /**
      * Every deposit on one contract as a [Flow], for the arrears screens in Epic 4.
      *
      * A subscription rather than a one-shot read because a deposit must move the arrears
@@ -1046,6 +1114,21 @@ class PaymentRepository(
         id = id,
         date = date,
         amount = amount,
+    )
+
+    /**
+     * One confirmed deposit, as the report's own read carries it.
+     *
+     * A projection rather than the domain [Payment], because the report needs the
+     * **contract** a deposit belongs to and [Payment] deliberately does not carry one —
+     * the domain's rule is that a payment means nothing without the contract that owns it,
+     * and the report is that owner.
+     */
+    data class ConfirmedPayment(
+        val id: String,
+        val contractId: String,
+        val date: LocalDate,
+        val amount: Long,
     )
 
     /**

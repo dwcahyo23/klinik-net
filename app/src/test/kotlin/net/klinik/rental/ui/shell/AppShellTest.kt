@@ -1184,6 +1184,14 @@ class AppShellTest {
             state = net.klinik.rental.ui.screens.laporan.LaporanUiState(),
             periodOptions = listOf("25 Sep - 24 Okt 2026"),
             onSelectPeriod = {},
+            onSelectMode = {},
+            onCustomFromChange = {},
+            onCustomToChange = {},
+            onApplyCustomRange = {},
+            onExportCsv = {},
+            onPrint = {},
+            onExportFileChosen = {},
+            csvFilename = { "laporan.csv" },
         ),
         // Story 4.6's field. Required for the same reason every other parameter here is: the
         // compiler found this call site rather than a test discovering at runtime that the

@@ -220,6 +220,31 @@ interface PaymentDao {
         """,
     )
     fun observeIncomeByDate(): Flow<List<DailyIncome>>
+
+    /**
+     * Every confirmed deposit, newest first — the report's own read.
+     *
+     * ## Why this exists rather than a per-period aggregate
+     *
+     * Because the report's table needs **two** numbers per contract that a single aggregate
+     * cannot give: what was billed in the period, and what was *received* in it. The
+     * received figure is a sum over the deposits whose `date` falls in the period, and a
+     * query that grouped by contract and filtered by period would freeze the period in the
+     * subscription — the same defect `observeIncomeByDate` documents, and the same fix:
+     * read the rows and let the caller choose.
+     *
+     * ## Why the status filter is here
+     *
+     * The same reason it is on every other income read: a cancelled deposit is not income.
+     *
+     * ## Why the rows keep their dates
+     *
+     * Because the caller narrows by date, and a projection without the date could not be
+     * narrowed without a second query — which would be a second subscription and a second
+     * answer to "what came in this period".
+     */
+    @Query("SELECT * FROM payment WHERE status = 'confirmed' ORDER BY date DESC, id DESC")
+    fun observeConfirmedPayments(): Flow<List<PaymentEntity>>
 }
 
 /**

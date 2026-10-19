@@ -1015,6 +1015,20 @@ private fun KlinikNetApp(
                     state = laporanState,
                     periodOptions = laporanPeriods,
                     onSelectPeriod = laporan::selectPeriod,
+                    // The three mode chips, the two custom-range fields and the apply
+                    // button — all of them the report ViewModel's, because every one of them
+                    // is a decision about which period the screen reads.
+                    onSelectMode = laporan::selectMode,
+                    onCustomFromChange = laporan::setCustomFrom,
+                    onCustomToChange = laporan::setCustomTo,
+                    onApplyCustomRange = laporan::applyCustomRange,
+                    // The export's two halves. The **picker** is the shell's — a launcher needs
+                    // a `ComponentActivity` — and the **write** is the ViewModel's, because the
+                    // CSV it writes is built from the report's own state.
+                    onExportCsv = {},
+                    onPrint = {},
+                    onExportFileChosen = laporan::exportTo,
+                    csvFilename = { laporan.csvFilename() },
                 ),
                 // Story 4.6's search field. No `onSelect` here: choosing a result is a
                 // navigation, and the nav controller lives in the shell — see

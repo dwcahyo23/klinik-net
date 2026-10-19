@@ -1209,4 +1209,63 @@ class RStrings(private val context: Context) {
                 net.klinik.rental.domain.calculate.RiskLevel.KRITIS -> R.string.laporan_risk_kritis
             },
         )
+
+    /**
+     * A period's state in the history — `Ditutup` or `Berjalan`.
+     *
+     * A boolean parameter rather than two functions, because the screen cannot decide which
+     * one applies: "is this period still running" is a question about the period and the
+     * clock, and the clock is the ViewModel's.
+     */
+    fun laporanPeriodStatus(running: Boolean): String = context.getString(
+        if (running) R.string.laporan_period_running else R.string.laporan_period_closed,
+    )
+
+    /** A row's status — `Lunas` or `Tunggak`. */
+    fun laporanStatus(settled: Boolean): String = context.getString(
+        if (settled) R.string.laporan_status_settled else R.string.laporan_status_arrears,
+    )
+
+    /** The custom range is not a date. */
+    fun laporanCustomRangeInvalid(): String = context.getString(R.string.laporan_custom_invalid)
+
+    /** The custom range ends before it starts. */
+    fun laporanCustomRangeReversed(): String = context.getString(R.string.laporan_custom_reversed)
+
+    /** The CSV's title row. */
+    fun laporanCsvTitle(): String = context.getString(R.string.laporan_csv_title)
+
+    /** The CSV's period row. */
+    fun laporanCsvPeriod(): String = context.getString(R.string.laporan_csv_period)
+
+    /** The CSV's printed-on row. */
+    fun laporanCsvPrinted(): String = context.getString(R.string.laporan_csv_printed)
+
+    /** The CSV's total row. */
+    fun laporanCsvTotal(): String = context.getString(R.string.laporan_csv_total)
+
+    /** The export's success message, naming the file. */
+    fun laporanExportSaved(filename: String): String =
+        context.getString(R.string.laporan_export_saved, filename)
+
+    /** The export's failure message. */
+    fun laporanExportFailed(): String = context.getString(R.string.laporan_export_failed)
+
+    /**
+     * The report table's column names, as the CSV needs them.
+     *
+     * A list rather than eight accessors, because the eight are used in **one** place — the
+     * CSV's header row — and eight named functions for one call site is eight ways to spell
+     * the same header row differently.
+     */
+    fun laporanTableHeaders(): List<String> = listOf(
+        context.getString(R.string.laporan_table_renter),
+        context.getString(R.string.laporan_table_plate),
+        context.getString(R.string.laporan_table_brand),
+        context.getString(R.string.laporan_table_days),
+        context.getString(R.string.laporan_table_billed),
+        context.getString(R.string.laporan_table_received),
+        context.getString(R.string.laporan_table_arrears),
+        context.getString(R.string.laporan_table_status),
+    )
 }

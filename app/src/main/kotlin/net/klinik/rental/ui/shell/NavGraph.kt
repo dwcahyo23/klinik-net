@@ -139,8 +139,23 @@ internal fun AppNavGraph(
 
         // The seventh, added by Story 4.5 — the period report. No sheet of its own and no
         // navigation verb: its only action is picking a period, which is the screen's own
-        // state rather than the shell's.
-        composable(Destination.Laporan.route) { LaporanRoute(screens.laporan) }
+        // state rather than the shell's. The **export** is the exception — it opens a file
+        // picker, and a launcher needs a `ComponentActivity`, so it is declared here beside
+        // the backup's own launcher rather than in the ViewModel.
+        composable(Destination.Laporan.route) {
+            val context = LocalContext.current
+            val exportLauncher = rememberLauncherForActivityResult(
+                ActivityResultContracts.CreateDocument(MIME_CSV),
+            ) { uri ->
+                // Null means the owner backed out of the picker. Not a failure, and no
+                // message: the system already closed itself.
+                if (uri != null) screens.laporan.onExportFileChosen(uri)
+            }
+            LaporanRoute(
+                wiring = screens.laporan,
+                onExportCsv = { exportLauncher.launch(screens.laporan.csvFilename()) },
+            )
+        }
 
         // The eighth — the deposit screen, two tabs. Its Input tab opens the **existing**
         // deposit sheet, which is why the route forwards `screens.deposito.onOpen` rather
@@ -184,11 +199,17 @@ private fun SetoranRoute(wiring: Screens.Setoran, deposito: Screens.Deposito) {
  * navigation it does not.
  */
 @Composable
-private fun LaporanRoute(wiring: Screens.Laporan) {
+private fun LaporanRoute(wiring: Screens.Laporan, onExportCsv: () -> Unit) {
     LaporanScreen(
         state = wiring.state,
         periodOptions = wiring.periodOptions,
         onSelectPeriod = wiring.onSelectPeriod,
+        onSelectMode = wiring.onSelectMode,
+        onCustomFromChange = wiring.onCustomFromChange,
+        onCustomToChange = wiring.onCustomToChange,
+        onApplyCustomRange = wiring.onApplyCustomRange,
+        onExportCsv = onExportCsv,
+        onPrint = wiring.onPrint,
     )
 }
 
@@ -263,6 +284,15 @@ private fun NavHostController.navigateTo(route: String) {
  * and picking a photo of a receipt.
  */
 private const val MIME_JSON = "application/json"
+
+/**
+ * The CSV's MIME type.
+ *
+ * `text/csv` rather than `application/vnd.ms-excel`: the file is a CSV, and the vendor type
+ * is a lie that some pickers take literally — offering a filter that only matches Excel files
+ * for a file that is not one.
+ */
+private const val MIME_CSV = "text/csv"
 
 /**
  * The arrears destination.
@@ -749,6 +779,30 @@ internal class Screens(
         val state: net.klinik.rental.ui.screens.laporan.LaporanUiState,
         val periodOptions: List<String>,
         val onSelectPeriod: (Int) -> Unit,
+        /**
+         * The three mode chips, the two custom-range fields, the apply button and the two
+         * exports.
+         *
+         * Required, not defaulted — a chip or a button wired to `{}` renders and does
+         * nothing, which is the "control that reaches nothing" shape this class has refused
+         * to ship twice.
+         */
+        val onSelectMode: (net.klinik.rental.ui.screens.laporan.ReportMode) -> Unit,
+        val onCustomFromChange: (String) -> Unit,
+        val onCustomToChange: (String) -> Unit,
+        val onApplyCustomRange: () -> Unit,
+        val onExportCsv: () -> Unit,
+        val onPrint: () -> Unit,
+        /**
+         * The file the export is written to, once the owner has chosen one.
+         *
+         * The **write** half of the export, and it lives here rather than in the ViewModel
+         * for the same reason `BackupFileWriter` does: a `ContentResolver` needs a `Context`
+         * and the ViewModel deliberately holds none.
+         */
+        val onExportFileChosen: (android.net.Uri) -> Unit,
+        /** The name offered to the file picker. */
+        val csvFilename: () -> String,
     )
 
     /**

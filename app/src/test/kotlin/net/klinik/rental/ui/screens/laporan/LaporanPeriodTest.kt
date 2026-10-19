@@ -22,6 +22,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import java.time.Clock
+import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
 import java.time.ZoneId
@@ -294,8 +295,79 @@ class LaporanPeriodTest {
         assertEquals("and a real ratio is the division", 75, collectionRate(750_000L, 250_000L))
     }
 
-    // ------------------------------------------------------------------- fixtures
+    // ------------------------------------------------------- the report's own table
 
+    /**
+     * The report's table reads the **engine's** charge-day list, not `period × rate`.
+     *
+     * This is the half that matters: a contract with a **rest day** owes fewer days than the
+     * period has, and a table that multiplied would overstate every such rental and then
+     * disagree with the arrears list the owner reads beside it.
+     *
+     * The contract below has `restDay = SUNDAY`. The contract starts 1 Oct and the period runs
+     * to 24 Oct — **24 days**, of which three are Sundays (4th, 11th, 18th; the 25th is a
+     * Monday and falls outside the period). So it owes **21** days, and the day list is what
+     * says so.
+     */
+    @Test
+    fun `the report's day list is the engine's and respects the rest day`() = runBlocking {
+        seedContract(restDay = DayOfWeek.SUNDAY)
+        val period = CutoffPeriod.containing(CUTOFF_DAY, asOf)
+
+        val days = payments.chargeDaysInPeriod(
+            contractId = CONTRACT_ID,
+            period = period,
+            asOf = period.end,
+        )
+
+        // 1 Oct - 24 Oct is 24 days, and three of them are Sundays.
+        assertEquals("the engine's own list", 21, days.size)
+        assertTrue("and no Sunday is in it", days.none { it.dayOfWeek == DayOfWeek.SUNDAY })
+    }
+
+    /**
+     * The same contract **without** a rest day owes one more day per week.
+     *
+     * The pair is the claim: a table that multiplied the period's length by the rate would
+     * give the same answer for both, and this would catch it.
+     */
+    @Test
+    fun `a contract without a rest day owes every day of its span`() = runBlocking {
+        seedContract(restDay = null)
+        val period = CutoffPeriod.containing(CUTOFF_DAY, asOf)
+
+        val days = payments.chargeDaysInPeriod(
+            contractId = CONTRACT_ID,
+            period = period,
+            asOf = period.end,
+        )
+
+        assertEquals("1 Oct - 24 Oct, every day", 24, days.size)
+    }
+
+    /**
+     * A deposit's date decides which period's table it appears in.
+     *
+     * The table's "Diterima" column is a sum over the deposits **dated inside** the period,
+     * so a deposit dated the day after the period ends is not in it.
+     */
+    @Test
+    fun `the confirmed deposits carry their dates so a period can narrow them`() = runBlocking {
+        seedContract()
+        val period = CutoffPeriod.containing(CUTOFF_DAY, asOf)
+        saveDeposit("p-in", 500_000, period.start)
+        saveDeposit("p-out", 900_000, period.end.plusDays(1))
+
+        val deposits = payments.observeConfirmedPayments().first()
+        val inPeriod = deposits.filter {
+            !it.date.isBefore(period.start) && !it.date.isAfter(period.end)
+        }
+
+        assertEquals("only the one inside", 1, inPeriod.size)
+        assertEquals("with its own amount", 500_000L, inPeriod.first().amount)
+    }
+
+    // ------------------------------------------------------------------- fixtures
     /**
      * A deposit straight through the write path, so its allocations exist — a hand-written
      * row would give the arrears read nothing to allocate and every figure would read zero.
@@ -321,7 +393,10 @@ class LaporanPeriodTest {
      * contract whose every charge day is ahead of `asOf` — and a fixture that cannot express
      * that case cannot test it.
      */
-    private suspend fun seedContract(startDate: LocalDate = LocalDate.of(2026, 10, 1)) {
+    private suspend fun seedContract(
+        startDate: LocalDate = LocalDate.of(2026, 10, 1),
+        restDay: DayOfWeek? = null,
+    ) {
         database.vehicleDao().insert(
             VehicleEntity(
                 id = VEHICLE_ID,
@@ -350,7 +425,7 @@ class LaporanPeriodTest {
                 vehicleId = VEHICLE_ID,
                 startDate = startDate,
                 dailyRate = RATE,
-                restDay = null,
+                restDay = restDay,
                 activeVehicleId = VEHICLE_ID,
                 activeRenterId = RENTER_ID,
                 endDate = null,

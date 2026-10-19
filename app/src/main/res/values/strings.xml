@@ -1409,6 +1409,51 @@
     <string name="laporan_empty_body">Pilih periode lain di atas, atau catat setoran agar muncul di sini.</string>
 
     <!--
+      The report's own table, its mode chips and its exports — `reports.html:42-94`.
+
+      The column headers are the prototype's own words. The amounts in the CSV are **numbers**
+      rather than the "Rp 250.000" spelling the screen uses, because a spreadsheet cell with a
+      currency prefix in it is text, and a total the owner has to strip by hand is a total they
+      will not do.
+    -->
+    <string name="laporan_mode_current">Periode berjalan</string>
+    <string name="laporan_mode_previous">Periode sebelumnya</string>
+    <string name="laporan_mode_custom">Custom</string>
+    <string name="laporan_custom_from">Dari</string>
+    <string name="laporan_custom_to">Sampai</string>
+    <string name="laporan_custom_apply">Terapkan</string>
+    <string name="laporan_custom_placeholder">2026-10-01</string>
+    <!-- Two different faults, two different sentences: a mistyped date and a reversed range. -->
+    <string name="laporan_custom_invalid">Format tanggal harus YYYY-MM-DD.</string>
+    <string name="laporan_custom_reversed">Tanggal "Sampai" harus setelah tanggal "Dari".</string>
+
+    <string name="laporan_history_title">Riwayat periode</string>
+    <string name="laporan_period_running">Berjalan</string>
+    <string name="laporan_period_closed">Ditutup</string>
+
+    <string name="laporan_table_renter">Penyewa</string>
+    <string name="laporan_table_plate">Plat</string>
+    <string name="laporan_table_brand">Merek</string>
+    <string name="laporan_table_days">Hari sewa</string>
+    <string name="laporan_table_billed">Ditagih</string>
+    <string name="laporan_table_received">Diterima</string>
+    <string name="laporan_table_arrears">Tunggakan</string>
+    <string name="laporan_table_status">Status</string>
+    <string name="laporan_status_settled">Lunas</string>
+    <string name="laporan_status_arrears">Tunggak</string>
+    <string name="laporan_table_title">Rekap per penyewa &amp; mobil</string>
+    <string name="laporan_table_count">%1$d baris</string>
+
+    <string name="laporan_export_csv">Ekspor CSV</string>
+    <string name="laporan_export_print">Cetak / PDF</string>
+    <string name="laporan_csv_title">LAPORAN SETORAN — PT KLINIK NET RENT CAR</string>
+    <string name="laporan_csv_period">Periode</string>
+    <string name="laporan_csv_printed">Dicetak</string>
+    <string name="laporan_csv_total">TOTAL</string>
+    <string name="laporan_export_saved">Laporan disimpan sebagai %1$s</string>
+    <string name="laporan_export_failed">Gagal menyimpan laporan.</string>
+
+    <!--
       The Setoran screen — two tabs, Input and Riwayat. The prototype's `payments.html`
       structure, promoted from a floating button to a destination. The Input tab's copy
       points at the sheet it opens rather than promising a form of its own, because there

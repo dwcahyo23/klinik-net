@@ -22,16 +22,25 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
-import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.CircleAlert
+import com.composables.icons.lucide.Download
+import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Printer
 import com.composables.icons.lucide.TrendingUp
 import com.composables.icons.lucide.UserCheck
 import com.composables.icons.lucide.Wallet
 import net.klinik.rental.R
 import net.klinik.rental.domain.calculate.RiskLevel
+import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
+import net.klinik.rental.ui.components.KnButton
+import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
+import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnKpiTile
+import net.klinik.rental.ui.components.KnTableCell
+import net.klinik.rental.ui.components.KnTableHeaderRow
+import net.klinik.rental.ui.components.KnTableRow
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
@@ -43,10 +52,19 @@ import net.klinik.rental.ui.theme.knTypography
  *
  * ## Why the period picker is chips rather than a date field
  *
- * Because the period is the app's billing boundary, and a free date range would let the owner
- * cut a window the allocation engine never charged — producing a report of a period that does
- * not exist. Chips carrying [CutoffPeriod.label] mean a period's name and the days the engine
- * charged for it are the same string.
+ * Because the period is the app's own billing boundary, and a free date range would let the
+ * owner cut a window the allocation engine never charged — producing a report of a period that
+ * does not exist. Chips carrying [net.klinik.rental.domain.calculate.CutoffPeriod.label] mean
+ * a period's name and the days the engine charged for it are the same string.
+ *
+ * ## Why there **is** a custom range, then
+ *
+ * Because the prototype has one and the owner asked for the prototype. The tension with the
+ * paragraph above is real, and the resolution is that the custom range is the one place where
+ * the report is explicitly about a window the owner chose — so it says so, in the badge beside
+ * the label, rather than pretending the window is a billing period. The figures inside it are
+ * still the engine's: the days billed come from the engine's own charge-day list, narrowed to
+ * the chosen window.
  *
  * ## Why there is **no chart** for the risk breakdown
  *
@@ -63,12 +81,25 @@ import net.klinik.rental.ui.theme.knTypography
  *
  * @param onSelectPeriod picks another month. Required: a picker wired to `{}` shows periods
  *   that lead nowhere.
+ * @param onSelectMode picks one of the three mode chips. Required, for the same reason.
+ * @param onCustomFromChange records the "Dari" field. Required, likewise.
+ * @param onCustomToChange records the "Sampai" field. Required, likewise.
+ * @param onApplyCustomRange applies the typed range. Required, likewise.
+ * @param onExportCsv opens the file picker for the CSV. Required: a button wired to `{}`
+ *   renders and does nothing, which is the defect this repo has shipped three times.
+ * @param onPrint opens the print sheet. Required, for the same reason.
  */
 @Composable
 fun LaporanScreen(
     state: LaporanUiState,
     periodOptions: List<String>,
     onSelectPeriod: (Int) -> Unit,
+    onSelectMode: (ReportMode) -> Unit,
+    onCustomFromChange: (String) -> Unit,
+    onCustomToChange: (String) -> Unit,
+    onApplyCustomRange: () -> Unit,
+    onExportCsv: () -> Unit,
+    onPrint: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -79,7 +110,29 @@ fun LaporanScreen(
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
         Column(Modifier.fillMaxSize()) {
-            KnTopBar(title = stringResource(R.string.laporan_title))
+            KnTopBar(
+                title = stringResource(R.string.laporan_title),
+                // The two exports live in the **bar**, matching `reports.html:28-38`: they are
+                // the screen's actions, not a card's. And the bar is where the theme toggle is
+                // mounted, so a screen with a hand-rolled heading loses that control.
+                actions = {
+                    KnButton(
+                        label = stringResource(R.string.laporan_export_print),
+                        onClick = onPrint,
+                        icon = Lucide.Printer,
+                        variant = KnButtonVariant.Secondary,
+                        modifier = Modifier.testTag(TAG_EXPORT_PRINT),
+                    )
+                    KnButton(
+                        label = stringResource(R.string.laporan_export_csv),
+                        onClick = onExportCsv,
+                        icon = Lucide.Download,
+                        variant = KnButtonVariant.Primary,
+                        enabled = !state.isExporting,
+                        modifier = Modifier.testTag(TAG_EXPORT_CSV),
+                    )
+                },
+            )
 
             Column(
                 modifier = Modifier
@@ -89,9 +142,13 @@ fun LaporanScreen(
                 verticalArrangement = Arrangement.spacedBy(spacing.lg),
             ) {
                 PeriodPicker(
+                    state = state,
                     options = periodOptions,
-                    selectedIndex = 0,
-                    onSelect = onSelectPeriod,
+                    onSelectPeriod = onSelectPeriod,
+                    onSelectMode = onSelectMode,
+                    onCustomFromChange = onCustomFromChange,
+                    onCustomToChange = onCustomToChange,
+                    onApplyCustomRange = onApplyCustomRange,
                 )
 
                 if (state.isLoading) {
@@ -105,6 +162,144 @@ fun LaporanScreen(
                     Metrics(state)
                     Trend(state)
                     RiskBreakdown(state)
+                    BreakdownTable(state)
+                }
+
+                // The period history sits **below** the figures, not above them. It is a
+                // record of what the other months came to — a second question, answered after
+                // this period's.
+                PeriodHistory(state = state, onSelectPeriod = onSelectPeriod)
+            }
+        }
+    }
+}
+
+/**
+ * The period card: the three mode chips, the custom picker, and the period history.
+ *
+ * The card is the prototype's own (`reports.html:43-74`) — the period's name and its badge on
+ * one line, the chips under them, and the two date fields when custom is chosen.
+ */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun PeriodPicker(
+    state: LaporanUiState,
+    options: List<String>,
+    onSelectPeriod: (Int) -> Unit,
+    onSelectMode: (ReportMode) -> Unit,
+    onCustomFromChange: (String) -> Unit,
+    onCustomToChange: (String) -> Unit,
+    onApplyCustomRange: () -> Unit,
+) {
+    val spacing = MaterialTheme.knSpacing
+    net.klinik.rental.ui.components.KnCard(modifier = Modifier.testTag(TAG_PERIOD_CARD)) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.Top,
+            ) {
+                Column {
+                    Text(
+                        text = stringResource(R.string.laporan_period_label),
+                        style = MaterialTheme.knTypography.title,
+                        color = MaterialTheme.knColors.textPrimary,
+                    )
+                    Text(
+                        text = state.periodLabel,
+                        style = MaterialTheme.knTypography.body,
+                        color = MaterialTheme.knColors.textSecondary,
+                        modifier = Modifier.testTag(TAG_PERIOD_LABEL),
+                    )
+                }
+                // The badge says which mode is on. A report whose figures come from a custom
+                // window but whose badge says "Periode berjalan" is telling the owner two
+                // different things about the same six numbers.
+                KnBadge(
+                    text = stringResource(state.mode.labelRes()),
+                    tone = if (state.mode == ReportMode.Custom) KnBadgeTone.Info else KnBadgeTone.Brand,
+                    modifier = Modifier.testTag(TAG_PERIOD_BADGE),
+                )
+            }
+
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .testTag(TAG_PERIOD_PICKER),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                // The three mode chips, and then the six periods. The periods are the
+                // prototype's own row; the modes sit above them because they are the
+                // coarser question — *which* set of days, before *which* month.
+                KnChip(
+                    text = stringResource(R.string.laporan_mode_current),
+                    selected = state.mode == ReportMode.Current,
+                    onClick = { onSelectMode(ReportMode.Current) },
+                    modifier = Modifier.testTag(reportModeTag(ReportMode.Current)),
+                )
+                KnChip(
+                    text = stringResource(R.string.laporan_mode_previous),
+                    selected = state.mode == ReportMode.Previous,
+                    onClick = { onSelectMode(ReportMode.Previous) },
+                    modifier = Modifier.testTag(reportModeTag(ReportMode.Previous)),
+                )
+                KnChip(
+                    text = stringResource(R.string.laporan_mode_custom),
+                    selected = state.mode == ReportMode.Custom,
+                    onClick = { onSelectMode(ReportMode.Custom) },
+                    modifier = Modifier.testTag(reportModeTag(ReportMode.Custom)),
+                )
+            }
+
+            FlowRow(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+            ) {
+                options.forEachIndexed { index, label ->
+                    KnChip(
+                        text = label,
+                        selected = state.mode == ReportMode.Current && index == 0,
+                        onClick = { onSelectPeriod(index) },
+                        modifier = Modifier.testTag(periodTag(index)),
+                    )
+                }
+            }
+
+            // The two date fields, only in custom mode. A date field that is not part of the
+            // current mode is a field the owner will fill and expect to change nothing.
+            state.customRange?.let { range ->
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.md),
+                    verticalAlignment = Alignment.Top,
+                ) {
+                    KnField(
+                        label = stringResource(R.string.laporan_custom_from),
+                        value = range.fromText,
+                        onValueChange = onCustomFromChange,
+                        placeholder = stringResource(R.string.laporan_custom_placeholder),
+                        error = range.error,
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag(TAG_CUSTOM_FROM),
+                    )
+                    KnField(
+                        label = stringResource(R.string.laporan_custom_to),
+                        value = range.toText,
+                        onValueChange = onCustomToChange,
+                        placeholder = stringResource(R.string.laporan_custom_placeholder),
+                        modifier = Modifier
+                            .weight(1f)
+                            .testTag(TAG_CUSTOM_TO),
+                    )
+                    KnButton(
+                        label = stringResource(R.string.laporan_custom_apply),
+                        onClick = onApplyCustomRange,
+                        variant = KnButtonVariant.Primary,
+                        modifier = Modifier.testTag(TAG_CUSTOM_APPLY),
+                    )
                 }
             }
         }
@@ -112,38 +307,123 @@ fun LaporanScreen(
 }
 
 /**
- * The period chips, newest first.
+ * The period history — the prototype's "Riwayat periode".
  *
- * `KnChip` rather than a dropdown because the periods are few, fixed, and each one is a month
- * the owner may want to check; a menu behind one tap would hide what this screen is for.
+ * Each row is a period's own total, and tapping one reads the report at that period. The
+ * rows are **not** the mode chips: a history is a record of what has been, and a chip is a
+ * choice of what to read.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun PeriodPicker(
-    options: List<String>,
-    selectedIndex: Int,
-    onSelect: (Int) -> Unit,
+private fun PeriodHistory(
+    state: LaporanUiState,
+    onSelectPeriod: (Int) -> Unit,
 ) {
     val spacing = MaterialTheme.knSpacing
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-        Text(
-            text = stringResource(R.string.laporan_period_label),
-            style = MaterialTheme.knTypography.label,
-            color = MaterialTheme.knColors.textSecondary,
-        )
-        FlowRow(
-            modifier = Modifier
-                .fillMaxWidth()
-                .testTag(TAG_PERIOD_PICKER),
-            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-        ) {
-            options.forEachIndexed { index, label ->
-                KnChip(
-                    text = label,
-                    selected = index == selectedIndex,
-                    onClick = { onSelect(index) },
-                    modifier = Modifier.testTag(periodTag(index)),
+    if (state.periodHistory.isEmpty()) return
+
+    net.klinik.rental.ui.components.KnCard(modifier = Modifier.testTag(TAG_PERIOD_HISTORY)) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+            Text(
+                text = stringResource(R.string.laporan_history_title),
+                style = MaterialTheme.knTypography.title,
+                color = MaterialTheme.knColors.textPrimary,
+            )
+            state.periodHistory.forEachIndexed { index, entry ->
+                Row(
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        .testTag(periodHistoryTag(index)),
+                    horizontalArrangement = Arrangement.SpaceBetween,
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Column {
+                        Text(
+                            text = entry.label,
+                            style = MaterialTheme.knTypography.body,
+                            color = MaterialTheme.knColors.textPrimary,
+                        )
+                        KnBadge(
+                            text = entry.statusText,
+                            tone = if (entry.statusText == stringResource(R.string.laporan_period_running)) {
+                                KnBadgeTone.Info
+                            } else {
+                                KnBadgeTone.Neutral
+                            },
+                        )
+                    }
+                    Text(
+                        text = entry.totalText,
+                        style = MaterialTheme.knTypography.figure,
+                        color = MaterialTheme.knColors.textPrimary,
+                    )
+                }
+            }
+        }
+    }
+}
+
+/**
+ * The report's own table — "Rekap per penyewa & mobil".
+ *
+ * One row per contract, with the days billed, what was billed, what came in and what is
+ * still owed. The **arrears column is the arrears list's own figure**, not `billed −
+ * received`: those are two different questions, and a table that answered the second under
+ * the first's heading would disagree with the list the owner reads beside it.
+ */
+@Composable
+private fun BreakdownTable(state: LaporanUiState) {
+    val spacing = MaterialTheme.knSpacing
+    if (state.breakdown.isEmpty()) return
+
+    net.klinik.rental.ui.components.KnCard(modifier = Modifier.testTag(TAG_BREAKDOWN)) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.SpaceBetween,
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Text(
+                    text = stringResource(R.string.laporan_table_title),
+                    style = MaterialTheme.knTypography.title,
+                    color = MaterialTheme.knColors.textPrimary,
+                )
+                Text(
+                    text = stringResource(R.string.laporan_table_count, state.breakdown.size),
+                    style = MaterialTheme.knTypography.label,
+                    color = MaterialTheme.knColors.textTertiary,
+                )
+            }
+            KnTableHeaderRow(
+                headers = listOf(
+                    stringResource(R.string.laporan_table_renter),
+                    stringResource(R.string.laporan_table_plate),
+                    stringResource(R.string.laporan_table_days),
+                    stringResource(R.string.laporan_table_billed),
+                    stringResource(R.string.laporan_table_received),
+                    stringResource(R.string.laporan_table_arrears),
+                    stringResource(R.string.laporan_table_status),
+                ),
+                modifier = Modifier.testTag(TAG_BREAKDOWN_HEADER),
+            )
+            state.breakdown.forEachIndexed { index, row ->
+                KnTableRow(
+                    cells = listOf(
+                        KnTableCell(row.renterName),
+                        KnTableCell(row.plate),
+                        KnTableCell(row.daysBilled.toString(), numeric = true),
+                        KnTableCell(row.billedText, numeric = true),
+                        KnTableCell(row.receivedText, numeric = true),
+                        KnTableCell(row.arrearsText, numeric = true),
+                        KnTableCell(
+                            text = stringResource(
+                                if (row.isSettled) R.string.laporan_status_settled
+                                else R.string.laporan_status_arrears,
+                            ),
+                            badge = if (row.isSettled) null else stringResource(R.string.laporan_status_arrears),
+                            badgeTone = KnBadgeTone.Danger,
+                        ),
+                    ),
+                    modifier = Modifier.testTag(breakdownRowTag(index)),
                 )
             }
         }
@@ -326,8 +606,17 @@ private fun toneColour(tone: KnBadgeTone) = when (tone) {
     KnBadgeTone.Neutral -> MaterialTheme.knColors.neutralMarker
 }
 
+/** A mode chip's tag. */
+internal fun reportModeTag(mode: ReportMode): String = "laporan-mode-${mode.name}"
+
 /** A period chip's tag, keyed on its index so the two cannot drift. */
 internal fun periodTag(index: Int): String = "laporan-period-$index"
+
+/** A history row's tag, keyed on its index. */
+internal fun periodHistoryTag(index: Int): String = "laporan-history-$index"
+
+/** A breakdown row's tag, keyed on its index. */
+internal fun breakdownRowTag(index: Int): String = "laporan-row-$index"
 
 /** One risk row's tag. */
 internal fun riskTag(row: RiskRow): String = "laporan-risk-${row.label.lowercase()}"
@@ -335,6 +624,17 @@ internal fun riskTag(row: RiskRow): String = "laporan-risk-${row.label.lowercase
 internal fun riskCountTag(row: RiskRow): String = "laporan-risk-count-${row.label.lowercase()}"
 
 internal const val TAG_PERIOD_PICKER = "laporan-period-picker"
+internal const val TAG_PERIOD_CARD = "laporan-period-card"
+internal const val TAG_PERIOD_LABEL = "laporan-period-label"
+internal const val TAG_PERIOD_BADGE = "laporan-period-badge"
+internal const val TAG_PERIOD_HISTORY = "laporan-period-history"
+internal const val TAG_CUSTOM_FROM = "laporan-custom-from"
+internal const val TAG_CUSTOM_TO = "laporan-custom-to"
+internal const val TAG_CUSTOM_APPLY = "laporan-custom-apply"
+internal const val TAG_BREAKDOWN = "laporan-breakdown"
+internal const val TAG_BREAKDOWN_HEADER = "laporan-breakdown-header"
+internal const val TAG_EXPORT_CSV = "laporan-export-csv"
+internal const val TAG_EXPORT_PRINT = "laporan-export-print"
 internal const val TAG_METRICS = "laporan-metrics"
 internal const val TAG_KPI_INCOME = "laporan-kpi-income"
 internal const val TAG_KPI_ARREARS = "laporan-kpi-arrears"
@@ -343,6 +643,13 @@ internal const val TAG_KPI_TREND = "laporan-kpi-trend"
 internal const val TAG_RISK_BREAKDOWN = "laporan-risk"
 internal const val TAG_METRIC_SKELETON = "laporan-metric-skeleton"
 internal const val TAG_QUIET = "laporan-quiet"
+
+/** A mode's own copy — one place maps the enum to its label. */
+private fun ReportMode.labelRes(): Int = when (this) {
+    ReportMode.Current -> R.string.laporan_mode_current
+    ReportMode.Previous -> R.string.laporan_mode_previous
+    ReportMode.Custom -> R.string.laporan_mode_custom
+}
 
 @Preview(showBackground = true)
 @Composable
@@ -370,6 +677,12 @@ private fun LaporanScreenPreview() {
             ),
             periodOptions = listOf("25 Sep - 24 Okt 2026", "25 Agu - 24 Sep 2026"),
             onSelectPeriod = {},
+            onSelectMode = {},
+            onCustomFromChange = {},
+            onCustomToChange = {},
+            onApplyCustomRange = {},
+            onExportCsv = {},
+            onPrint = {},
         )
     }
 }

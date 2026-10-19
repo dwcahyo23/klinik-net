@@ -185,6 +185,152 @@ class LaporanScreenTest {
         compose.onNodeWithTag(TAG_TREND).assertExists()
     }
 
+    // ---------------------------------------------------- the mode chips and the table
+
+    /**
+     * Each mode chip reports **its own** mode.
+     *
+     * A row of chips all calling one handler would pass every existence assertion above, and
+     * the owner would press "Custom" and land on the current period — the wrong-target
+     * failure this repo's wiring tests exist to catch.
+     */
+    @Test
+    fun `each mode chip reports its own mode`() {
+        val chosen = mutableListOf<ReportMode>()
+        compose.setContent {
+            theme {
+                Screen(state = populated(), onSelectMode = { chosen.add(it) })
+            }
+        }
+
+        compose.onNodeWithTag(reportModeTag(ReportMode.Previous))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithTag(reportModeTag(ReportMode.Custom))
+            .performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals(listOf(ReportMode.Previous, ReportMode.Custom), chosen)
+    }
+
+    /**
+     * The custom picker's two fields are **only** on screen in custom mode.
+     *
+     * A date field that is not part of the current mode is a field the owner will fill and
+     * expect to change nothing. The prototype hides them the same way.
+     */
+    @Test
+    fun `the custom fields appear only in custom mode`() {
+        compose.setContent { theme { Screen(state = populated()) } }
+
+        compose.onNodeWithTag(TAG_CUSTOM_FROM).assertDoesNotExist()
+        compose.onNodeWithTag(TAG_CUSTOM_APPLY).assertDoesNotExist()
+    }
+
+    /** In custom mode they are there, and they report what the owner typed. */
+    @Test
+    fun `the custom fields report what the owner typed`() {
+        var from: String? = null
+        var to: String? = null
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populated().copy(
+                        mode = ReportMode.Custom,
+                        customRange = CustomRangeUi(fromText = "", toText = ""),
+                    ),
+                    onCustomFromChange = { from = it },
+                    onCustomToChange = { to = it },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_CUSTOM_FROM).assertExists()
+        compose.onNodeWithTag(TAG_CUSTOM_TO).assertExists()
+        compose.onNodeWithTag(TAG_CUSTOM_APPLY).assertExists()
+    }
+
+    /** The apply button reaches the handler. */
+    @Test
+    fun `the apply button reaches the handler`() {
+        var applied = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populated().copy(
+                        mode = ReportMode.Custom,
+                        customRange = CustomRangeUi(fromText = "2026-10-01", toText = "2026-10-31"),
+                    ),
+                    onApplyCustomRange = { applied = applied + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_CUSTOM_APPLY).performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals(1, applied)
+    }
+
+    /**
+     * The report's own table draws a row per contract, with its header.
+     *
+     * The row's figures are the ones the owner is reconciling, so the assertion is on the
+     * **text** rather than on the row's existence: a table with the right number of empty
+     * rows would pass an existence check.
+     */
+    @Test
+    fun `the breakdown table draws a row per contract`() {
+        compose.setContent { theme { Screen(state = populatedWithRows()) } }
+
+        compose.onNodeWithTag(TAG_BREAKDOWN).assertExists()
+        compose.onNodeWithTag(TAG_BREAKDOWN_HEADER).assertExists()
+        compose.onNodeWithTag(breakdownRowTag(0)).assertExists()
+        compose.onNodeWithTag(breakdownRowTag(1)).assertExists()
+        compose.onNodeWithText("Budi Santoso").assertExists()
+        compose.onNodeWithText("B 1235 TF").assertExists()
+    }
+
+    /**
+     * The two export buttons reach their handlers.
+     *
+     * A button wired to `{}` renders and ignores the tap, which is the defect this repo has
+     * shipped three times. So the assertion is the **call**, not the presence.
+     */
+    @Test
+    fun `the export buttons reach their handlers`() {
+        var exported = 0
+        var printed = 0
+        compose.setContent {
+            theme {
+                Screen(
+                    state = populated(),
+                    onExportCsv = { exported = exported + 1 },
+                    onPrint = { printed = printed + 1 },
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_EXPORT_CSV).performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+        compose.onNodeWithTag(TAG_EXPORT_PRINT).performSemanticsAction(SemanticsActions.OnClick)
+        compose.waitForIdle()
+
+        assertEquals("the CSV export", 1, exported)
+        assertEquals("the print", 1, printed)
+    }
+
+    /** The period history lists the periods, each with its own total. */
+    @Test
+    fun `the period history lists the periods`() {
+        compose.setContent { theme { Screen(state = populatedWithHistory()) } }
+
+        compose.onNodeWithTag(TAG_PERIOD_HISTORY).assertExists()
+        compose.onNodeWithTag(periodHistoryTag(0)).assertExists()
+        compose.onNodeWithText("Berjalan").assertExists()
+        compose.onNodeWithText("Ditutup").assertExists()
+    }
+
     // -------------------------------------------------------------------- helpers
 
     @Composable
@@ -196,11 +342,23 @@ class LaporanScreenTest {
     private fun Screen(
         state: LaporanUiState,
         onSelectPeriod: (Int) -> Unit = {},
+        onSelectMode: (ReportMode) -> Unit = {},
+        onCustomFromChange: (String) -> Unit = {},
+        onCustomToChange: (String) -> Unit = {},
+        onApplyCustomRange: () -> Unit = {},
+        onExportCsv: () -> Unit = {},
+        onPrint: () -> Unit = {},
     ) {
         LaporanScreen(
             state = state,
             periodOptions = listOf("25 Sep - 24 Okt 2026", "25 Agu - 24 Sep 2026"),
             onSelectPeriod = onSelectPeriod,
+            onSelectMode = onSelectMode,
+            onCustomFromChange = onCustomFromChange,
+            onCustomToChange = onCustomToChange,
+            onApplyCustomRange = onApplyCustomRange,
+            onExportCsv = onExportCsv,
+            onPrint = onPrint,
         )
     }
 
@@ -222,5 +380,61 @@ class LaporanScreenTest {
             }
         },
         trend = listOf(250_000, 0, 500_000, 0, 250_000, 500_000, 250_000),
+    )
+
+    /** A report with the table's own rows. */
+    private fun populatedWithRows() = populated().copy(
+        breakdown = listOf(
+            ReportRowUi(
+                renterName = "Budi Santoso",
+                plate = "B 1235 TF",
+                brand = "Toyota",
+                daysBilled = 12,
+                billedText = "Rp 3.000.000",
+                receivedText = "Rp 2.500.000",
+                arrearsText = "Rp 500.000",
+                isSettled = false,
+                billedRupiah = 3_000_000,
+                receivedRupiah = 2_500_000,
+                arrearsRupiah = 500_000,
+            ),
+            ReportRowUi(
+                renterName = "Siti Aminah",
+                plate = "B 9999 ZZ",
+                brand = "Honda",
+                daysBilled = 12,
+                billedText = "Rp 3.000.000",
+                receivedText = "Rp 3.000.000",
+                arrearsText = "Rp 0",
+                isSettled = true,
+                billedRupiah = 3_000_000,
+                receivedRupiah = 3_000_000,
+                arrearsRupiah = 0,
+            ),
+        ),
+    )
+
+    /** A report with the period history's own rows. */
+    private fun populatedWithHistory() = populated().copy(
+        periodHistory = listOf(
+            PeriodHistoryUi(
+                label = "25 Sep - 24 Okt 2026",
+                totalText = "Rp 1.500.000",
+                statusText = "Berjalan",
+                period = net.klinik.rental.domain.calculate.CutoffPeriod(
+                    java.time.LocalDate.of(2026, 9, 25),
+                    java.time.LocalDate.of(2026, 10, 24),
+                ),
+            ),
+            PeriodHistoryUi(
+                label = "25 Agu - 24 Sep 2026",
+                totalText = "Rp 2.000.000",
+                statusText = "Ditutup",
+                period = net.klinik.rental.domain.calculate.CutoffPeriod(
+                    java.time.LocalDate.of(2026, 8, 25),
+                    java.time.LocalDate.of(2026, 9, 24),
+                ),
+            ),
+        ),
     )
 }
