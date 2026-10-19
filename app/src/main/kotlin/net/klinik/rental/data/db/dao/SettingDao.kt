@@ -3,6 +3,7 @@ package net.klinik.rental.data.db.dao
 import androidx.room.Dao
 import androidx.room.Query
 import androidx.room.Upsert
+import kotlinx.coroutines.flow.Flow
 import net.klinik.rental.data.db.entity.SettingEntity
 
 /**
@@ -32,6 +33,22 @@ interface SettingDao {
     /** The raw stored value, or `null` when the key has never been written. */
     @Query("SELECT value FROM settings WHERE key = :key")
     suspend fun findValue(key: String): String?
+
+    /**
+     * The raw stored value as a flow, or `null` when the key has never been written.
+     *
+     * ## Why this exists beside [findValue]
+     *
+     * The theme choice has to repaint the whole app the moment it is written, and `findValue` is a
+     * one-shot: a caller would have to write, then re-read, then hope the two reads agreed. Room's
+     * invalidation tracker re-emits this flow when `settings` changes — the table this query names
+     * — so the write *is* the update and there is no second read to keep in step.
+     *
+     * A `Flow`, not a `@Query` returning `String?`, for exactly that reason: a one-shot read here
+     * would compile, pass a test that writes-then-reads, and leave the toggle inert on screen.
+     */
+    @Query("SELECT value FROM settings WHERE key = :key")
+    fun observeValue(key: String): Flow<String?>
 
     /**
      * Every setting row, ordered by key.

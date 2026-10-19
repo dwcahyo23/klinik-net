@@ -56,7 +56,7 @@ import org.robolectric.annotation.Config
  * states below are the real `KendaraanUiState`, built by hand.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w800dp-h1280dp")
 class KendaraanScreenTest {
 
     @get:Rule
@@ -87,8 +87,12 @@ class KendaraanScreenTest {
         ).assertExists()
         // The action is what makes it an instruction rather than a statement.
         compose.onNodeWithTag(TAG_ADD).assertExists().assertHasClickAction()
-        // And it carries the copy the AC names, not a bare "Tambah".
-        compose.onNodeWithText("Tambah Mobil").assertExists()
+        // And it carries the copy the AC names, not a bare "Tambah". Scoped to the **empty
+        // state's** action: the top bar carries a "Tambah Mobil" of its own (`cars.html:33`),
+        // so an unscoped match finds two and passes for the wrong reason.
+        compose.onNode(
+            hasText("Tambah Mobil") and hasAnyAncestor(hasTestTag(TAG_EMPTY_FLEET)),
+        ).assertExists()
     }
 
     /**
@@ -110,16 +114,33 @@ class KendaraanScreenTest {
 
     // ------------------------------------------------------------ populated list
 
-    /** A populated list renders the plate and the formatted rate. */
+    /**
+     * A populated list renders the plate and the formatted rate.
+     *
+     * `onAllNodes(...)[0]` rather than `onNode(...)`: the detail pane beside the list draws the
+     * **same** plate in its own heading (`cars.html:256`), and the first row is the selected one —
+     * so an exact match legitimately finds two nodes. The first is the row's, because the list is
+     * the first pane in the layout; asserting on it keeps the claim "the list draws the plate"
+     * rather than loosening to "the screen contains it somewhere".
+     */
     @Test
     fun `a populated list renders the plate and the rupiah figure`() {
         compose.setContent { theme { KendaraanScreenState(populatedState()) } }
 
         compose.onNodeWithTag("kendaraan-row-v1").assertIsDisplayed()
-        compose.onNodeWithText("B 1235 TF").assertIsDisplayed()
+        // `useUnmergedTree = true`: `KnListRow` merges its descendants, so the row's title text
+        // has no separate node in the merged tree and an ancestor-clause finder would match
+        // nothing. The unmerged tree is the only place the plate is its own node.
+        compose.onNode(
+            hasText("B 1235 TF") and hasAnyAncestor(hasTestTag("kendaraan-row-v1")),
+            useUnmergedTree = true,
+        ).assertExists()
         // The figure arrives via `formatRupiah` — the assertion quotes its output
         // so a change to that function surfaces here as a list failure.
-        compose.onNodeWithText(formatRupiah(250_000L)).assertIsDisplayed()
+        compose.onNode(
+            hasText(formatRupiah(250_000L)) and hasAnyAncestor(hasTestTag("kendaraan-row-v1")),
+            useUnmergedTree = true,
+        ).assertExists()
     }
 
     /**
@@ -486,6 +507,7 @@ class KendaraanScreenTest {
             onFilterChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             // Required rather than defaulted: an alias of `onSnackbarDismiss`
             // would let a partial wiring dismiss a refusal through the

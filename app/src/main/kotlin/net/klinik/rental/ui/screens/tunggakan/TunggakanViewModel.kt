@@ -18,6 +18,8 @@ import net.klinik.rental.data.repository.ContractArrears
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.strings.RStrings
 import java.time.Clock
 import java.time.LocalDate
@@ -119,6 +121,21 @@ class TunggakanViewModel(
         if (this is Source.Failed) strings.tunggakanError() else null
 
     /**
+     * The four data reads plus the selection, as one value.
+     *
+     * Nested because the typed `combine` overloads stop at five flows and this screen now has
+     * six once the risk chip is a source. `combine(…) { … }.combine(…)` keeps every parameter
+     * typed; the `vararg` overload would hand the lambda an `Array<Any?>` and push the inference
+     * problem into the body, which is what this class's KDoc already warns about.
+     */
+    private data class SourceSnapshot(
+        val source: Source,
+        val selection: String?,
+        val renters: List<Renter>,
+        val vehicles: List<Vehicle>,
+    )
+
+    /**
      * Which row the landscape detail pane is showing.
      *
      * Held as its own flow rather than folded into the projection, so reading it inside another
@@ -126,6 +143,9 @@ class TunggakanViewModel(
      * reason `KontrakViewModel` keeps each of its five sheets as a real source.
      */
     private val selectedId = MutableStateFlow<String?>(null)
+
+    /** The risk chip on the top bar — `arrears.html:29-35`. */
+    private val riskFilter = MutableStateFlow(RiskFilter.Semua)
 
     /**
      * Bumped by [consumeError] to ask the source to try again.
@@ -214,41 +234,45 @@ class TunggakanViewModel(
         }
 
     val uiState: StateFlow<TunggakanUiState> = combine(
-        arrearsSource,
-        renterRepository.observeRenters(),
-        vehicleRepository.observeVehicles(),
-        selectedId,
+        combine(
+            arrearsSource,
+            renterRepository.observeRenters(),
+            vehicleRepository.observeVehicles(),
+            selectedId,
+        ) { source, renters, vehicles, selection -> SourceSnapshot(source, selection, renters, vehicles) },
         reminder,
-    ) { source, renters, vehicles, selection, currentReminder ->
+        riskFilter,
+    ) { snapshot, currentReminder, currentFilter ->
         TunggakanUiState(
-            rows = when (source) {
+            rows = when (val source = snapshot.source) {
                 // Nothing rendered while loading, and **nothing rendered on failure**: the
                 // banner beside an empty list would state "nobody owes you anything" and
                 // then apologise for it, which is worse than saying nothing.
                 Source.Loading, is Source.Failed -> emptyList()
                 is Source.Loaded -> source.entries.toRows(
-                    renterNames = renters.associate { it.id to it.name },
+                    renterNames = snapshot.renters.associate { it.id to it.name },
                     // The phone joins the **same** lookup the name does, so the recipient
                     // arrives with the figures rather than from a second read — the rule the
                     // reminder's own KDoc gives.
-                    renterPhones = renters.associate { it.id to it.phone },
-                    vehiclePlates = vehicles.associate { it.id to it.plate },
+                    renterPhones = snapshot.renters.associate { it.id to it.phone },
+                    vehiclePlates = snapshot.vehicles.associate { it.id to it.plate },
                     strings = strings,
                 )
             },
+            riskFilter = currentFilter,
             // Carried through unchanged rather than re-derived, so a row that stops owing
             // leaves the pane showing its prompt instead of silently retargeting to a
             // different renter the moment a payment lands.
-            selectedContractId = selection,
-            isLoading = source is Source.Loading,
-            isFailed = source is Source.Failed,
+            selectedContractId = snapshot.selection,
+            isLoading = snapshot.source is Source.Loading,
+            isFailed = snapshot.source is Source.Failed,
             // **Derived from the source, not from a second channel.** The banner is a fact
             // about which `Source` this is, so reading it from `Source.Failed` keeps one
             // derivation; a `MutableStateFlow` written beside the flow was the original
             // defect, because a message in a flow the `combine` does not read reaches
             // nobody. A dismissal does not set this to null — it re-emits `Loaded`, which
             // drops the banner because the read no longer says it failed.
-            errorMessage = source.bannerOrNull(strings),
+            errorMessage = snapshot.source.bannerOrNull(strings),
             reminder = currentReminder,
         )
     }
@@ -275,6 +299,11 @@ class TunggakanViewModel(
      */
     fun onSelect(contractId: String?) {
         selectedId.value = if (selectedId.value == contractId) null else contractId
+    }
+
+    /** The risk chip. A filter over the list, not a navigation. */
+    fun onRiskFilterChange(value: RiskFilter) {
+        riskFilter.value = value
     }
 
     /**

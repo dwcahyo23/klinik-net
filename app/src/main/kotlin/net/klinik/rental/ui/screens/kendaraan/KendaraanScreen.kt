@@ -1,5 +1,6 @@
 package net.klinik.rental.ui.screens.kendaraan
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -28,19 +29,32 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.CarFront
+import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pencil
+import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.SearchX
+import com.composables.icons.lucide.Users
+import com.composables.icons.lucide.Wallet
 import net.klinik.rental.R
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.components.KnAvatar
+import net.klinik.rental.ui.components.KnAvatarSize
 import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
+import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnCard
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
+import net.klinik.rental.ui.components.KnKpiGrid
+import net.klinik.rental.ui.components.KnKpiIconLayout
+import net.klinik.rental.ui.components.KnKpiTile
 import net.klinik.rental.ui.components.KnListRow
+import net.klinik.rental.ui.components.KnMasterDetail
 import net.klinik.rental.ui.components.KnSearchBar
 import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
@@ -87,6 +101,7 @@ fun KendaraanScreen(
     onFilterChange: (VehicleFilter) -> Unit,
     onClearQuery: () -> Unit,
     onAdd: () -> Unit,
+    onSelect: (String) -> Unit,
     onEdit: (Vehicle) -> Unit,
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
@@ -111,78 +126,99 @@ fun KendaraanScreen(
                     // so the screen says how much data it is showing without
                     // spending a card on it.
                     subtitle = stringResource(R.string.kendaraan_count, state.fleetCount),
-                )
-
-                KnSearchBar(
-                    query = state.query,
-                    onQueryChange = onQueryChange,
-                    onClear = onClearQuery,
-                    placeholder = stringResource(R.string.kendaraan_search_placeholder),
-                    modifier = Modifier.padding(
-                        start = spacing.lg,
-                        end = spacing.lg,
-                        top = spacing.lg,
-                    ),
-                )
-
-                KendaraanFilterRow(
-                    selected = state.filter,
-                    counts = state.counts,
-                    onSelect = onFilterChange,
-                    modifier = Modifier.padding(
-                        start = spacing.lg,
-                        end = spacing.lg,
-                        top = spacing.md,
-                    ),
-                )
-
-                Box(Modifier.weight(1f)) {
-                    when {
-                        // Loading first, and mutually exclusive with everything
-                        // below. Room's first emission *is* an empty list, so
-                        // without this branch the owner reads "Belum ada
-                        // Kendaraan" on every single load — the exact
-                        // empty-looks-like-a-new-account failure the story exists
-                        // to prevent.
-                        state.isLoading -> KnSkeletonList(
-                            rows = SKELETON_ROWS,
-                            modifier = Modifier.padding(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                            ),
-                        )
-
-                        // Two different emptinesses with two different messages.
-                        // A stored-but-unmatched search is not an error and must
-                        // not read like an empty account.
-                        state.isEmptyFleet -> KendaraanEmptyFleet(onAdd = onAdd)
-                        state.isEmptySearch -> KendaraanEmptySearch(
+                    // `cars.html:29-37` puts the field and the add button **in the bar**, not in a row
+                    // beneath it. The field is this screen's own — it is the only control that
+                    // can widen a list the shell's global search narrowed — so it goes in the
+                    // `search` slot rather than falling back to `LocalTopBarSearch`.
+                    search = {
+                        KnSearchBar(
                             query = state.query,
-                            onAdd = onAdd,
+                            onQueryChange = onQueryChange,
+                            onClear = onClearQuery,
+                            placeholder = stringResource(R.string.kendaraan_search_placeholder),
+                            modifier = Modifier
+                                .widthIn(max = SearchPillMaxWidth)
+                                .testTag(TAG_SEARCH),
                         )
+                    },
+                    actions = {
+                        KnButton(
+                            label = stringResource(R.string.kendaraan_add),
+                            onClick = onAdd,
+                            icon = Lucide.Plus,
+                            variant = KnButtonVariant.Primary,
+                            modifier = Modifier.testTag(TAG_ADD_ACTION),
+                        )
+                    },
+                )
 
-                        else -> LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                                bottom = spacing.colossal,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                        ) {
-                            items(
-                                items = state.visibleRows,
-                                // Keyed on the vehicle id: removing a row under a
-                                // filter must not make the remaining rows shift
-                                // their saved state onto a different car.
-                                key = { it.vehicle.id },
-                            ) { row ->
-                                KendaraanRow(row = row, onEdit = { onEdit(row.vehicle) })
-                            }
-                        }
+                // The page body — `shared.css:285-289`, `padding: var(--sp-6)`.
+                Column(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(spacing.xxl),
+                    verticalArrangement = Arrangement.spacedBy(spacing.lg),
+                ) {
+                    // `cars.html:42` — four figures above the chips. No figures while the first
+                    // read has not landed: four zeros read as an empty fleet, which is a claim
+                    // rather than a placeholder.
+                    if (!state.isLoading) {
+                        FleetSummaryRow(state.summary)
                     }
+
+                    KendaraanFilterRow(
+                        selected = state.filter,
+                        counts = state.counts,
+                        onSelect = onFilterChange,
+                    )
+
+                    KnMasterDetail(
+                        // `weight(1f)`: `KnMasterDetail` fills by default, so without it the
+                        // panes would take the whole column and push the chips and the summary
+                        // off the top of the screen.
+                        modifier = Modifier.weight(1f),
+                        list = {
+                            when {
+                                state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+                                state.isEmptyFleet -> KendaraanEmptyFleet(onAdd = onAdd)
+                                state.isEmptySearch -> KendaraanEmptySearch(
+                                    query = state.query,
+                                    onAdd = onAdd,
+                                )
+
+                                else -> LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = spacing.colossal),
+                                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                                ) {
+                                    items(
+                                        items = state.visibleRows,
+                                        // Keyed on the vehicle id: removing a row under a
+                                        // filter must not make the remaining rows shift
+                                        // their saved state onto a different car.
+                                        key = { it.vehicle.id },
+                                    ) { row ->
+                                        KendaraanRow(
+                                            row = row,
+                                            selected = row.vehicle.id == state.selectedRow?.vehicle?.id,
+                                            onClick = { onSelect(row.vehicle.id) },
+                                        )
+                                    }
+                                }
+                            }
+                        },
+                        detail = {
+                            val selected = state.selectedRow
+                            if (selected != null && !state.isLoading) {
+                                KendaraanDetail(
+                                    row = selected,
+                                    contract = state.selectedContract,
+                                    onEdit = { onEdit(selected.vehicle) },
+                                )
+                            }
+                        },
+                    )
                 }
             }
 
@@ -265,18 +301,70 @@ private fun KendaraanFilterRow(
     }
 }
 
-/** One vehicle: plate, brand and year, the rate, and its derived status. */
+/**
+ * `cars.html:147-167` — the four figures above the chips.
+ *
+ * The prototype's `.kpi` puts its glyph in the card's top-right corner, which is what
+ * `KnKpiIconLayout.Corner` draws. A `FlowRow` rather than a grid, so four cards become two rows of
+ * two on a narrow window instead of four squeezed columns.
+ */
+@Composable
+private fun FleetSummaryRow(summary: FleetSummary) {
+    KnKpiGrid(
+        modifier = Modifier.testTag(TAG_SUMMARY),
+        tiles = listOf(
+            { KnKpiTile(
+                label = stringResource(R.string.kendaraan_summary_total),
+                value = summary.total.toString(),
+                meta = stringResource(R.string.kendaraan_summary_total_meta, summary.total),
+                icon = Lucide.CarFront,
+                iconTint = MaterialTheme.knColors.onBrand,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.kendaraan_summary_rented),
+                value = summary.rented.toString(),
+                meta = stringResource(R.string.kendaraan_summary_rented_meta, summary.utilisationText),
+                icon = Lucide.Users,
+                iconTint = MaterialTheme.knColors.semantic.success,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.kendaraan_summary_available),
+                value = summary.available.toString(),
+                meta = stringResource(R.string.kendaraan_summary_available_meta),
+                icon = Lucide.CircleCheck,
+                iconTint = MaterialTheme.knColors.semantic.info,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.kendaraan_summary_potential),
+                value = summary.potentialText,
+                meta = stringResource(R.string.kendaraan_summary_potential_meta, summary.averageText),
+                icon = Lucide.Wallet,
+                iconTint = MaterialTheme.knColors.semantic.warning,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+        ),
+    )
+}
+
+/**
+ * One vehicle: plate, brand and year, the rate, and its derived status.
+ *
+ * @param selected draws the active edge `KnListRow` already owns, which is what the prototype's
+ *   `.list-row.active` is (`shared.css:743`).
+ * @param onClick selects the row for the pane. Editing is the **pane's** button
+ *   (`cars.html:262`), not the row's: a row that both selects and edits cannot be used to read a
+ *   car without opening a form over it.
+ */
 @Composable
 private fun KendaraanRow(
     row: VehicleRow,
-    onEdit: () -> Unit,
+    selected: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val editLabel = stringResource(
-        R.string.kendaraan_edit_description,
-        row.vehicle.plate,
-    )
-
     KnListRow(
         title = row.vehicle.plate,
         subtitle = stringResource(
@@ -284,9 +372,8 @@ private fun KendaraanRow(
             row.vehicle.model,
             row.vehicle.year,
         ),
-        modifier = modifier
-            .testTag("kendaraan-row-${row.vehicle.id}")
-            .semantics { contentDescription = editLabel },
+        selected = selected,
+        modifier = modifier.testTag("kendaraan-row-${row.vehicle.id}"),
         leading = {
             // `KnAvatar` at its default 44dp, not a 48dp icon button: the leading
             // slot is hard-boxed to 44dp by `KnListRow`, so a larger element
@@ -312,7 +399,162 @@ private fun KendaraanRow(
                 )
             }
         },
-        onClick = onEdit,
+        onClick = onClick,
+    )
+}
+
+/**
+ * `cars.html:236-330` — the selected vehicle, its open contract, and the edit verb.
+ *
+ * The pane draws the car's own facts and, when it is rented, who has it. The three figures the
+ * prototype shows (tarif, total diterima, transaksi) need the contract's payment history, which
+ * this screen does not read — the amount received is `KontrakScreen`'s subject and a second read
+ * of it here would be a second answer to the same question. The pane therefore shows the rate and
+ * the renter, and leaves the running total to the screen that already computes it.
+ */
+@Composable
+private fun KendaraanDetail(
+    row: VehicleRow,
+    contract: VehicleContractFacts?,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+    val vehicle = row.vehicle
+
+    KnCard(modifier = modifier.fillMaxWidth(), padding = spacing.xxl) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.lg),
+                verticalAlignment = Alignment.Top,
+            ) {
+                KnAvatar(name = vehicle.plate, size = KnAvatarSize.Large)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = vehicle.plate,
+                        style = MaterialTheme.knTypography.displaySmall,
+                        color = MaterialTheme.knColors.textPrimary,
+                    )
+                    Text(
+                        text = "${vehicle.brand} ${vehicle.model}",
+                        style = MaterialTheme.knTypography.label,
+                        color = MaterialTheme.knColors.textSecondary,
+                    )
+                    Text(
+                        text = listOfNotNull(
+                            vehicle.color,
+                            stringResource(R.string.kendaraan_detail_year, vehicle.year),
+                        ).joinToString(" · "),
+                        style = MaterialTheme.knTypography.body,
+                        color = MaterialTheme.knColors.textTertiary,
+                    )
+                }
+                KnButton(
+                    label = stringResource(R.string.kendaraan_edit),
+                    onClick = onEdit,
+                    icon = Lucide.Pencil,
+                    variant = KnButtonVariant.Secondary,
+                    size = KnButtonSize.Small,
+                    modifier = Modifier.testTag(TAG_DETAIL_EDIT),
+                )
+            }
+
+            KnDivider()
+
+            // `.kpi-grid` inside the pane — three narrow figures, `shared.css:267`.
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                DetailFigure(
+                    label = stringResource(R.string.kendaraan_detail_rate),
+                    value = row.rateText,
+                    modifier = Modifier.weight(1f),
+                )
+                DetailFigure(
+                    label = stringResource(R.string.kendaraan_detail_status),
+                    value = stringResource(row.status.labelRes),
+                    modifier = Modifier.weight(1f),
+                )
+                DetailFigure(
+                    label = stringResource(R.string.kendaraan_detail_notes),
+                    value = vehicle.notes ?: "—",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (contract != null) {
+                KnDivider()
+                Text(
+                    text = stringResource(R.string.kendaraan_detail_contract_title),
+                    style = MaterialTheme.knTypography.label,
+                    color = MaterialTheme.knColors.textSecondary,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xl),
+                ) {
+                    DetailFigure(
+                        label = stringResource(R.string.kendaraan_detail_renter),
+                        value = contract.renterName,
+                        modifier = Modifier.weight(1f),
+                    )
+                    DetailFigure(
+                        label = stringResource(R.string.kendaraan_detail_phone),
+                        value = contract.renterPhone,
+                        modifier = Modifier.weight(1f),
+                    )
+                    DetailFigure(
+                        label = stringResource(R.string.kendaraan_detail_start),
+                        value = contract.startText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    DetailFigure(
+                        label = stringResource(R.string.kendaraan_detail_schedule),
+                        value = if (contract.restDay == null) {
+                            stringResource(R.string.kontrak_schedule_seven)
+                        } else {
+                            stringResource(R.string.kontrak_schedule_six)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One labelled figure inside a detail pane — the prototype's `.kpi` at `padding: var(--sp-4)`. */
+@Composable
+private fun DetailFigure(
+    label: String,
+    value: String,
+    modifier: Modifier = Modifier,
+) {
+    Column(modifier = modifier) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.knTypography.overline.copy(fontSize = 11.sp),
+            color = MaterialTheme.knColors.textTertiary,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.knTypography.figure,
+            color = MaterialTheme.knColors.textPrimary,
+            modifier = Modifier.padding(top = MaterialTheme.knSpacing.xs),
+        )
+    }
+}
+
+/** `shared.css:1003` — `.divider { height: 1px; background: var(--border) }`. */
+@Composable
+private fun KnDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.knColors.divider),
     )
 }
 
@@ -402,8 +644,34 @@ private val FILTERS = listOf(
 )
 
 internal const val TAG_ADD = "kendaraan-add"
+
+/** The screen's own search field, now in the top bar rather than a row beneath it. */
+internal const val TAG_SEARCH = "kendaraan-search"
+
+/**
+ * The bar's add button.
+ *
+ * Its own tag, because it and the empty state's action draw the same label and both can be on
+ * screen at once — the bar is always there. A shared tag would make `onNodeWithTag(TAG_ADD)`
+ * ambiguous the moment the fleet is empty. `KontrakScreen` records the same trap.
+ */
+internal const val TAG_ADD_ACTION = "kendaraan-add-action"
 internal const val TAG_EMPTY_FLEET = "kendaraan-empty-fleet"
 internal const val TAG_EMPTY_SEARCH = "kendaraan-empty-search"
+
+/** The four summary cards — `cars.html:42`. */
+internal const val TAG_SUMMARY = "kendaraan-summary"
+
+/** The edit verb inside the detail pane; the row selects rather than edits. */
+internal const val TAG_DETAIL_EDIT = "kendaraan-detail-edit"
+
+/**
+ * `cars.html:29` — the field's `max-width`.
+ *
+ * Capped rather than weighted, so the field looks the same on a 360dp phone and a 711dp tablet
+ * instead of eating the bar on one and shrinking to nothing on the other.
+ */
+private val SearchPillMaxWidth = 280.dp
 
 /** The single banner, whatever its tone — so one test can address it. */
 internal const val TAG_BANNER = "kendaraan-banner"
@@ -429,6 +697,7 @@ private fun KendaraanScreenPreview() {
             onFilterChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onErrorDismiss = {},
         )

@@ -1,7 +1,6 @@
 package net.klinik.rental.ui.shell
 
 import android.content.res.Configuration
-import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -12,6 +11,7 @@ import androidx.compose.foundation.layout.safeDrawing
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -22,6 +22,7 @@ import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
 import net.klinik.rental.ui.components.KnBottomNav
 import net.klinik.rental.ui.components.KnNavRail
+import net.klinik.rental.ui.components.LocalTopBarSearch
 import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knSpacing
@@ -165,21 +166,11 @@ internal fun AppShell(
         }
     }
 
-    /**
-     * Back closes the results overlay **before** it leaves the screen.
-     *
-     * An owner who typed a query and pressed Back has lost their place if the first Back
-     * navigates: the thing they were doing was dismissible, and Back skipped past it to the
-     * screen behind. So the overlay takes the first press and the destination keeps the
-     * second — the same one-step-at-a-time rule the app applies to its sheets.
-     *
-     * Registered **only** while the overlay is active, so with nothing typed Back behaves
-     * exactly as it did before this story. A handler left installed would silently eat the
-     * first Back on every destination for the rest of the session.
-     */
-    BackHandler(enabled = screens.search.state.isActive) {
-        screens.search.onClear()
-    }
+    // Back is handled by the results panel itself now. A `DropdownMenu` is a popup with its own
+    // dismiss-on-Back, and its `onDismissRequest` is `onClear` — so the first press closes the
+    // results and the destination keeps the second. The `BackHandler` that used to stand here did
+    // the same job for the old in-layout overlay; keeping it would now clear the query on the first
+    // press *and* leave the popup to handle the same press, which is two handlers for one gesture.
 
     // The deposit FAB, mounted by the **shell** rather than by any destination.
     //
@@ -221,13 +212,17 @@ internal fun AppShell(
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        // Story 4.6's search field, **above** whichever branch draws.
+        // Story 4.6's search field, **inside** whichever top bar is showing.
         //
-        // Mounted here rather than in each screen because "available on every screen" is then
-        // a property of the layout rather than seven reminders: a destination added next year
-        // inherits it, and one added today cannot ship without it.
+        // ## Why it moved out of a row above the shell
         //
-        // ## Why the two screens keep their own bars — three bars, one rule
+        // It used to be a full-width row here, which cost every screen 64dp of height and put two
+        // search fields on the two screens that already draw one. The prototype keeps a single
+        // 280px pill inside the 72dp top bar (`index.html:92-97`), and this is that pill: provided
+        // as a composition local, so the eight screens' `KnTopBar` call sites did not change and a
+        // screen rendered alone in a test draws no field.
+        //
+        // ## Why the two screens keep their own bars — two bars, one rule
         //
         // `PenyewaScreen` and `KendaraanScreen` still draw theirs, and the task list that said
         // they should stop was **wrong**. A screen's own bar is the only control that can
@@ -241,34 +236,34 @@ internal fun AppShell(
         // the predicates in `SearchMatch.kt`. What makes that rule shared is the **matching**,
         // not the count of fields: three bars matching by one implementation beats one bar
         // matching by three.
-        //
-        // It sits above the graph in a `Column` rather than floating over it, so it never
-        // covers a screen's own top bar — and the results overlay hangs beneath the field
-        // inside its own bound, so a broad query cannot hide the destination either.
-        Column(modifier.fillMaxSize()) {
-            GlobalSearchBar(
-                state = screens.search.state,
-                onQueryChange = screens.search.onQueryChange,
-                onClear = screens.search.onClear,
-                // A result opens the destination that owns it, by the route the result
-                // carries. Derived here rather than passed in, because the nav controller
-                // lives in this function — see `Screens.Search`'s KDoc.
-                onSelect = { hit ->
-                    navController.navigate(hit.route) {
-                        popUpTo(navController.graph.startDestinationId) { saveState = true }
-                        launchSingleTop = true
-                        restoreState = true
-                    }
-                    // The destination opens **on that item** rather than on the full list.
-                    narrowTo(hit)
-                    // And the panel closes: the owner is now looking at the screen they
-                    // asked for, and an overlay still listing results would sit over the
-                    // answer.
-                    screens.search.onClear()
-                },
-            )
-
-            Box(Modifier.weight(1f)) {
+        CompositionLocalProvider(
+            LocalTopBarSearch provides {
+                GlobalSearchBar(
+                    state = screens.search.state,
+                    onQueryChange = screens.search.onQueryChange,
+                    onClear = screens.search.onClear,
+                    // A result opens the destination that owns it, by the route the result
+                    // carries. Derived here rather than passed in, because the nav controller
+                    // lives in this function — see `Screens.Search`'s KDoc.
+                    onSelect = { hit ->
+                        navController.navigate(hit.route) {
+                            popUpTo(navController.graph.startDestinationId) { saveState = true }
+                            launchSingleTop = true
+                            restoreState = true
+                        }
+                        // The destination opens **on that item** rather than on the full list.
+                        narrowTo(hit)
+                        // And the panel closes: the owner is now looking at the screen they
+                        // asked for, and an overlay still listing results would sit over the
+                        // answer.
+                        screens.search.onClear()
+                    },
+                )
+            },
+        ) {
+            // `fillMaxSize`, not `weight`: the provider's content lambda is not a `ColumnScope`,
+            // and the outer `Box` already sizes this to the whole inset area.
+            Box(Modifier.fillMaxSize()) {
                 if (showRail) {
                     Row(Modifier.fillMaxSize()) {
                         KnNavRail(

@@ -9,14 +9,20 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.RenterRepository
+import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.validation.BlankRenterFieldException
 import net.klinik.rental.domain.validation.DuplicateNameException
+import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.strings.RStrings
 
 /**
@@ -46,12 +52,24 @@ import net.klinik.rental.ui.strings.RStrings
 class PenyewaViewModel(
     private val repository: RenterRepository,
     private val strings: RStrings,
+    /**
+     * The contracts behind the detail pane.
+     *
+     * Optional so the existing tests — which build this ViewModel against a renter repository
+     * alone — keep compiling. Absent, the pane simply shows no contract, which is the correct
+     * rendering for a list of people none of whom is renting.
+     */
+    private val contracts: ContractRepository? = null,
+    private val vehicles: VehicleRepository? = null,
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
     private val form = MutableStateFlow<RenterFormState?>(null)
     private val errorMessage = MutableStateFlow<String?>(null)
     private val message = MutableStateFlow<String?>(null)
+
+    /** Which renter the pane shows; `null` falls back to the first visible row. */
+    private val selectedRenterId = MutableStateFlow<String?>(null)
 
     /**
      * Whether a write is in flight, so a double tap on Save cannot enqueue two.
@@ -85,20 +103,39 @@ class PenyewaViewModel(
      * overload, which would hand the lambda an `Array<Any?>`.
      */
     val uiState: StateFlow<PenyewaUiState> = combine(
-        rentersWithLoadFlag(),
-        query,
-    ) { (renters, hasEmitted), currentQuery ->
-        ListSnapshot(renters.map { RenterRow(it) }, currentQuery, !hasEmitted)
-    }
-        .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { list, formSnapshot ->
-            PenyewaUiState(
-                rows = list.rows,
-                query = list.query,
-                form = formSnapshot.form,
-                errorMessage = formSnapshot.error,
-                isLoading = list.isLoading,
+        combine(
+            rentersWithLoadFlag(),
+            query,
+            contracts?.observeContracts() ?: flowOf(emptyList()),
+            vehicles?.observeVehicles() ?: flowOf(emptyList()),
+        ) { (renters, hasEmitted), currentQuery, openContracts, vehicleList ->
+            ListSnapshot(
+                rows = renters.map { RenterRow(it) },
+                query = currentQuery,
+                isLoading = !hasEmitted,
+                contracts = openContracts,
+                vehiclesById = vehicleList.associateBy { it.id },
             )
-        }
+        },
+        form,
+        errorMessage,
+        selectedRenterId,
+    ) { list, currentForm, error, selection ->
+        val selected = list.rows.firstOrNull { it.renter.id == selection }
+            ?: list.rows.firstOrNull()
+
+        PenyewaUiState(
+            rows = list.rows,
+            query = list.query,
+            form = currentForm,
+            errorMessage = error,
+            isLoading = list.isLoading,
+            selectedRenterId = selected?.renter?.id,
+            selectedContract = selected?.renter?.let { renter ->
+                list.contractFactsFor(renter, strings)
+            },
+        )
+    }
         // Distinct *after* the projection, so a Room emission that produces an
         // identical list does not push a new state downstream and recompose
         // every row for no visible change.
@@ -129,7 +166,29 @@ class PenyewaViewModel(
         val rows: List<RenterRow>,
         val query: String,
         val isLoading: Boolean,
-    )
+        val contracts: List<Contract>,
+        val vehiclesById: Map<String, Vehicle>,
+    ) {
+        /**
+         * `renters.html:248-279` — the active contract behind [renter].
+         *
+         * `strings` arrives as a parameter rather than being captured: a data class cannot hold a
+         * reference to the outer class, and `RStrings` is what formats the date.
+         */
+        fun contractFactsFor(renter: Renter, strings: RStrings): RenterContractFacts? {
+            val contract = contracts.firstOrNull {
+                it.renterId == renter.id && it.endDate == null
+            } ?: return null
+            val vehicle = vehiclesById[contract.vehicleId] ?: return null
+            return RenterContractFacts(
+                vehiclePlate = vehicle.plate,
+                vehicleText = "${vehicle.brand} ${vehicle.model} ${vehicle.year}",
+                rateText = formatRupiah(contract.dailyRate),
+                startText = strings.formatExceptionDate(contract.startDate),
+                restDay = contract.restDay,
+            )
+        }
+    }
 
     /** The interaction half: the open form and the last refusal's message. */
     private data class FormSnapshot(
@@ -145,6 +204,16 @@ class PenyewaViewModel(
 
     fun clearQuery() {
         query.value = ""
+    }
+
+    /**
+     * Selects the renter whose detail the pane shows.
+     *
+     * Tapping the same row keeps it selected — the pane is the list's other half, not a thing the
+     * owner dismisses (see `KendaraanViewModel.select`).
+     */
+    fun select(renterId: String) {
+        selectedRenterId.value = renterId
     }
 
     // ------------------------------------------------------------------- form

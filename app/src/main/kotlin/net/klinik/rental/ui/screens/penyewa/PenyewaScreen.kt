@@ -1,15 +1,21 @@
 package net.klinik.rental.ui.screens.penyewa
 
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.PaddingValues
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -18,18 +24,26 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Pencil
+import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.SearchX
 import com.composables.icons.lucide.UserPlus
 import net.klinik.rental.R
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.ui.components.KnAvatar
+import net.klinik.rental.ui.components.KnAvatarSize
 import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
+import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnCard
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
+import net.klinik.rental.ui.components.KnMasterDetail
 import net.klinik.rental.ui.components.KnSearchBar
 import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
@@ -37,6 +51,7 @@ import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knSpacing
+import net.klinik.rental.ui.theme.knTypography
 
 /**
  * The renter screen: every person who rents, searchable in place.
@@ -72,6 +87,7 @@ fun PenyewaScreen(
     onQueryChange: (String) -> Unit,
     onClearQuery: () -> Unit,
     onAdd: () -> Unit,
+    onSelect: (String) -> Unit,
     onEdit: (Renter) -> Unit,
     modifier: Modifier = Modifier,
     snackbarMessage: String? = null,
@@ -97,67 +113,79 @@ fun PenyewaScreen(
                     // tile, so the screen says how much data it is showing
                     // without spending a card on it.
                     subtitle = stringResource(R.string.penyewa_count, state.renterCount),
-                )
-
-                KnSearchBar(
-                    query = state.query,
-                    onQueryChange = onQueryChange,
-                    onClear = onClearQuery,
-                    placeholder = stringResource(R.string.penyewa_search_placeholder),
-                    modifier = Modifier.padding(
-                        start = spacing.lg,
-                        end = spacing.lg,
-                        top = spacing.lg,
-                    ),
-                )
-
-                Box(Modifier.weight(1f)) {
-                    when {
-                        // Loading first, and mutually exclusive with everything
-                        // below. Room's first emission *is* an empty list, so
-                        // without this branch the owner reads "Belum ada
-                        // Penyewa" on every single load — the exact
-                        // empty-looks-like-a-new-account failure the story exists
-                        // to prevent.
-                        state.isLoading -> KnSkeletonList(
-                            rows = SKELETON_ROWS,
-                            modifier = Modifier.padding(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                            ),
-                        )
-
-                        // Two different emptinesses with two different messages.
-                        // A stored-but-unmatched search is not an error and must
-                        // not read like an empty account.
-                        state.isEmptyList -> PenyewaEmptyList(onAdd = onAdd)
-                        state.isEmptySearch -> PenyewaEmptySearch(
+                    // `renters.html:29-36` — the add button and this screen's own field are both in the
+                    // bar. The field is its own for the reason `AppShell.narrowTo` gives: it is
+                    // the only control that can widen a list the shell's search narrowed.
+                    search = {
+                        KnSearchBar(
                             query = state.query,
-                            onAdd = onAdd,
+                            onQueryChange = onQueryChange,
+                            onClear = onClearQuery,
+                            placeholder = stringResource(R.string.penyewa_search_placeholder),
+                            modifier = Modifier
+                                .widthIn(max = SearchPillMaxWidth)
+                                .testTag(TAG_SEARCH),
                         )
+                    },
+                    actions = {
+                        KnButton(
+                            label = stringResource(R.string.penyewa_add),
+                            onClick = onAdd,
+                            icon = Lucide.Plus,
+                            modifier = Modifier.testTag(TAG_ADD_ACTION),
+                        )
+                    },
+                )
 
-                        else -> LazyColumn(
-                            modifier = Modifier.fillMaxSize(),
-                            contentPadding = PaddingValues(
-                                start = spacing.lg,
-                                end = spacing.lg,
-                                top = spacing.lg,
-                                bottom = spacing.colossal,
-                            ),
-                            verticalArrangement = Arrangement.spacedBy(spacing.sm),
-                        ) {
-                            items(
-                                items = state.visibleRows,
-                                // Keyed on the renter id: removing a row under a
-                                // search must not make the remaining rows shift
-                                // their saved state onto a different person.
-                                key = { it.renter.id },
-                            ) { row ->
-                                PenyewaRow(row = row, onEdit = { onEdit(row.renter) })
+                // The page body — `shared.css:285-289`. No KPI row: `renters.html` has none.
+                Box(
+                    modifier = Modifier
+                        .weight(1f)
+                        .fillMaxWidth()
+                        .padding(spacing.xxl),
+                ) {
+                    KnMasterDetail(
+                        list = {
+                            when {
+                                state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
+                                state.isEmptyList -> PenyewaEmptyList(onAdd = onAdd)
+                                state.isEmptySearch -> PenyewaEmptySearch(
+                                    query = state.query,
+                                    onAdd = onAdd,
+                                )
+
+                                else -> LazyColumn(
+                                    modifier = Modifier.fillMaxSize(),
+                                    contentPadding = PaddingValues(bottom = spacing.colossal),
+                                    verticalArrangement = Arrangement.spacedBy(spacing.sm),
+                                ) {
+                                    items(
+                                        items = state.visibleRows,
+                                        // Keyed on the renter id: removing a row under a
+                                        // search must not make the remaining rows shift
+                                        // their saved state onto a different person.
+                                        key = { it.renter.id },
+                                    ) { row ->
+                                        PenyewaRow(
+                                            row = row,
+                                            selected = row.renter.id == state.selectedRow?.renter?.id,
+                                            onClick = { onSelect(row.renter.id) },
+                                        )
+                                    }
+                                }
                             }
-                        }
-                    }
+                        },
+                        detail = {
+                            val selected = state.selectedRow
+                            if (selected != null && !state.isLoading) {
+                                PenyewaDetail(
+                                    row = selected,
+                                    contract = state.selectedContract,
+                                    onEdit = { onEdit(selected.renter) },
+                                )
+                            }
+                        },
+                    )
                 }
             }
 
@@ -205,18 +233,20 @@ fun PenyewaScreen(
     }
 }
 
-/** One renter: name, phone, and the account when there is one. */
+/**
+ * One renter: name, phone, and the account when there is one.
+ *
+ * @param selected draws the active edge `KnListRow` owns — the prototype's `.list-row.active`.
+ * @param onClick selects the row for the pane. Editing is the **pane's** button
+ *   (`renters.html:226`), so reading a renter never opens a form over the list.
+ */
 @Composable
 private fun PenyewaRow(
     row: RenterRow,
-    onEdit: () -> Unit,
+    selected: Boolean,
+    onClick: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    val editLabel = stringResource(
-        R.string.penyewa_edit_description,
-        row.renter.name,
-    )
-
     KnListRow(
         title = row.renter.name,
         subtitle = stringResource(
@@ -224,9 +254,8 @@ private fun PenyewaRow(
             row.renter.phone,
             row.renter.emergencyContact,
         ),
-        modifier = modifier
-            .testTag("penyewa-row-${row.renter.id}")
-            .semantics { contentDescription = editLabel },
+        selected = selected,
+        modifier = modifier.testTag("penyewa-row-${row.renter.id}"),
         leading = {
             // `KnAvatar` at its default 44dp, not a 48dp icon button: the leading
             // slot is hard-boxed to 44dp by `KnListRow`, so a larger element
@@ -245,7 +274,147 @@ private fun PenyewaRow(
                 )
             }
         },
-        onClick = onEdit,
+        onClick = onClick,
+    )
+}
+
+/**
+ * `renters.html:202-279` — the selected renter, their contact details, and their open contract.
+ *
+ * The three figures the prototype adds above the contract (total setoran, tunggakan, jumlah
+ * transaksi) are computed from the payments repository. They are `TunggakanScreen`'s and
+ * `KontrakScreen`'s subject, and a third derivation of the same bill is exactly the defect this
+ * repo keeps finding — so this pane shows who is renting and on what terms, which is the half
+ * those screens do not.
+ */
+@Composable
+private fun PenyewaDetail(
+    row: RenterRow,
+    contract: RenterContractFacts?,
+    onEdit: () -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    val spacing = MaterialTheme.knSpacing
+    val renter = row.renter
+
+    KnCard(modifier = modifier.fillMaxWidth(), padding = spacing.xxl) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.lg)) {
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.lg),
+                verticalAlignment = Alignment.Top,
+            ) {
+                KnAvatar(name = renter.name, size = KnAvatarSize.Large)
+                Column(Modifier.weight(1f)) {
+                    Text(
+                        text = renter.name,
+                        style = MaterialTheme.knTypography.displaySmall,
+                        color = MaterialTheme.knColors.textPrimary,
+                    )
+                    Text(
+                        text = renter.phone,
+                        style = MaterialTheme.knTypography.label,
+                        color = MaterialTheme.knColors.textSecondary,
+                    )
+                }
+                KnButton(
+                    label = stringResource(R.string.penyewa_edit),
+                    onClick = onEdit,
+                    icon = Lucide.Pencil,
+                    variant = KnButtonVariant.Secondary,
+                    size = KnButtonSize.Small,
+                    modifier = Modifier.testTag(TAG_DETAIL_EDIT),
+                )
+            }
+
+            Row(
+                modifier = Modifier.fillMaxWidth(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
+                RenterFigure(
+                    label = stringResource(R.string.penyewa_detail_phone),
+                    value = renter.phone,
+                    modifier = Modifier.weight(1f),
+                )
+                RenterFigure(
+                    label = stringResource(R.string.penyewa_detail_emergency),
+                    value = renter.emergencyContact,
+                    modifier = Modifier.weight(1f),
+                )
+                RenterFigure(
+                    label = stringResource(R.string.penyewa_detail_account),
+                    value = renter.bankAccount ?: "—",
+                    modifier = Modifier.weight(1f),
+                )
+            }
+
+            if (contract != null) {
+                RenterDivider()
+                Text(
+                    text = stringResource(R.string.penyewa_detail_contract_title),
+                    style = MaterialTheme.knTypography.label,
+                    color = MaterialTheme.knColors.textSecondary,
+                )
+                Row(
+                    modifier = Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.spacedBy(spacing.xl),
+                ) {
+                    RenterFigure(
+                        label = stringResource(R.string.penyewa_detail_vehicle),
+                        value = "${contract.vehiclePlate} · ${contract.vehicleText}",
+                        modifier = Modifier.weight(1f),
+                    )
+                    RenterFigure(
+                        label = stringResource(R.string.penyewa_detail_rate),
+                        value = contract.rateText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    RenterFigure(
+                        label = stringResource(R.string.penyewa_detail_start),
+                        value = contract.startText,
+                        modifier = Modifier.weight(1f),
+                    )
+                    RenterFigure(
+                        label = stringResource(R.string.penyewa_detail_schedule),
+                        value = if (contract.restDay == null) {
+                            stringResource(R.string.kontrak_schedule_seven)
+                        } else {
+                            stringResource(R.string.kontrak_schedule_six)
+                        },
+                        modifier = Modifier.weight(1f),
+                    )
+                }
+            }
+        }
+    }
+}
+
+/** One labelled figure inside the pane — the prototype's `.kpi` at `padding: var(--sp-4)`. */
+@Composable
+private fun RenterFigure(label: String, value: String, modifier: Modifier = Modifier) {
+    Column(modifier = modifier) {
+        Text(
+            text = label.uppercase(),
+            style = MaterialTheme.knTypography.overline.copy(fontSize = 11.sp),
+            color = MaterialTheme.knColors.textTertiary,
+        )
+        Text(
+            text = value,
+            style = MaterialTheme.knTypography.figure,
+            color = MaterialTheme.knColors.textPrimary,
+            modifier = Modifier.padding(top = MaterialTheme.knSpacing.xs),
+        )
+    }
+}
+
+/** `shared.css:1003` — `.divider { height: 1px; background: var(--border) }`. */
+@Composable
+private fun RenterDivider() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .height(1.dp)
+            .background(MaterialTheme.knColors.divider),
     )
 }
 
@@ -299,8 +468,26 @@ private fun PenyewaEmptySearch(
 }
 
 internal const val TAG_ADD = "penyewa-add"
+/**
+ * The bar's add button.
+ *
+ * Its own tag, because it and the empty state's action draw the same label and both can be on
+ * screen at once — the bar is always there. A shared tag would make `onNodeWithTag(TAG_ADD)`
+ * ambiguous the moment the list is empty, and a test asserting "the empty state's action" would
+ * silently resolve to the bar's. `KontrakScreen` records the same trap.
+ */
+internal const val TAG_ADD_ACTION = "penyewa-add-action"
 internal const val TAG_EMPTY_LIST = "penyewa-empty-list"
 internal const val TAG_EMPTY_SEARCH = "penyewa-empty-search"
+
+/** The edit verb inside the detail pane; the row selects rather than edits. */
+internal const val TAG_DETAIL_EDIT = "penyewa-detail-edit"
+
+/** The screen's own search field, now in the top bar rather than a row beneath it. */
+internal const val TAG_SEARCH = "penyewa-search"
+
+/** `renters.html:29` — the field's `max-width`. */
+private val SearchPillMaxWidth = 280.dp
 
 /** The single banner, whatever its tone — so one test can address it. */
 internal const val TAG_BANNER = "penyewa-banner"
@@ -324,6 +511,7 @@ private fun PenyewaScreenPreview() {
             onQueryChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onErrorDismiss = {},
         )

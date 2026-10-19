@@ -187,6 +187,13 @@
     <string name="action_back">Kembali</string>
     <string name="action_edit">Ubah</string>
     <string name="action_delete">Hapus</string>
+    <!--
+      The theme button names where it takes you, not where you are: a moon while the app is light
+      means "tap to go dark". The prototype's own button draws the current theme, which is what a
+      reader has to learn to reverse.
+    -->
+    <string name="action_theme_to_dark">Mode gelap</string>
+    <string name="action_theme_to_light">Mode terang</string>
 
     <!-- MainActivity placeholder until Story 2.2 replaces it -->
     <string name="home_placeholder_title">Klinik.Net</string>
@@ -255,6 +262,29 @@
     <string name="kendaraan_edit">Ubah</string>
     <!-- The row's edit affordance, spoken: names the car it belongs to. -->
     <string name="kendaraan_edit_description">Ubah %1$s</string>
+
+    <!--
+      The four summary cards above the list — `cars.html:155-167`, wording kept.
+    -->
+    <string name="kendaraan_summary_total">Total armada</string>
+    <string name="kendaraan_summary_total_meta">%1$d unit terdaftar</string>
+    <string name="kendaraan_summary_rented">Disewa</string>
+    <string name="kendaraan_summary_rented_meta">%1$s utilisasi</string>
+    <string name="kendaraan_summary_available">Tersedia</string>
+    <string name="kendaraan_summary_available_meta">Siap disewa</string>
+    <string name="kendaraan_summary_potential">Potensi harian</string>
+    <string name="kendaraan_summary_potential_meta">Rata-rata %1$s/hari</string>
+
+    <!-- The detail pane — `cars.html:236-297`. -->
+    <string name="kendaraan_detail_year">Tahun %1$d</string>
+    <string name="kendaraan_detail_rate">Tarif harian</string>
+    <string name="kendaraan_detail_status">Status saat ini</string>
+    <string name="kendaraan_detail_notes">Catatan</string>
+    <string name="kendaraan_detail_contract_title">Kontrak aktif</string>
+    <string name="kendaraan_detail_renter">Penyewa</string>
+    <string name="kendaraan_detail_phone">Telepon</string>
+    <string name="kendaraan_detail_start">Mulai</string>
+    <string name="kendaraan_detail_schedule">Jadwal</string>
 
     <!-- Form sheet -->
     <string name="kendaraan_form_title_new">Tambah Mobil</string>
@@ -374,6 +404,16 @@
     <!-- Actions -->
     <string name="penyewa_add">Tambah Penyewa</string>
     <string name="penyewa_edit">Ubah</string>
+
+    <!-- The detail pane — `renters.html:202-279`. -->
+    <string name="penyewa_detail_phone">Telepon</string>
+    <string name="penyewa_detail_emergency">Kontak darurat</string>
+    <string name="penyewa_detail_account">Rekening</string>
+    <string name="penyewa_detail_contract_title">Kontrak sewa aktif</string>
+    <string name="penyewa_detail_vehicle">Mobil</string>
+    <string name="penyewa_detail_rate">Tarif</string>
+    <string name="penyewa_detail_start">Mulai</string>
+    <string name="penyewa_detail_schedule">Jadwal</string>
     <!-- The row's edit affordance, spoken: names the person it belongs to. -->
     <string name="penyewa_edit_description">Ubah %1$s</string>
 
@@ -1132,12 +1172,33 @@
     <string name="tunggakan_risk_kritis">Kritis</string>
 
     <!--
+      The four summary cards above the panes — `arrears.html:119-135`. The first is the accented
+      one: total arrears is the figure the owner opened this screen for.
+    -->
+    <string name="tunggakan_summary_total">Total tunggakan</string>
+    <string name="tunggakan_summary_total_meta">%1$d penyewa dari %2$d kontrak</string>
+    <string name="tunggakan_summary_critical">Kritis (7+ hari)</string>
+    <string name="tunggakan_summary_attention">Perhatian (3-6 hari)</string>
+    <string name="tunggakan_summary_light">Ringan (1-2 hari)</string>
+
+    <!-- The bar's first chip; the other four reuse the ladder labels above. -->
+    <string name="tunggakan_filter_all">Semua</string>
+
+    <!--
       The empty state. The body says what to do, per the epic context's rule that empty must
       be an instruction rather than an absence — and "semua lunas" is the useful reading here,
       because the common case for this screen being empty is that nobody owes anything.
     -->
     <string name="tunggakan_empty_title">Tidak ada tunggakan</string>
     <string name="tunggakan_empty_body">Semua sewa sudah lunas. Kalau ada penyewa yang owe, tunggakannya muncul di sini setelah dicatat dari layar Kontrak.</string>
+
+    <!--
+      The other emptiness: nothing in the chosen risk band, while other bands have rows. A
+      distinct message from `tunggakan_empty_title`, because "nobody owes you anything" and
+      "nobody in this band owes you anything" need opposite next steps.
+    -->
+    <string name="tunggakan_empty_filtered_title">Tidak ada di kategori ini</string>
+    <string name="tunggakan_empty_filtered_body">Ada tunggakan di kategori lain. Pilih “Semua” untuk melihat semuanya.</string>
 
     <!--
       The detail pane, landscape. `%1$s` the renter's name, `%2$s` the plate.

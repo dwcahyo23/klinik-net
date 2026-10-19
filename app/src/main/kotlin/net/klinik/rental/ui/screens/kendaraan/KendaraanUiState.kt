@@ -1,6 +1,7 @@
 package net.klinik.rental.ui.screens.kendaraan
 
 import net.klinik.rental.domain.model.Vehicle
+import java.time.DayOfWeek
 import net.klinik.rental.ui.asSearchNeedle
 import net.klinik.rental.ui.matchesSearch
 
@@ -102,9 +103,33 @@ data class KendaraanUiState(
     val form: VehicleFormState? = null,
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
+    /**
+     * The vehicle whose detail pane is showing, or `null` for "nothing chosen yet".
+     *
+     * Held as an **id**, not a `VehicleRow`: a row is rebuilt from every emission, and a held row
+     * would go stale the moment the owner renames a car in the pane beside it.
+     */
+    val selectedVehicleId: String? = null,
+    /** The four summary figures above the list — `cars.html:155-167`. */
+    val summary: FleetSummary = FleetSummary(),
+    /** The open contract behind the selected vehicle, or `null` when it is not rented. */
+    val selectedContract: VehicleContractFacts? = null,
 ) {
     /** The rows the list renders: query, then status filter. */
     val visibleRows: List<VehicleRow> = filterByStatus(matchesQuery(rows, query), filter)
+
+    /**
+     * The row the detail pane shows.
+     *
+     * ## Why this falls back to the first visible row
+     *
+     * Because `cars.html:202` does exactly that — `if (!selectedId || !cars.find(...)) selectedId
+     * = cars[0].id` — and the alternative is a pane that sits empty on arrival while a list of
+     * cars is plainly there. The fallback is also what keeps the pane honest when a filter hides
+     * the selection: the owner sees the first car of the list they can actually see.
+     */
+    val selectedRow: VehicleRow?
+        get() = visibleRows.firstOrNull { it.vehicle.id == selectedVehicleId } ?: visibleRows.firstOrNull()
 
     /**
      * Whether the empty state applies.
@@ -122,6 +147,54 @@ data class KendaraanUiState(
     /** The subtitle on the top bar: how many cars are in the fleet. */
     val fleetCount: Int get() = rows.size
 }
+
+/**
+ * The four figures in the summary row — `cars.html:147-167`.
+ *
+ * Every one is derived from [KendaraanUiState.rows] in the ViewModel, so the cards and the list
+ * are one read. The figures arrive pre-formatted for the reason every other money value in this
+ * app does: `formatRupiah` runs once.
+ *
+ * @property total registered vehicles.
+ * @property rented vehicles, and the utilisation percentage `rented / total`.
+ * @property available vehicles.
+ * @property potentialText the daily income if every non-servicing car were rented.
+ * @property averageText the mean daily rate across the whole fleet.
+ */
+data class FleetSummary(
+    val total: Int = 0,
+    val rented: Int = 0,
+    val available: Int = 0,
+    val utilisationText: String = "",
+    val potentialText: String = "",
+    val averageText: String = "",
+)
+
+/**
+ * What the detail pane needs about a vehicle's open contract.
+ *
+ * ## Why these five facts and not the whole `Contract`
+ *
+ * Because the pane shows a renter's name, a plate, a rate and a start date — and nothing else on
+ * a `Contract` is drawn. Passing the domain object would invite the pane to start deriving from
+ * it, which is the second-derivation defect this repo keeps finding.
+ *
+ * @property renterName the person currently renting, already joined.
+ * @property renterPhone their number, for the pane's call action.
+ * @property startText the contract's start date, pre-formatted.
+ * @property restDay the one day off per week, or `null` for a seven-day week. Carried as the
+ *   domain value rather than as a label so the pane resolves the same string resource the
+ *   contract screen's own badge uses — two spellings of one schedule is how a badge and a date
+ *   beside it end up naming different days.
+ * @property rateText the frozen daily rate.
+ */
+data class VehicleContractFacts(
+    val renterName: String,
+    val renterPhone: String,
+    val startText: String,
+    val restDay: DayOfWeek?,
+    val rateText: String,
+)
 
 /**
  * The vehicle form's own state, held by the ViewModel.

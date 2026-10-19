@@ -8,11 +8,16 @@ import kotlinx.coroutines.flow.SharingStarted
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.flowOf
 import kotlinx.coroutines.flow.map
 import kotlinx.coroutines.flow.onStart
 import kotlinx.coroutines.flow.stateIn
 import kotlinx.coroutines.launch
+import net.klinik.rental.data.repository.ContractRepository
+import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.domain.model.Contract
+import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.parse.parseRupiahInput
 import net.klinik.rental.domain.validation.DuplicatePlateException
@@ -20,6 +25,7 @@ import net.klinik.rental.domain.validation.InvalidAmountException
 import net.klinik.rental.domain.validation.VehicleHasActiveContractException
 import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.strings.RStrings
+import java.time.Clock
 
 /**
  * Owns the fleet screen's state.
@@ -42,6 +48,29 @@ import net.klinik.rental.ui.strings.RStrings
 class KendaraanViewModel(
     private val repository: VehicleRepository,
     private val strings: RStrings,
+    /**
+     * The contracts behind the rented plates.
+     *
+     * Optional so the two existing tests — which build this ViewModel against a vehicle
+     * repository alone — keep compiling, and so a caller that only wants the list can omit it.
+     * When it is absent the detail pane simply never shows a contract, which is the correct
+     * rendering for a fleet with nothing rented.
+     *
+     * It exists because `observeRentedPlates()` returns a `Set<String>` of plates: enough to
+     * derive a status, and nothing about *who* is renting. The pane needs the renter's name and
+     * number, and a second reader of `contract` in the ViewModel is exactly the pattern
+     * `KontrakViewModel` already uses for its own joins.
+     */
+    private val contracts: ContractRepository? = null,
+    /**
+     * The renters, for the detail pane's name and phone.
+     *
+     * Optional for the same reason [contracts] is. Joined in Kotlin rather than by a `@Query`
+     * with a JOIN, which would put a second reader of `renter` beside `observeRenters()` — the
+     * pattern `KontrakViewModel` and `TunggakanViewModel` already establish.
+     */
+    private val renters: RenterRepository? = null,
+    private val clock: Clock = Clock.systemDefaultZone(),
 ) : ViewModel() {
 
     private val query = MutableStateFlow("")
@@ -49,6 +78,14 @@ class KendaraanViewModel(
     private val form = MutableStateFlow<VehicleFormState?>(null)
     private val errorMessage = MutableStateFlow<String?>(null)
     private val message = MutableStateFlow<String?>(null)
+
+    /**
+     * Which vehicle the detail pane is showing.
+     *
+     * `null` means "nothing chosen yet", and [KendaraanUiState.selectedRow] falls back to the
+     * first visible row — the prototype's own rule (`cars.html:202`).
+     */
+    private val selectedVehicleId = MutableStateFlow<String?>(null)
 
     /**
      * "Has the fleet read not happened yet", as a flow rather than a flag.
@@ -80,41 +117,60 @@ class KendaraanViewModel(
      * the lambda an `Array<Any?>` and push the inference problem into the body.
      */
     val uiState: StateFlow<KendaraanUiState> = combine(
-        vehiclesWithLoadFlag(),
-        repository.observeRentedPlates(),
-        query,
-        filter,
-    ) { (vehicles, hasEmitted), rentedPlates, currentQuery, currentFilter ->
-        val rows = vehicles.map { vehicle ->
-            VehicleRow(
-                vehicle = vehicle,
-                status = VehicleStatus.of(
-                    isServis = vehicle.isServis,
-                    hasOpenContract = vehicle.plate in rentedPlates,
-                ),
-                // `formatRupiah` here and nowhere else: the only money-to-text
-                // path, so a rate cannot look different on two screens.
-                rateText = formatRupiah(vehicle.dailyRate),
+        combine(
+            vehiclesWithLoadFlag(),
+            repository.observeRentedPlates(),
+            query,
+            filter,
+            contracts?.observeContracts() ?: flowOf(emptyList()),
+        ) { (vehicles, hasEmitted), rentedPlates, currentQuery, currentFilter, openContracts ->
+            val rows = vehicles.map { vehicle ->
+                VehicleRow(
+                    vehicle = vehicle,
+                    status = VehicleStatus.of(
+                        isServis = vehicle.isServis,
+                        hasOpenContract = vehicle.plate in rentedPlates,
+                    ),
+                    // `formatRupiah` here and nowhere else: the only money-to-text
+                    // path, so a rate cannot look different on two screens.
+                    rateText = formatRupiah(vehicle.dailyRate),
+                )
+            }
+            FleetSnapshot(
+                rows = rows,
+                query = currentQuery,
+                filter = currentFilter,
+                isLoading = !hasEmitted,
+                contracts = openContracts,
+                startTextOf = { contract -> strings.formatExceptionDate(contract.startDate) },
             )
-        }
-        // `FleetSnapshot(rows, query, filter, isLoading)` rather than returning the
-        // finished state, because the form and the error message are combined
-        // separately.
-        FleetSnapshot(rows, currentQuery, currentFilter, !hasEmitted)
+        },
+        renters?.observeRenters() ?: flowOf(emptyList()),
+        form,
+        errorMessage,
+        selectedVehicleId,
+    ) { fleet, renterList, currentForm, error, selection ->
+        val rentersById = renterList.associateBy { it.id }
+        val selected = fleet.rows.firstOrNull { it.vehicle.id == selection }
+            ?: fleet.rows.firstOrNull()
+
+        KendaraanUiState(
+            rows = fleet.rows,
+            query = fleet.query,
+            filter = fleet.filter,
+            // Counted over the query-filtered set, so a chip's number and the
+            // list below it can never disagree.
+            counts = countByStatus(matchesQuery(fleet.rows, fleet.query)),
+            form = currentForm,
+            errorMessage = error,
+            isLoading = fleet.isLoading,
+            selectedVehicleId = selected?.vehicle?.id,
+            summary = fleet.summary(),
+            selectedContract = selected?.vehicle?.let { vehicle ->
+                fleet.contractFactsFor(vehicle, rentersById)
+            },
+        )
     }
-        .combine(combine(form, errorMessage) { currentForm, error -> FormSnapshot(currentForm, error) }) { fleet, formSnapshot ->
-            KendaraanUiState(
-                rows = fleet.rows,
-                query = fleet.query,
-                filter = fleet.filter,
-                // Counted over the query-filtered set, so a chip's number and the
-                // list below it can never disagree.
-                counts = countByStatus(matchesQuery(fleet.rows, fleet.query)),
-                form = formSnapshot.form,
-                errorMessage = formSnapshot.error,
-                isLoading = fleet.isLoading,
-            )
-        }
         // Distinct *after* the projection, so a Room emission that produces an
         // identical list does not push a new state downstream and recompose
         // every row for no visible change.
@@ -144,12 +200,56 @@ class KendaraanViewModel(
         val query: String,
         val filter: VehicleFilter,
         val isLoading: Boolean,
-    )
+        val contracts: List<Contract>,
+        /** Carried so this projection can format a date without reaching into the outer class. */
+        val startTextOf: (Contract) -> String,
+    ) {
+        /** `cars.html:147-167` — four figures over the same rows the list draws. */
+        fun summary(): FleetSummary {
+            val total = rows.size
+            val rented = rows.count { it.status == VehicleStatus.Tersewa }
+            val available = rows.count { it.status == VehicleStatus.Tersedia }
+            val nonServicing = rows.filter { it.status != VehicleStatus.Servis }
+            return FleetSummary(
+                total = total,
+                rented = rented,
+                available = available,
+                // A fleet with no cars has no utilisation; `0%` is a figure, not a division
+                // by zero dressed up.
+                utilisationText = if (total == 0) "0%" else "${rented * 100 / total}%",
+                potentialText = formatRupiah(nonServicing.sumOf { it.vehicle.dailyRate }),
+                averageText = formatRupiah(
+                    if (total == 0) 0 else rows.sumOf { it.vehicle.dailyRate } / total,
+                ),
+            )
+        }
 
-    /** The interaction half: the open form and the last refusal's message. */
+        /** The open contract behind [vehicle], or `null` when it is not rented. */
+        fun contractFactsFor(
+            vehicle: Vehicle,
+            rentersById: Map<String, Renter>,
+        ): VehicleContractFacts? {
+            val contract = contracts.firstOrNull {
+                it.vehicleId == vehicle.id && it.endDate == null
+            } ?: return null
+            val renter = rentersById[contract.renterId] ?: return null
+            return VehicleContractFacts(
+                renterName = renter.name,
+                renterPhone = renter.phone,
+                // The same formatter the contract screen's exception rows use, so a start
+                // date cannot be spelled two ways in one app.
+                startText = startTextOf(contract),
+                restDay = contract.restDay,
+                rateText = formatRupiah(contract.dailyRate),
+            )
+        }
+    }
+
+    /** The interaction half: the open form, the last refusal, and the pane's selection. */
     private data class FormSnapshot(
         val form: VehicleFormState?,
         val error: String?,
+        val selection: String?,
     )
 
     /** A transient confirmation. Success does not change screen state. */
@@ -169,6 +269,23 @@ class KendaraanViewModel(
 
     fun clearQuery() {
         query.value = ""
+    }
+
+    /**
+     * Selects the vehicle whose detail the pane shows.
+     *
+     * Tapping the same row again **keeps** it selected rather than clearing, unlike
+     * `TunggakanViewModel.onSelect`. The difference is the pane: there, the owner needs a way to
+     * dismiss a pane beside the list; here the pane is the list's other half and an empty one
+     * beside a full list is not a state `cars.html` has.
+     */
+    fun select(vehicleId: String) {
+        selectedVehicleId.value = vehicleId
+    }
+
+    /** Opens the edit sheet for whatever the pane is showing — the prototype's pane button. */
+    fun editSelected() {
+        uiState.value.selectedRow?.let { openEditForm(it.vehicle) }
     }
 
     // ------------------------------------------------------------------- form

@@ -46,9 +46,28 @@ data class PenyewaUiState(
      */
     val errorMessage: String? = null,
     val isLoading: Boolean = false,
+    /**
+     * The renter whose detail pane is showing, or `null` for "nothing chosen yet".
+     *
+     * An **id**, not a row: rows are rebuilt from every emission, and a held row would go stale
+     * the moment the owner edits the person it names.
+     */
+    val selectedRenterId: String? = null,
+    /** The open contract behind the selected renter, or `null` when they are not renting. */
+    val selectedContract: RenterContractFacts? = null,
 ) {
     /** The rows the list renders: the query narrowed, in place. */
     val visibleRows: List<RenterRow> = filterByQuery(rows, query)
+
+    /**
+     * The row the detail pane shows.
+     *
+     * Falls back to the first visible row, which is `renters.html`'s own rule: a pane that sits
+     * empty on arrival while a list of people is plainly there reads as broken.
+     */
+    val selectedRow: RenterRow?
+        get() = visibleRows.firstOrNull { it.renter.id == selectedRenterId }
+            ?: visibleRows.firstOrNull()
 
     /**
      * Whether the empty state applies.
@@ -74,6 +93,29 @@ data class PenyewaUiState(
      */
     val renterCount: Int get() = rows.size
 }
+
+/**
+ * What the renter detail pane needs about the person's open contract.
+ *
+ * `renters.html:202-279`: a large avatar beside the name, three small figures, then the active
+ * contract — its car, its rate, its schedule. The figures the prototype adds (total setoran,
+ * tunggakan, jumlah transaksi) come from the payments repository and are `TunggakanScreen`'s and
+ * `KontrakScreen`'s subject; a second read of them here would be a second answer to one bill, so
+ * the pane shows the contract and leaves the money to the screens that own it.
+ *
+ * @property vehiclePlate the car being rented.
+ * @property vehicleText `Toyota Avanza 2023`, already joined.
+ * @property rateText the frozen daily rate.
+ * @property startText the contract's start date, pre-formatted.
+ * @property restDay the one day off per week, or `null` for a seven-day week.
+ */
+data class RenterContractFacts(
+    val vehiclePlate: String,
+    val vehicleText: String,
+    val rateText: String,
+    val startText: String,
+    val restDay: java.time.DayOfWeek?,
+)
 
 /**
  * The renter form's own state, held by the ViewModel.

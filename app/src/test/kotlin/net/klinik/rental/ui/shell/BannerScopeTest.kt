@@ -119,6 +119,7 @@ class BannerScopeTest {
             onFilterChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onCloseForm = {},
             onFormChange = { it },
@@ -132,6 +133,7 @@ class BannerScopeTest {
             onQueryChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onCloseForm = {},
             onFormChange = { it },
@@ -241,6 +243,7 @@ class BannerScopeTest {
         tunggakan = Screens.Tunggakan(
             state = net.klinik.rental.ui.screens.tunggakan.TunggakanUiState(),
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = {},
             onReminderChange = {},

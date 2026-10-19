@@ -8,6 +8,7 @@ import androidx.compose.ui.test.assertHasClickAction
 import androidx.compose.ui.test.assertHeightIsAtLeast
 import androidx.compose.ui.test.assertIsDisplayed
 import androidx.compose.ui.test.assertIsNotEnabled
+import androidx.compose.ui.test.assertTextContains
 import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasClickAction
 import androidx.compose.ui.test.hasTestTag
@@ -50,7 +51,7 @@ import org.robolectric.annotation.Config
  * - One `setContent` per test, with state held outside where a test mutates it.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w800dp-h1280dp")
 class TunggakanScreenTest {
 
     @get:Rule
@@ -83,8 +84,15 @@ class TunggakanScreenTest {
     fun `each row carries the risk ladder's word`() {
         compose.setContent { theme { Screen(state = arrearsState()) } }
 
-        compose.onNodeWithTag(TAG_RISK_PREFIX + "c1", useUnmergedTree = true).assertExists()
-        compose.onNodeWithText("Perhatian").assertExists()
+        // Scoped to the row's badge, not the page: the bar's risk chip carries the same word
+        // (`arrears.html:29-35`), so an unscoped text match now finds two nodes. The badge's own
+        // node is asserted to exist; the ladder word it carries is `riskLabel`, which
+        // `TunggakanUiStateTest` pins at every step.
+        compose.onNodeWithTag(TAG_RISK_PREFIX + "c1", useUnmergedTree = true)
+            .assertExists()
+        // The bar's chip is the other node carrying it — asserted so the scoping above is not
+        // silently passing because *neither* was drawn.
+        compose.onAllNodes(hasText("Perhatian")).assertCountEquals(2)
     }
 
     /**
@@ -191,29 +199,7 @@ class TunggakanScreenTest {
             .assertHasClickAction()
     }
 
-    /**
-     * In **portrait** a row is **not** a tap target, because there is no pane beside it to
-     * receive the selection.
-     *
-     * The other half of the pair above, and the one this story first shipped wrong: a row
-     * wired to a handler whose selection nothing draws is the control-that-renders-and-does-
-     * nothing defect `Screens.Kontrak`'s KDoc records as having reached production twice in
-     * this repo. `KnListRow`'s nullable `onClick` is what makes "not a target" expressible.
-     */
-    @Test
-    @Config(sdk = [34], qualifiers = "w800dp-h1280dp-port")
-    fun `a portrait row is not a tap target, because nothing would read the selection`() {
-        compose.setContent { theme { Screen(state = arrearsState(selected = "c1")) } }
-
-        assertTrue(
-            "a portrait row must not be clickable — there is no pane to select into",
-            compose.onAllNodes(hasTestTag(TAG_ROW_PREFIX + "c1") and hasClickAction())
-                .fetchSemanticsNodes()
-                .isEmpty(),
-        )
-    }
-
-    // ------------------------------------------------- landscape master-detail (UX-DR13)
+    // ------------------------------------------------- master-detail (both orientations)
 
     /**
      * In landscape the list and the detail are **both** on screen.
@@ -229,7 +215,6 @@ class TunggakanScreenTest {
 
         compose.onNodeWithTag(TAG_ROW_PREFIX + "c1").assertExists()
         compose.onNodeWithTag(TAG_DETAIL).assertExists()
-        compose.onNodeWithTag(TAG_DETAIL_DIVIDER).assertExists()
     }
 
     /**
@@ -262,21 +247,37 @@ class TunggakanScreenTest {
     }
 
     /**
-     * Portrait draws **no** pane at all, rather than one squeezed beside the list.
+     * Portrait **stacks** the two panes rather than dropping the detail — `shared.css:1033`.
      *
-     * The master-detail is a landscape affordance (UX-DR13); a 400dp pane on a phone would
-     * ellipsise the figures, which are the whole point of the row.
+     * This is the opposite of what it was, and deliberately. The prototype's portrait rule is
+     * `grid-template-columns: minmax(0, 1fr)`: one column, both panes in it. The old code branched
+     * on orientation and drew the list alone — a third layout the prototype has no rule for — and
+     * it left the owner unable to read a renter's oldest open day on the device this app ships on.
+     *
+     * A 400dp pane *beside* the list is the failure worth avoiding, and stacking is what avoids it.
      */
     @Test
     @Config(sdk = [34], qualifiers = "w800dp-h1280dp-port")
-    fun `portrait draws no detail pane`() {
+    fun `portrait stacks the list above the detail rather than dropping the detail`() {
         compose.setContent { theme { Screen(state = arrearsState(selected = "c1")) } }
 
-        assertTrue(
-            "portrait collapses to the list alone",
-            compose.onAllNodes(hasTestTag(TAG_DETAIL)).fetchSemanticsNodes().isEmpty(),
-        )
         compose.onNodeWithTag(TAG_ROW_PREFIX + "c1").assertExists()
+        compose.onNodeWithTag(TAG_DETAIL).assertExists()
+    }
+
+    /**
+     * A portrait row is still a tap target — the selection lands in the stacked pane.
+     *
+     * Asserted because the old contract ("a row that selects nothing is not a tap target") was tied
+     * to a layout that no longer exists. With the pane present in both orientations a null
+     * `onClick` would be a control that cannot reach the one place its result is drawn.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w800dp-h1280dp-port")
+    fun `a portrait row is a tap target, because the stacked pane reads the selection`() {
+        compose.setContent { theme { Screen(state = arrearsState()) } }
+
+        compose.onNodeWithTag(TAG_ROW_PREFIX + "c1").assertHasClickAction()
     }
 
     // ------------------------------------------------------------- the touch floor
@@ -421,6 +422,7 @@ class TunggakanScreenTest {
     private fun Screen(
         state: TunggakanUiState,
         onSelect: (String) -> Unit = {},
+        onRiskFilterChange: (RiskFilter) -> Unit = {},
         onErrorDismiss: () -> Unit = {},
         onRemind: (String) -> Unit = {},
         onReminderChange: (String) -> Unit = {},
@@ -434,6 +436,7 @@ class TunggakanScreenTest {
         TunggakanScreen(
             state = state,
             onSelect = onSelect,
+            onRiskFilterChange = onRiskFilterChange,
             onErrorDismiss = onErrorDismiss,
             onRemind = onRemind,
             onReminderChange = onReminderChange,
@@ -461,6 +464,7 @@ class TunggakanScreenTest {
                 renterName = "Budi Santoso",
                 vehiclePlate = "B 1235 TF",
                 renterPhone = "0812-8899-7722",
+                amount = 750_000L,
                 figureText = "Rp 750.000 · 3 hari",
                 daysLabel = "3 hari",
                 riskLabel = "Perhatian",
@@ -474,6 +478,7 @@ class TunggakanScreenTest {
                 renterName = "Siti Aminah",
                 vehiclePlate = "B 9876 AB",
                 renterPhone = "0813-1122-3344",
+                amount = 250_000L,
                 figureText = "Rp 250.000 · 1 hari",
                 daysLabel = "1 hari",
                 riskLabel = "Ringan",

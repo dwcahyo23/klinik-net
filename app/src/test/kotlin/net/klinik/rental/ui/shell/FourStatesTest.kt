@@ -5,10 +5,12 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.ui.semantics.SemanticsProperties
 import androidx.compose.ui.test.SemanticsMatcher
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import org.junit.Assert.assertTrue
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.Renter
@@ -38,7 +40,6 @@ import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.pengaturan.TAG_BANNER as TAG_BANNER_PENGATURAN
 import net.klinik.rental.ui.screens.pengaturan.TAG_EMPTY as TAG_EMPTY_PENGATURAN
 import net.klinik.rental.ui.theme.KlinikNetTheme
-import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
@@ -299,7 +300,15 @@ class FourStatesTest {
             // The rows are still there. An error that replaced the list is a
             // different state, and the criterion forbids it — the owner must keep
             // seeing what is already recorded.
-            compose.onNodeWithText(screen.rowText).assertExists()
+            //
+            // `atLeastOne` rather than `onNodeWithText`: the master-detail's pane repeats the
+            // selected row's name or plate in its own heading (`cars.html:256`,
+            // `renters.html:219`), so an exact-match assertion finds two nodes on the screens
+            // that have a pane. The claim is "the row is still drawn", not "it is drawn once".
+            assertTrue(
+                "${screen.name}: the refused screen must still draw its row",
+                compose.onAllNodes(hasText(screen.rowText)).fetchSemanticsNodes().isNotEmpty(),
+            )
         }
     }
 
@@ -335,8 +344,12 @@ class FourStatesTest {
         eachScreen(ScreenState.Confirmed) { screen ->
             compose.onNodeWithText(CONFIRM_COPY).assertExists()
             // "Snackbar tidak mengubah state layar" — the whole criterion in one
-            // assertion: the list did not move.
-            compose.onNodeWithText(screen.rowText).assertExists()
+            // assertion: the list did not move. `atLeastOne` for the same reason the refusal
+            // case above gives: the pane repeats the selected row's text.
+            assertTrue(
+                "${screen.name}: the confirmed screen must still draw its row",
+                compose.onAllNodes(hasText(screen.rowText)).fetchSemanticsNodes().isNotEmpty(),
+            )
         }
     }
 
@@ -417,6 +430,7 @@ class FourStatesTest {
             onFilterChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},
@@ -434,6 +448,7 @@ class FourStatesTest {
             onQueryChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             snackbarMessage = snackbar,
             onSnackbarDismiss = {},

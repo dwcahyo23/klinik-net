@@ -1,17 +1,16 @@
 package net.klinik.rental.ui.shell
 
-import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
-import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
@@ -25,9 +24,6 @@ import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSearchBar
 import net.klinik.rental.ui.theme.knColors
-import net.klinik.rental.ui.theme.knElevation
-import net.klinik.rental.ui.theme.knRadii
-import net.klinik.rental.ui.theme.knShadow
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
 
@@ -39,8 +35,15 @@ import net.klinik.rental.ui.theme.knTypography
  * Because a search result is a **shortcut to a place that already exists**, not a place. A
  * results screen would need a back stack entry, a route, and a way back that is not the same
  * as the destination the owner came from — all for a list that disappears the moment the
- * field is cleared. Drawing it beneath the bar keeps the destination underneath untouched, so
- * dismissing the results restores exactly where the owner was.
+ * field is cleared.
+ *
+ * ## Why it is a pill and a dropdown, and not a row
+ *
+ * It used to be a full-width row drawn above the whole shell, which pushed every screen down by
+ * 64dp and put two search fields on the two screens that already had one. The prototype keeps one
+ * field **inside** the 72dp top bar (`index.html:92-97`); this follows it, and the destination
+ * underneath is never moved. The panel is a `DropdownMenu` so it anchors to the pill, dismisses on
+ * an outside tap and on Back, and cannot reflow the bar it hangs from.
  *
  * ## Why the results are a plain column and not a `LazyColumn`
  *
@@ -68,41 +71,46 @@ internal fun GlobalSearchBar(
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
-    val kn = MaterialTheme.knColors
 
-    Column(modifier = modifier.fillMaxWidth()) {
+    Box(modifier = modifier) {
         KnSearchBar(
             query = state.query,
             onQueryChange = onQueryChange,
             onClear = onClear,
             placeholder = stringResource(R.string.search_global_placeholder),
+            // `index.html:92` — `style="max-width:280px"`. Capped rather than weighted, so the pill
+            // looks the same on a 360dp phone and a 711dp tablet instead of eating the bar.
             modifier = Modifier
-                .padding(horizontal = spacing.lg, vertical = spacing.sm)
+                .widthIn(max = SearchBarMaxWidth)
                 .testTag(TAG_GLOBAL_SEARCH_FIELD),
         )
 
         // Nothing below the bar unless something was typed: an idle field that drew an empty
         // panel would look like a panel that failed to load.
-        if (!state.isActive || state.isLoading) return@Column
+        if (!state.isActive || state.isLoading) return@Box
 
-        Surface(
+        // Anchored to the field rather than laid out beneath it — the bar is 72dp tall, and a
+        // result set laid out *inside* it would either be clipped or shrink the title row. A
+        // `DropdownMenu` draws in its own window below its anchor, dismisses on an outside tap and
+        // on Back, and cannot push the destination down; the old full-width row could do all three
+        // of the things it now cannot.
+        DropdownMenu(
+            expanded = true,
+            onDismissRequest = onClear,
+            // **No bound here.** A `DropdownMenu` measures its content against an infinite
+            // height, so a `heightIn` on the menu throws "Vertically scrollable component was
+            // measured with an infinity maximum height" the moment the inner column scrolls.
+            // The bound belongs on the scrolling column itself.
             modifier = Modifier
-                .fillMaxWidth()
-                .padding(horizontal = spacing.lg)
-                // A bound rather than a height: a query matching one renter draws one row and
-                // a query matching everything draws what fits, and the overlay must never
-                // cover the whole destination.
-                .heightIn(max = SearchOverlayMaxHeight)
-                // Above the destination in *colour* as well as in stacking order: the overlay
-                // sits on the same window as the screen, so a flat card on a flat background
-                // would read as part of the list rather than as a result set.
-                .knShadow(MaterialTheme.knElevation.level2, RoundedCornerShape(MaterialTheme.knRadii.lg))
+                .width(SearchOverlayMaxWidth)
                 .testTag(TAG_GLOBAL_SEARCH_RESULTS),
-            shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
-            color = kn.bgCard,
         ) {
             Column(
                 modifier = Modifier
+                    // A bound rather than a height: a query matching one renter draws one row and
+                    // a query matching everything draws what fits, and the overlay must never
+                    // cover the whole destination.
+                    .heightIn(max = SearchOverlayMaxHeight)
                     .verticalScroll(rememberScrollState())
                     .padding(vertical = spacing.sm),
                 verticalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -162,6 +170,19 @@ private fun ResultRow(hit: SearchResult, onSelect: (SearchResult) -> Unit) {
 
 /** A bound on the result overlay, so a broad query cannot cover the destination. */
 private val SearchOverlayMaxHeight = 320.dp
+
+/**
+ * The panel's width.
+ *
+ * The prototype caps the *field* at 280px and lets results run as wide as the page. A dropdown is
+ * narrower than the page by design, and 360dp is wide enough for `B 1235 TF — Toyota Avanza` on one
+ * line before it ellipses. Fixed rather than `fillMaxWidth`, because the dropdown's parent is the
+ * 280dp pill and a match-parent width would make the two disagree the moment the cap changes.
+ */
+private val SearchOverlayMaxWidth = 360.dp
+
+/** `index.html:92` — `style="max-width:280px"`. */
+private val SearchBarMaxWidth = 280.dp
 
 internal const val TAG_GLOBAL_SEARCH_FIELD = "shell-search-field"
 internal const val TAG_GLOBAL_SEARCH_RESULTS = "shell-search-results"

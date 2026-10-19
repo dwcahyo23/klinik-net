@@ -1,12 +1,13 @@
 package net.klinik.rental.ui.screens.tunggakan
 
-import android.content.res.Configuration
+import android.content.Intent
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -16,14 +17,12 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
-import android.content.Intent
 import androidx.core.net.toUri
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
-import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
@@ -31,15 +30,23 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.CircleCheck
+import com.composables.icons.lucide.Clock
+import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.R
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.components.KnAvatar
 import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
+import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
+import net.klinik.rental.ui.components.KnKpiGrid
+import net.klinik.rental.ui.components.KnKpiIconLayout
+import net.klinik.rental.ui.components.KnKpiTile
 import net.klinik.rental.ui.components.KnListRow
+import net.klinik.rental.ui.components.KnMasterDetail
 import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTopBar
@@ -130,6 +137,7 @@ import net.klinik.rental.ui.theme.knTypography
 fun TunggakanScreen(
     state: TunggakanUiState,
     onSelect: (String) -> Unit,
+    onRiskFilterChange: (RiskFilter) -> Unit,
     onErrorDismiss: () -> Unit,
     onRemind: (String) -> Unit,
     onReminderChange: (String) -> Unit,
@@ -142,8 +150,6 @@ fun TunggakanScreen(
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
-    val isLandscape =
-        LocalConfiguration.current.orientation == Configuration.ORIENTATION_LANDSCAPE
 
     Surface(
         modifier = modifier.fillMaxSize(),
@@ -162,46 +168,48 @@ fun TunggakanScreen(
                 } else {
                     stringResource(R.string.tunggakan_count, state.renterCount)
                 },
+                // `arrears.html:29-35` — the risk chips live in the bar, beside the search pill
+                // the shell provides, not in a row above the page.
+                actions = {
+                    TunggakanRiskChips(
+                        selected = state.riskFilter,
+                        onSelect = onRiskFilterChange,
+                    )
+                },
             )
 
-            if (isLandscape) {
-                // Master-detail (UX-DR13). The list keeps its own width rather than
-                // `weight(1f)` on both, because a list squeezed to half a 1280dp tablet
-                // ellipses the figures — which are the whole point of the row.
-                Row(Modifier.fillMaxSize()) {
-                    ArrearsList(
-                        state = state,
-                        onSelect = onSelect,
-                        onRemind = onRemind,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .weight(LIST_WEIGHT_LANDSCAPE),
-                    )
-                    // A visible seam rather than a divider, so the two panes read as two
-                    // surfaces of one screen rather than one list that ended.
-                    Box(
-                        Modifier
-                            .fillMaxHeight()
-                            .padding(top = spacing.md, bottom = spacing.md)
-                            .testTag(TAG_DETAIL_DIVIDER),
-                    ) {
-                        Surface(
-                            color = MaterialTheme.knColors.border,
-                            modifier = Modifier.fillMaxSize(),
-                        ) {}
-                    }
-                    TunggakanDetail(
-                        row = state.selectedRow,
-                        modifier = Modifier
-                            .fillMaxHeight()
-                            .weight(DETAIL_WEIGHT_LANDSCAPE),
-                    )
+            // The page body — `shared.css:285-289`.
+            Column(
+                modifier = Modifier
+                    .weight(1f)
+                    .fillMaxWidth()
+                    .padding(spacing.xxl),
+                verticalArrangement = Arrangement.spacedBy(spacing.lg),
+            ) {
+                // `arrears.html:41` — four figures above the panes. Drawn only once the read
+                // has landed, and drawn nothing at all when it failed: four zeros on the screen
+                // that is about to say "nobody owes you anything" is the one place four zeros
+                // must never appear.
+                if (!state.isLoading && !state.isFailed) {
+                    ArrearsSummaryRow(state.summary)
                 }
-            } else {
-                // Portrait collapses to list → detail. There is no detail pane beside it, and
-                // this story builds no detail *destination*, so the row is handed `null` for
-                // its click rather than a handler whose selection nothing would draw.
-                ArrearsList(state = state, onSelect = null, onRemind = onRemind)
+
+                // The panes, in **both** orientations. The old code branched on
+                // `isLandscape` and drew a bare list in portrait, which is not what
+                // `shared.css:1033` does: it *stacks* the two panes, so the detail is still
+                // reachable on a narrow window rather than dropped.
+                KnMasterDetail(
+                    list = {
+                        ArrearsList(
+                            state = state,
+                            onSelect = onSelect,
+                            onRemind = onRemind,
+                        )
+                    },
+                    detail = {
+                        TunggakanDetail(row = state.selectedRow)
+                    },
+                )
             }
 
             // The banner is drawn over unchanged content, per the four-state rule. It sits
@@ -275,16 +283,117 @@ fun TunggakanScreen(
 }
 
 /**
+ * `arrears.html:112-136` — the four figures above the panes.
+ *
+ * The first card is **accented** (`kpi-accent`), and unlike every other KPI row in this app:
+ * total arrears is the one figure the owner opened this screen for, and the prototype says so
+ * with a brand edge. `Beranda` and `Laporan` refuse an accent because their four figures are the
+ * same kind of thing; here one of them is the question and three are its breakdown.
+ */
+@Composable
+private fun ArrearsSummaryRow(summary: ArrearsSummary) {
+    KnKpiGrid(
+        modifier = Modifier.testTag(TAG_SUMMARY),
+        tiles = listOf(
+            { KnKpiTile(
+                label = stringResource(R.string.tunggakan_summary_total),
+                value = summary.totalText,
+                meta = stringResource(
+                    R.string.tunggakan_summary_total_meta,
+                    summary.owingCount,
+                    summary.contractCount,
+                ),
+                icon = Lucide.CircleAlert,
+                iconTint = MaterialTheme.knColors.semantic.danger,
+                metaTint = MaterialTheme.knColors.semantic.danger,
+                iconLayout = KnKpiIconLayout.Corner,
+                // The one accent in the app. See this function's KDoc.
+                accent = true,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.tunggakan_summary_critical),
+                value = summary.criticalCount.toString(),
+                meta = summary.criticalText,
+                icon = Lucide.Clock,
+                iconTint = MaterialTheme.knColors.semantic.danger,
+                metaTint = MaterialTheme.knColors.semantic.danger,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.tunggakan_summary_attention),
+                value = summary.attentionCount.toString(),
+                meta = summary.attentionText,
+                icon = Lucide.Clock,
+                iconTint = MaterialTheme.knColors.semantic.warning,
+                metaTint = MaterialTheme.knColors.semantic.warning,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+            { KnKpiTile(
+                label = stringResource(R.string.tunggakan_summary_light),
+                value = summary.lightCount.toString(),
+                meta = summary.lightText,
+                icon = Lucide.Info,
+                iconTint = MaterialTheme.knColors.semantic.info,
+                metaTint = MaterialTheme.knColors.semantic.success,
+                iconLayout = KnKpiIconLayout.Corner,
+            ) },
+        ),
+    )
+}
+
+/** `arrears.html:29-35` — the five risk chips, in the top bar's actions slot. */
+@OptIn(ExperimentalLayoutApi::class)
+@Composable
+private fun TunggakanRiskChips(selected: RiskFilter, onSelect: (RiskFilter) -> Unit) {
+    FlowRow(
+        modifier = Modifier.testTag(TAG_RISK_CHIPS),
+        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.sm),
+        verticalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.xs),
+    ) {
+        RISK_FILTERS.forEach { filter ->
+            KnChip(
+                text = stringResource(riskFilterLabel(filter)),
+                selected = filter == selected,
+                onClick = { onSelect(filter) },
+                modifier = Modifier.testTag(riskFilterTag(filter)),
+            )
+        }
+    }
+}
+
+private val RISK_FILTERS = listOf(
+    RiskFilter.Semua,
+    RiskFilter.Kritis,
+    RiskFilter.Perhatian,
+    RiskFilter.Ringan,
+    RiskFilter.Lancar,
+)
+
+/**
+ * A chip's label.
+ *
+ * The ladder chips reuse `tunggakanRiskLabel`, the **same** string a row's badge resolves, so a
+ * chip and the badge under it cannot name different severities — the defect a duplicated set of
+ * literals invites and this file has to keep refusing.
+ */
+private fun riskFilterLabel(filter: RiskFilter): Int = when (filter) {
+    RiskFilter.Semua -> R.string.tunggakan_filter_all
+    RiskFilter.Kritis -> R.string.tunggakan_risk_kritis
+    RiskFilter.Perhatian -> R.string.tunggakan_risk_perhatian
+    RiskFilter.Ringan -> R.string.tunggakan_risk_ringan
+    RiskFilter.Lancar -> R.string.tunggakan_risk_lancar
+}
+
+/**
  * The list half, loading and empty states included.
  *
- * @param onSelect the row's click handler, or **`null` in portrait** — see the class KDoc.
- *   A nullable `onClick` is exactly what `KnListRow` already declares a null case for, so
- *   "not a tap target" is an expressible state rather than a live handler pointed at nothing.
+ * @param onSelect the row's click handler. Never `null` now: the detail pane is drawn in both
+ *   orientations (`shared.css:1033` stacks them), so a selection always has somewhere to land.
  */
 @Composable
 private fun ArrearsList(
     state: TunggakanUiState,
-    onSelect: ((String) -> Unit)?,
+    onSelect: (String) -> Unit,
     onRemind: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
@@ -296,14 +405,7 @@ private fun ArrearsList(
             // emission is an empty list, so without this the owner reads "Tidak ada
             // tunggakan" on every load — which on *this* screen is the claim "nobody owes
             // you anything", read on a screen that has not looked yet.
-            state.isLoading -> KnSkeletonList(
-                rows = SKELETON_ROWS,
-                modifier = Modifier.padding(
-                    start = spacing.lg,
-                    end = spacing.lg,
-                    top = spacing.lg,
-                ),
-            )
+            state.isLoading -> KnSkeletonList(rows = SKELETON_ROWS)
 
             // A failed calculation draws **nothing at all**, not even the empty
             // state. The empty state says "semua sewa sudah lunas" — that nobody owes
@@ -314,26 +416,35 @@ private fun ArrearsList(
             // sets by hand is not the same claim as a read that failed.
             state.isFailed -> Unit
 
-            state.isEmpty -> KnEmptyState(
-                title = stringResource(R.string.tunggakan_empty_title),
+            // Narrowed by the bar's chip, so an empty result can also be "nothing in this
+            // risk band" rather than "nothing at all". The message says which.
+            state.visibleRows.isEmpty() -> KnEmptyState(
+                title = stringResource(
+                    if (state.rows.isEmpty()) {
+                        R.string.tunggakan_empty_title
+                    } else {
+                        R.string.tunggakan_empty_filtered_title
+                    },
+                ),
                 // Says what to do, per the epic context: an empty state that only says
                 // "nothing" leaves the owner unsure whether to trust it or wait.
-                body = stringResource(R.string.tunggakan_empty_body),
+                body = stringResource(
+                    if (state.rows.isEmpty()) {
+                        R.string.tunggakan_empty_body
+                    } else {
+                        R.string.tunggakan_empty_filtered_body
+                    },
+                ),
                 icon = Lucide.CircleCheck,
             )
 
             else -> LazyColumn(
                 modifier = Modifier.fillMaxSize(),
-                contentPadding = PaddingValues(
-                    start = spacing.lg,
-                    end = spacing.lg,
-                    top = spacing.lg,
-                    bottom = spacing.colossal,
-                ),
+                contentPadding = PaddingValues(bottom = spacing.colossal),
                 verticalArrangement = Arrangement.spacedBy(spacing.sm),
             ) {
                 items(
-                    items = state.rows,
+                    items = state.visibleRows,
                     // Keyed on the contract id so a row leaving the list under a write
                     // does not shift the remaining rows' saved state onto another rental.
                     key = { it.contractId },
@@ -341,9 +452,7 @@ private fun ArrearsList(
                     ArrearsRowItem(
                         row = row,
                         selected = row.contractId == state.selectedContractId,
-                        // `null` in portrait, which `KnListRow` draws as an explicit
-                        // non-clickable row rather than as a live target that goes nowhere.
-                        onClick = onSelect?.let { handler -> { handler(row.contractId) } },
+                        onClick = { onSelect(row.contractId) },
                         onRemind = { onRemind(row.contractId) },
                     )
                 }
@@ -548,10 +657,6 @@ private fun DetailLine(label: String, value: String, testTag: String) {
 /** Rows drawn while loading. A list's worth, not one. */
 private const val SKELETON_ROWS = 5
 
-/** How the landscape row splits between list and detail. List first: it is the entry. */
-private const val LIST_WEIGHT_LANDSCAPE = 0.55f
-private const val DETAIL_WEIGHT_LANDSCAPE = 0.45f
-
 /** Row tags, keyed on the contract id so a test can address one row. */
 internal const val TAG_ROW_PREFIX = "tunggakan-row-"
 internal const val TAG_RISK_PREFIX = "tunggakan-risk-"
@@ -562,8 +667,15 @@ internal const val TAG_DETAIL_EMPTY = "tunggakan-detail-empty"
 internal const val TAG_DETAIL_AMOUNT = "tunggakan-detail-amount"
 internal const val TAG_DETAIL_DAYS = "tunggakan-detail-days"
 internal const val TAG_DETAIL_OLDEST = "tunggakan-detail-oldest"
-internal const val TAG_DETAIL_DIVIDER = "tunggakan-detail-divider"
 internal const val TAG_ERROR = "tunggakan-error"
+
+/** The four summary cards — `arrears.html:41`. */
+internal const val TAG_SUMMARY = "tunggakan-summary"
+
+/** The five risk chips in the top bar, and one chip's tag. */
+internal const val TAG_RISK_CHIPS = "tunggakan-risk-chips"
+
+internal fun riskFilterTag(filter: RiskFilter): String = "tunggakan-chip-${filter.name}"
 
 @Preview(showBackground = true, heightDp = 2400, widthDp = 1280)
 @Composable
@@ -577,6 +689,7 @@ private fun LandscapePreview() {
                         renterName = "Budi Santoso",
                         vehiclePlate = "B 1235 TF",
                         renterPhone = "0812-8899-7722",
+                        amount = 750000,
                         figureText = "Rp 750.000 · 3 hari",
                         daysLabel = "3 hari",
                         riskLabel = "Perhatian",
@@ -591,6 +704,7 @@ private fun LandscapePreview() {
                         vehiclePlate = "B 9876 AB",
                         renterPhone = "0812-8899-7722",
                         figureText = "Rp 3.500.000 · 14 hari",
+                        amount = 3_500_000,
                         daysLabel = "14 hari",
                         riskLabel = "Kritis",
                         tone = TunggakanUiState.toneFor(RiskLevel.KRITIS),
@@ -602,6 +716,7 @@ private fun LandscapePreview() {
                 selectedContractId = "c2",
             ),
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = {},
             onReminderChange = {},
@@ -627,6 +742,7 @@ private fun PortraitPreview() {
                         renterName = "Budi Santoso",
                         vehiclePlate = "B 1235 TF",
                         renterPhone = "0812-8899-7722",
+                        amount = 750000,
                         figureText = "Rp 750.000 · 3 hari",
                         daysLabel = "3 hari",
                         riskLabel = "Perhatian",
@@ -638,6 +754,7 @@ private fun PortraitPreview() {
                 ),
             ),
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = {},
             onReminderChange = {},
@@ -658,6 +775,7 @@ private fun EmptyPreview() {
         TunggakanScreen(
             state = TunggakanUiState(isLoading = false),
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = {},
             onReminderChange = {},

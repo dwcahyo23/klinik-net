@@ -45,6 +45,13 @@ data class ArrearsRow(
     val renterName: String,
     val vehiclePlate: String,
     /**
+     * The figure in whole rupiah.
+     *
+     * Carried beside [figureText] because the summary adds rows up, and parsing the formatted
+     * string back into a number would be a second money path that can disagree with the first.
+     */
+    val amount: Long,
+    /**
      * The renter's phone, as stored.
      *
      * Carried on the row rather than read when the reminder opens, for the reason the figures
@@ -152,6 +159,8 @@ data class TunggakanUiState(
     val errorMessage: String? = null,
     /** The reminder dialog, or `null` when it is closed. Story 4.2. */
     val reminder: ReminderUi? = null,
+    /** The risk chips on the top bar — `arrears.html:29-35`. */
+    val riskFilter: RiskFilter = RiskFilter.Semua,
 ) {
     /**
      * Whether the empty state applies.
@@ -177,7 +186,34 @@ data class TunggakanUiState(
     val renterCount: Int get() = if (isLoading || isFailed) 0 else rows.distinctBy { it.renterName }.size
 
     /**
-     * The row the detail pane shows, or `null`.
+     * The rows the list draws: the risk chip applied, then the domain's own order preserved.
+     *
+     * A filter over [rows] rather than a second sort: `inArrearsOrder` already answered "who do I
+     * contact first", and re-ordering here would be a second answer.
+     */
+    val visibleRows: List<ArrearsRow>
+        get() = riskFilter.level?.let { level -> rows.filter { it.risk == level } } ?: rows
+
+    /** The four summary figures — `arrears.html:112-136`. */
+    val summary: ArrearsSummary
+        get() {
+            fun sum(level: RiskLevel): Long = rows.filter { it.risk == level }
+                .sumOf { it.amount }
+            return ArrearsSummary(
+                totalText = formatRupiah(rows.sumOf { it.amount }),
+                owingCount = rows.count { it.amount > 0 },
+                contractCount = rows.size,
+                criticalCount = rows.count { it.risk == RiskLevel.KRITIS },
+                criticalText = formatRupiah(sum(RiskLevel.KRITIS)),
+                attentionCount = rows.count { it.risk == RiskLevel.PERHATIAN },
+                attentionText = formatRupiah(sum(RiskLevel.PERHATIAN)),
+                lightCount = rows.count { it.risk == RiskLevel.RINGAN },
+                lightText = formatRupiah(sum(RiskLevel.RINGAN)),
+            )
+        }
+
+    /**
+     * The row the detail pane shows.
      *
      * Looked up by id rather than held, so a row that leaves the list takes the selection with
      * it and the pane falls back to its prompt instead of showing a figure for a contract the
@@ -263,6 +299,7 @@ internal fun List<ContractArrears>.toRows(
                 // makes that unreachable, and an empty phone refuses the link instead of
                 // addressing a stranger. See `ReminderMessage.international`.
                 renterPhone = renterPhones[contract.renterId].orEmpty(),
+                amount = entry.amount,
                 figureText = strings.tunggakanRowFigure(
                     amount = formatRupiah(entry.amount),
                     days = strings.tunggakanRowDays(entry.days),
@@ -276,6 +313,45 @@ internal fun List<ContractArrears>.toRows(
             )
         }
 }
+
+/**
+ * The five risk chips — `arrears.html:29-35`.
+ *
+ * Each chip names its own `RiskLevel`, or `null` for "all", so the filter and the ladder cannot
+ * drift: adding a level to the domain enum makes this `when` non-exhaustive and the compiler says
+ * so, rather than a chip silently matching nothing.
+ */
+enum class RiskFilter(val level: RiskLevel?) {
+    Semua(null),
+    Kritis(RiskLevel.KRITIS),
+    Perhatian(RiskLevel.PERHATIAN),
+    Ringan(RiskLevel.RINGAN),
+    Lancar(RiskLevel.LANCAR),
+}
+
+/**
+ * The four figures above the list — `arrears.html:112-136`.
+ *
+ * Every money value is pre-formatted and every count is derived from the *same* rows the list
+ * draws, so a card and the list beneath it are one read. The prototype's first card is accented
+ * (`kpi-accent`) because total arrears is the one figure the owner came for; the other three are
+ * flat.
+ *
+ * @property owingCount how many contracts actually owe something, versus every contract on the
+ *   list (an ended contract stays until settled, which is why the prototype prints both).
+ * @property criticalCount contracts at seven days or more, and their total.
+ */
+data class ArrearsSummary(
+    val totalText: String = "",
+    val owingCount: Int = 0,
+    val contractCount: Int = 0,
+    val criticalCount: Int = 0,
+    val criticalText: String = "",
+    val attentionCount: Int = 0,
+    val attentionText: String = "",
+    val lightCount: Int = 0,
+    val lightText: String = "",
+)
 
 /**
  * The figures alone, in the shape the domain's ordering function takes.

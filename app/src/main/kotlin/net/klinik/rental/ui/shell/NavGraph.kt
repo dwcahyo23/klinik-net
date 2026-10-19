@@ -271,6 +271,7 @@ private fun TunggakanRoute(wiring: Screens.Tunggakan) {
     TunggakanScreen(
         state = wiring.state,
         onSelect = wiring.onSelect,
+        onRiskFilterChange = wiring.onRiskFilterChange,
         // Required on the screen and forwarded here as given. The banner's *text* lives on
         // the state, so there is no second message channel to keep in step with the first.
         onErrorDismiss = wiring.onErrorDismiss,
@@ -402,6 +403,7 @@ internal class Screens(
     class Tunggakan(
         val state: net.klinik.rental.ui.screens.tunggakan.TunggakanUiState,
         val onSelect: (String) -> Unit,
+        val onRiskFilterChange: (net.klinik.rental.ui.screens.tunggakan.RiskFilter) -> Unit,
         val onErrorDismiss: () -> Unit,
         /**
          * Story 4.2's five. Required, not defaulted, for the reason every callback in this
@@ -444,6 +446,7 @@ internal class Screens(
         val onFilterChange: (VehicleFilter) -> Unit,
         val onClearQuery: () -> Unit,
         val onAdd: () -> Unit,
+        val onSelect: (String) -> Unit,
         val onEdit: (Vehicle) -> Unit,
         val onCloseForm: () -> Unit,
         val onFormChange: ((net.klinik.rental.ui.screens.kendaraan.VehicleFormState) -> net.klinik.rental.ui.screens.kendaraan.VehicleFormState) -> Unit,
@@ -459,6 +462,7 @@ internal class Screens(
         val onQueryChange: (String) -> Unit,
         val onClearQuery: () -> Unit,
         val onAdd: () -> Unit,
+        val onSelect: (String) -> Unit,
         val onEdit: (Renter) -> Unit,
         val onCloseForm: () -> Unit,
         val onFormChange: ((net.klinik.rental.ui.screens.penyewa.RenterFormState) -> net.klinik.rental.ui.screens.penyewa.RenterFormState) -> Unit,
@@ -773,6 +777,7 @@ private fun KendaraanRoute(wiring: Screens.Kendaraan) {
             onFilterChange = wiring.onFilterChange,
             onClearQuery = wiring.onClearQuery,
             onAdd = wiring.onAdd,
+            onSelect = wiring.onSelect,
             onEdit = wiring.onEdit,
             snackbarMessage = wiring.snackbarMessage,
             onSnackbarDismiss = wiring.onSnackbarDismiss,
@@ -803,6 +808,7 @@ private fun PenyewaRoute(wiring: Screens.Penyewa) {
             onQueryChange = wiring.onQueryChange,
             onClearQuery = wiring.onClearQuery,
             onAdd = wiring.onAdd,
+            onSelect = wiring.onSelect,
             onEdit = wiring.onEdit,
             snackbarMessage = wiring.snackbarMessage,
             onSnackbarDismiss = wiring.onSnackbarDismiss,

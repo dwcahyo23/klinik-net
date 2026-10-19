@@ -675,6 +675,7 @@ class AccessibilityTest {
             onFilterChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onCloseForm = {},
             onFormChange = { it },
@@ -688,6 +689,7 @@ class AccessibilityTest {
             onQueryChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             onCloseForm = {},
             onFormChange = { it },
@@ -806,6 +808,7 @@ class AccessibilityTest {
         tunggakan = Screens.Tunggakan(
             state = TunggakanUiState(),
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = {},
             onReminderChange = {},

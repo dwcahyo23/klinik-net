@@ -11,6 +11,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.ViewModel
@@ -32,6 +34,8 @@ import net.klinik.rental.data.repository.BusinessIdentityRepository
 import net.klinik.rental.data.repository.ContractRepository
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
+import net.klinik.rental.data.repository.ThemeMode
+import net.klinik.rental.data.repository.ThemeRepository
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.ui.screens.beranda.BerandaViewModel
 import net.klinik.rental.ui.screens.laporan.LaporanViewModel
@@ -46,6 +50,8 @@ import net.klinik.rental.ui.shell.GlobalSearchViewModel
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
 import net.klinik.rental.ui.theme.KlinikNetTheme
+import net.klinik.rental.ui.theme.LocalThemeControl
+import net.klinik.rental.ui.theme.ThemeControl
 import net.klinik.rental.ui.theme.knColors
 import java.time.Clock
 import java.time.LocalDate
@@ -206,6 +212,25 @@ class MainActivity : ComponentActivity() {
         )
     }
 
+    /**
+     * The theme choice, read and written through one repository.
+     *
+     * `lazy` for the same reason [pinLock] is: `onCreate` must not touch disk before `setContent`
+     * needs the first value.
+     */
+    private val themeRepository: ThemeRepository by lazy {
+        ThemeRepository(KlinikDatabase.get(applicationContext).settingDao())
+    }
+
+    /**
+     * What the owner chose about the theme, collected once for the whole Activity.
+     *
+     * `System` until the first read lands, which is also the default an unwritten key resolves to —
+     * so the frame before the database answers is already the right answer for an owner who never
+     * chose, and one frame of the OS's theme for an owner who did.
+     */
+    private val themeMode = MutableStateFlow(ThemeMode.System)
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         enableEdgeToEdge()
@@ -218,47 +243,75 @@ class MainActivity : ComponentActivity() {
         val today = LocalDate.now()
 
         setContent {
-            KlinikNetTheme(darkTheme = isSystemInDarkTheme()) {
+            // The stored choice, followed live: writing it below is what repaints, so the button
+            // needs no local state and no restart.
+            LaunchedEffect(Unit) {
+                themeRepository.observeMode().collect { themeMode.value = it }
+            }
+            val mode by themeMode.collectAsStateWithLifecycle()
+            val systemDark = isSystemInDarkTheme()
+            val dark = mode.resolvesDark(systemDark)
+
+            KlinikNetTheme(darkTheme = dark) {
                 val isLocked by locked.collectAsStateWithLifecycle()
 
-                // **Either** the lock **or** the shell — never both.
-                //
-                // An overlay would leave the destination composed underneath, so a screenshot, a
-                // screen reader traversal, or a rendering bug would expose the books behind a
-                // lock. Not composing the shell at all is the only version where "locked" means
-                // the content is not on screen.
-                if (isLocked) {
-                    val lockViewModel: PinLockViewModel = viewModel(
-                        factory = lockViewModelFactory(),
-                    )
-                    val lockState by lockViewModel.uiState.collectAsStateWithLifecycle()
-                    LockScreen(
-                        state = lockState,
-                        onDigit = lockViewModel::onDigit,
-                        onDelete = lockViewModel::onDelete,
-                        onRecovery = lockViewModel::openRecovery,
-                        onTick = lockViewModel::refreshLockout,
-                        shakeKey = lockState.shakeKey,
-                    )
-                } else {
-                    KlinikNetApp(
-                        kendaraan = kendaraanViewModel,
-                        penyewa = penyewaViewModel,
-                        kontrak = kontrakViewModel,
-                        pengaturan = pengaturanViewModel,
-                        setoran = setoranViewModel,
-                        tunggakan = tunggakanViewModel,
-                        beranda = berandaViewModel,
-                        laporan = laporanViewModel,
-                        search = searchViewModel,
-                        // Story 5.1's export, built here from the same singleton the settings
-                        // ViewModel reads — the route needs it for the picker's filename, and a
-                        // repository rather than a ViewModel because it holds no state.
-                        backups = createBackupRepository(
-                            database = KlinikDatabase.get(applicationContext),
-                            clock = Clock.systemDefaultZone(),
-                        ),
-                    )
+                // The button lives in `KnTopBar`, which eight screens draw. Providing it here
+                // rather than passing it through `Screens` keeps those eight call sites untouched;
+                // see `LocalThemeControl`.
+                CompositionLocalProvider(
+                    LocalThemeControl provides ThemeControl(
+                        dark = dark,
+                        onToggle = {
+                            // An explicit choice, written once. `System` is never written back:
+                            // the owner pressed a button that said what it would do, and a value
+                            // that silently means "whatever the OS does next" is not that.
+                            val next = if (dark) ThemeMode.Light else ThemeMode.Dark
+                            // Optimistic, so the tap paints on the same frame; the flow above
+                            // confirms it a moment later with the value actually stored.
+                            themeMode.value = next
+                            lifecycleScope.launch { themeRepository.setMode(next) }
+                        },
+                    ),
+                ) {
+                    // **Either** the lock **or** the shell — never both.
+                    //
+                    // An overlay would leave the destination composed underneath, so a screenshot, a
+                    // screen reader traversal, or a rendering bug would expose the books behind a
+                    // lock. Not composing the shell at all is the only version where "locked" means
+                    // the content is not on screen.
+                    if (isLocked) {
+                        val lockViewModel: PinLockViewModel = viewModel(
+                            factory = lockViewModelFactory(),
+                        )
+                        val lockState by lockViewModel.uiState.collectAsStateWithLifecycle()
+                        LockScreen(
+                            state = lockState,
+                            onDigit = lockViewModel::onDigit,
+                            onDelete = lockViewModel::onDelete,
+                            onRecovery = lockViewModel::openRecovery,
+                            onTick = lockViewModel::refreshLockout,
+                            shakeKey = lockState.shakeKey,
+                        )
+                    } else {
+                        KlinikNetApp(
+                            kendaraan = kendaraanViewModel,
+                            penyewa = penyewaViewModel,
+                            kontrak = kontrakViewModel,
+                            pengaturan = pengaturanViewModel,
+                            setoran = setoranViewModel,
+                            tunggakan = tunggakanViewModel,
+                            beranda = berandaViewModel,
+                            laporan = laporanViewModel,
+                            search = searchViewModel,
+                            // Story 5.1's export, built here from the same singleton the settings
+                            // ViewModel reads — the route needs it for the picker's filename, and a
+                            // repository rather than a ViewModel because it holds no state.
+                            backups = createBackupRepository(
+                                database = KlinikDatabase.get(applicationContext),
+                                clock = Clock.systemDefaultZone(),
+                            ),
+                        )
+                    }
                 }
             }
         }
@@ -324,6 +377,15 @@ internal fun createKendaraanViewModel(context: Context): KendaraanViewModel {
     return KendaraanViewModel(
         repository = VehicleRepository(database.vehicleDao(), database),
         strings = RStrings(context),
+        // The detail pane's two joins: who is renting the selected car, and on what terms.
+        // Passed as repositories rather than as a second `@Query` with JOINs, so `renter` and
+        // `contract` keep one reader each — the rule `KontrakViewModel` established.
+        contracts = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+            database,
+        ),
+        renters = RenterRepository(database.renterDao()),
     )
 }
 
@@ -337,6 +399,13 @@ internal fun createPenyewaViewModel(context: Context): PenyewaViewModel {
         // nothing uses.
         repository = RenterRepository(database.renterDao()),
         strings = RStrings(context),
+        // The detail pane's join: which car this person is renting, and on what terms.
+        contracts = ContractRepository(
+            database.contractDao(),
+            database.serviceExceptionDao(),
+            database,
+        ),
+        vehicles = VehicleRepository(database.vehicleDao(), database),
     )
 }
 
@@ -736,6 +805,7 @@ private fun KlinikNetApp(
                     onFilterChange = kendaraan::onFilterChange,
                     onClearQuery = kendaraan::clearQuery,
                     onAdd = kendaraan::openAddForm,
+                    onSelect = kendaraan::select,
                     onEdit = kendaraan::openEditForm,
                     onCloseForm = kendaraan::closeForm,
                     onFormChange = kendaraan::onFormChange,
@@ -749,6 +819,7 @@ private fun KlinikNetApp(
                     onQueryChange = penyewa::onQueryChange,
                     onClearQuery = penyewa::clearQuery,
                     onAdd = penyewa::openAddForm,
+                    onSelect = penyewa::select,
                     onEdit = penyewa::openEditForm,
                     onCloseForm = penyewa::closeForm,
                     onFormChange = penyewa::onFormChange,
@@ -898,6 +969,7 @@ private fun KlinikNetApp(
                 tunggakan = Screens.Tunggakan(
                     state = tunggakanState,
                     onSelect = tunggakan::onSelect,
+                    onRiskFilterChange = tunggakan::onRiskFilterChange,
                     onErrorDismiss = tunggakan::consumeError,
                     // Story 4.2's five. The reminder's text lives on the state, so only the
                     // intents are passed — the same shape as onSelect.

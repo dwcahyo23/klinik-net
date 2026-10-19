@@ -21,6 +21,7 @@ import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
+import androidx.compose.ui.test.performClick
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
@@ -29,6 +30,7 @@ import com.composables.icons.lucide.UserPlus
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.theme.KlinikNetTheme
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
@@ -53,7 +55,7 @@ import org.robolectric.annotation.Config
  * states below are real `PenyewaUiState` values, built by hand.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w800dp-h1280dp")
 class PenyewaScreenTest {
 
     @get:Rule
@@ -84,8 +86,12 @@ class PenyewaScreenTest {
         ).assertExists()
         // The action is what makes it an instruction rather than a statement.
         compose.onNodeWithTag(TAG_ADD).assertExists().assertHasClickAction()
-        // And it carries the copy the AC names, not a bare "Tambah".
-        compose.onNodeWithText("Tambah Penyewa").assertExists()
+        // And it carries the copy the AC names, not a bare "Tambah". Scoped to the **empty
+        // state's** action: the top bar carries a "Tambah Penyewa" of its own
+        // (`renters.html:33`), so an unscoped match finds two.
+        compose.onNode(
+            hasText("Tambah Penyewa") and hasAnyAncestor(hasTestTag(TAG_EMPTY_LIST)),
+        ).assertExists()
     }
 
     /**
@@ -141,8 +147,17 @@ class PenyewaScreenTest {
         compose.setContent { theme { Screen(state = populatedState()) } }
 
         compose.onNodeWithTag("penyewa-row-r1").assertExists()
-        compose.onNodeWithText("Budi Santoso").assertExists()
-        compose.onNodeWithText("08123456789 · Darurat 08129876543").assertExists()
+        // `useUnmergedTree = true`: `KnListRow` merges its descendants, so the name is not its
+        // own node in the merged tree.
+        compose.onNode(
+            hasText("Budi Santoso") and hasAnyAncestor(hasTestTag("penyewa-row-r1")),
+            useUnmergedTree = true,
+        ).assertExists()
+        compose.onNode(
+            hasText("08123456789 · Darurat 08129876543") and
+                hasAnyAncestor(hasTestTag("penyewa-row-r1")),
+            useUnmergedTree = true,
+        ).assertExists()
     }
 
     /**
@@ -167,13 +182,38 @@ class PenyewaScreenTest {
         ).assertCountEquals(0)
     }
 
-    /** Every row's edit affordance names its own renter, not a shared label. */
+    /**
+     * The detail pane's edit verb opens the **selected** renter's form.
+     *
+     * This replaces the old "each row names its own renter to a screen reader" assertion. The row
+     * no longer carries an edit affordance at all: `renters.html:226` puts the verb in the detail
+     * pane's header, and a row that both selected and edited could not be used to read a person
+     * without opening a form over them.
+     *
+     * The claim is the same one that test made — one control, naming the person it acts on —
+     * moved to where the control now is: tapping the pane's button must reach the handler with
+     * **that** renter, not merely be tappable.
+     */
     @Test
-    fun `each row names its own renter to a screen reader`() {
-        compose.setContent { theme { Screen(state = populatedState()) } }
+    fun `the detail pane's edit verb opens the selected renter`() {
+        var edited: String? = null
+        compose.setContent {
+            theme {
+                PenyewaScreen(
+                    state = populatedState().copy(selectedRenterId = "r1"),
+                    onQueryChange = {},
+                    onClearQuery = {},
+                    onAdd = {},
+                    onSelect = {},
+                    onEdit = { edited = it.name },
+                    onErrorDismiss = {},
+                )
+            }
+        }
 
-        compose.onAllNodes(hasContentDescription("Ubah Budi Santoso")).assertCountEquals(1)
-        compose.onAllNodes(hasContentDescription("Ubah Siti Aminah")).assertCountEquals(1)
+        compose.onNodeWithTag(TAG_DETAIL_EDIT).performClick()
+
+        assertEquals("the pane's verb must reach the renter it names", "Budi Santoso", edited)
     }
 
     // ---------------------------------------------------------- empty *search*
@@ -339,6 +379,7 @@ class PenyewaScreenTest {
             onQueryChange = {},
             onClearQuery = {},
             onAdd = {},
+            onSelect = {},
             onEdit = {},
             // Required rather than defaulted: this screen's alias
             // `onErrorDismiss = onSnackbarDismiss` was wrong — the two dismiss

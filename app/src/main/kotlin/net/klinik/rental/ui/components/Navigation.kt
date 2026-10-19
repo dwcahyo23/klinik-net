@@ -27,6 +27,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.remember
@@ -36,6 +37,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.style.TextOverflow
@@ -43,7 +45,11 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.Moon
+import com.composables.icons.lucide.Sun
 import net.klinik.rental.R
+import net.klinik.rental.ui.theme.LocalThemeControl
+import net.klinik.rental.ui.theme.ThemeControl
 import net.klinik.rental.ui.theme.focusRing
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knRadii
@@ -420,6 +426,24 @@ fun KnBottomNav(
  *
  * [actions] is a [RowScope] slot so a caller can `weight(1f)` inside it without
  * passing a modifier to every button it drops in.
+ *
+ * ## The bar's right side, in the prototype's order
+ *
+ * `index.html:92-97` reads: the search field (capped at 280px), then the screen's own actions, then
+ * the circular theme button. That order is reproduced here rather than left to callers, because
+ * eight callers would reproduce it eight ways.
+ *
+ * ## Whose search field it is
+ *
+ * **The screen's**, whenever it passes one. `cars.html`, `renters.html` and `arrears.html` each
+ * put *their own* field in their own bar, and the field is the only control that can widen a list
+ * the global search narrowed — so a screen that drew no field would have a query it could not
+ * clear.
+ *
+ * [LocalTopBarSearch] is the **fallback**: the shell provides the cross-app search, and a screen
+ * that supplies its own replaces it. That is why the parameter comes first — a screen that has a
+ * bar of its own must win over a shell default, and the shell default must not have to know that
+ * any screen does.
  */
 @Composable
 fun KnTopBar(
@@ -428,12 +452,15 @@ fun KnTopBar(
     subtitle: String? = null,
     navigationIcon: ImageVector? = null,
     onNavigationClick: (() -> Unit)? = null,
+    search: (@Composable () -> Unit)? = null,
     actions: (@Composable RowScope.() -> Unit)? = null,
 ) {
     val kn = MaterialTheme.knColors
     val spacing = MaterialTheme.knSpacing
     val shape = RoundedCornerShape(MaterialTheme.knRadii.md)
     val navDescription = stringResource(R.string.action_back)
+    val themeControl = LocalThemeControl.current
+    val searchSlot = search ?: LocalTopBarSearch.current
 
     Surface(
         modifier = modifier
@@ -447,7 +474,10 @@ fun KnTopBar(
                 modifier = Modifier
                     .weight(1f)
                     .fillMaxWidth()
-                    .padding(horizontal = spacing.xl),
+                    // `.top-bar-header { padding: 0 var(--sp-6) }` — 24dp, the same gutter the
+                    // page body uses (`shared.css:288`), so the title and the first card below it
+                    // start on the same line.
+                    .padding(horizontal = spacing.xxl),
                 verticalAlignment = Alignment.CenterVertically,
                 horizontalArrangement = Arrangement.spacedBy(spacing.md),
             ) {
@@ -474,7 +504,9 @@ fun KnTopBar(
                     }
                 }
 
-                Column(Modifier.weight(1f)) {
+                Column(
+                    modifier = Modifier.weight(1f),
+                ) {
                     Text(
                         text = title,
                         style = MaterialTheme.knTypography.title,
@@ -501,6 +533,13 @@ fun KnTopBar(
                         content = actions,
                     )
                 }
+
+                if (searchSlot != null) {
+                    searchSlot()
+                }
+                if (themeControl != null) {
+                    ThemeToggleButton(control = themeControl)
+                }
             }
             // `.top-bar-header { border-bottom: 1px solid var(--border) }`
             Box(
@@ -513,8 +552,74 @@ fun KnTopBar(
     }
 }
 
-/** `.rail-item svg { width: 24px }`. */
+/** `.rail-item svg { width: 24px }`. Buttons in the bar measure 27dp — see [ThemeToggleButton]. */
 private val RailIconSize = 24.dp
+
+/**
+ * The prototype's `.btn.btn-secondary.btn-icon` in the top bar — a 48dp pill.
+ *
+ * ## Why the glyph says what is *not* shown
+ *
+ * `dashboard.html:147` draws the **sun** while the theme is light and the **moon** while it is
+ * dark, which reads as "here is the theme you are in". That is the opposite of what tapping it does,
+ * and a button whose picture contradicts its effect is a button the owner has to learn. The glyph
+ * here is the destination: a moon means "tap to go dark", a sun means "tap to go light". The
+ * accessible name follows the same rule, and names it — a lone moon is not a name.
+ *
+ * A `Surface` rather than `KnIconButton` because the bar's copy is a card on `--bg-rail` with
+ * `--el-1`, not the transparent in-row target `KnIconButton` draws.
+ */
+@Composable
+private fun ThemeToggleButton(control: ThemeControl) {
+    val kn = MaterialTheme.knColors
+    val shape = RoundedCornerShape(MaterialTheme.knRadii.full)
+    val interaction = remember { MutableInteractionSource() }
+    val focused by interaction.collectIsFocusedAsState()
+
+    Surface(
+        onClick = control.onToggle,
+        modifier = Modifier
+            .minTouchTarget()
+            .focusRing(focused, MaterialTheme.knRadii.md),
+        shape = shape,
+        color = kn.bgCard,
+        contentColor = kn.textSecondary,
+        shadowElevation = 1.dp,
+        interactionSource = interaction,
+    ) {
+        Box(contentAlignment = Alignment.Center) {
+            Icon(
+                imageVector = if (control.dark) Lucide.Sun else Lucide.Moon,
+                contentDescription = stringResource(
+                    if (control.dark) R.string.action_theme_to_light else R.string.action_theme_to_dark,
+                ),
+                modifier = Modifier
+                    .size(RailIconSize)
+                    .testTag(TAG_THEME_TOGGLE),
+            )
+        }
+    }
+}
+
+/**
+ * The shell's cross-app search, for whichever [KnTopBar] has none of its own.
+ *
+ * A **fallback**, not a source: `KendaraanScreen` and `PenyewaScreen` pass their own field into
+ * the bar's `search` slot, because that field is the only control which can widen a list the
+ * global search narrowed — a screen with only the shell's field would have a query it cannot
+ * clear. `compositionLocalOf` (not static) because the shell's search state changes on every
+ * keystroke and the field inside the slot must recompose with it.
+ */
+val LocalTopBarSearch = compositionLocalOf<(@Composable () -> Unit)?> { null }
+
+/**
+ * The theme button's tag.
+ *
+ * On the **icon**, not the `Surface`: a test addresses it with `performClick()` and Compose
+ * dispatches that to the nearest clickable ancestor, which is the button itself. Putting it on the
+ * `Surface` would work too — this is only where the measure lands.
+ */
+const val TAG_THEME_TOGGLE = "top-bar-theme-toggle"
 
 /**
  * `.rail-item { font-size: 11px }`.

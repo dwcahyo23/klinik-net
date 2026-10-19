@@ -46,7 +46,7 @@ import org.robolectric.annotation.Config
  * - One `setContent` per test.
  */
 @RunWith(AndroidJUnit4::class)
-@Config(sdk = [34])
+@Config(sdk = [34], qualifiers = "w800dp-h1280dp")
 class ReminderDialogTest {
 
     @get:Rule
@@ -315,6 +315,7 @@ class ReminderDialogTest {
         TunggakanScreen(
             state = state,
             onSelect = {},
+            onRiskFilterChange = {},
             onErrorDismiss = {},
             onRemind = onRemind,
             onReminderChange = onReminderChange,
@@ -335,6 +336,7 @@ class ReminderDialogTest {
                 renterName = "Budi Santoso",
                 vehiclePlate = "B 1235 TF",
                 renterPhone = "0812-8899-7722",
+                amount = 750_000L,
                 figureText = "Rp 750.000 · 3 hari",
                 daysLabel = "3 hari",
                 riskLabel = "Perhatian",
@@ -348,6 +350,7 @@ class ReminderDialogTest {
                 renterName = "Siti Aminah",
                 vehiclePlate = "B 9876 AB",
                 renterPhone = "0813-1122-3344",
+                amount = 250_000L,
                 figureText = "Rp 250.000 · 1 hari",
                 daysLabel = "1 hari",
                 riskLabel = "Ringan",
