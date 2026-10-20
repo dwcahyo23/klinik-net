@@ -2,7 +2,7 @@
 title: 'A restored backup can bypass both future-date guards'
 type: 'bugfix'
 created: '2026-10-21'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: '4a2dce8'
@@ -112,6 +112,26 @@ is the reader's existing shape — `RestoreRejected` with a reason the UI turns 
 - Given the app builds, then `:domain:test`, `:app:testDebugUnitTest` and `:app:assembleDebug` pass.
 
 ## Implementation Notes
+
+**`RestoreRejected` passes through `array()` untouched.** Worth recording because it is the one
+thing that could have made this silently ineffective: `array()` catches `JSONException` and
+`IllegalArgumentException` and turns both into `REASON_BAD_ROW`. `RestoreRejected` extends
+`Exception`, so it propagates — had it extended `IllegalArgumentException` like the sibling
+`ContractEndInFutureException` does, every future-date refusal would have been reported as
+"data tidak bisa dibaca" instead.
+
+**A text `replace` in the tests was not enough.** The first three attempts at the two new
+reader tests used a multi-line literal to swap the contract row's active columns and `endDate`
+together; the fixture is indented across lines, so the literal matched nothing and the test
+asserted a refusal that never came. Two chained single-line replaces do the job and fail loudly
+if the fixture changes.
+
+**`PengaturanViewModel` reports an absent clock as unreadable.** `clock` is nullable on that class
+and only tests omit it. Restoring without one would mean guessing "is this date in the future",
+which is exactly the repair the reader refuses to do — so the file is refused instead.
+
+**Nothing was run on a device.** The manual check in `## Verification` is unrun; the JVM tests cover
+the same claim at the reader boundary.
 
 ## Spec Change Log
 
