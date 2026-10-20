@@ -102,7 +102,7 @@ class BackupLockInterplayTest {
             KlinikDatabase::class.java,
         ).build()
         try {
-            restorerOver(restored).apply(restorerOver(restored).parse(file))
+            restorerOver(restored).apply(restorerOver(restored).parse(file, AS_OF))
 
             assertEquals(
                 "vehicles",
@@ -270,7 +270,7 @@ class BackupLockInterplayTest {
                 database = restored,
                 iterations = 1_000,
             )
-            restorerOver(restored).apply(restorerOver(restored).parse(file))
+            restorerOver(restored).apply(restorerOver(restored).parse(file, AS_OF))
 
             assertFalse(
                 "the owner must get in — a lock with no hash is a lock nobody can open",
@@ -305,7 +305,7 @@ class BackupLockInterplayTest {
                 database = restored,
                 iterations = 1_000,
             )
-            restorerOver(restored).apply(restorerOver(restored).parse(file))
+            restorerOver(restored).apply(restorerOver(restored).parse(file, AS_OF))
 
             val newCode = restoredLock.newRecoveryCode()
             restoredLock.enable("5678", newCode)
@@ -377,7 +377,7 @@ class BackupLockInterplayTest {
         val file = backupsOver(database).build().json
             .replace("\"schemaVersion\": $SCHEMA", "\"schemaVersion\": 99")
 
-        val thrown = runCatching { restorer.parse(file) }.exceptionOrNull()
+        val thrown = runCatching { restorer.parse(file, AS_OF) }.exceptionOrNull()
 
         assertTrue("it must be refused", thrown is RestoreRejected)
         assertEquals(BackupJsonReader.REASON_VERSION, (thrown as RestoreRejected).reason)
@@ -405,7 +405,7 @@ class BackupLockInterplayTest {
         val file = backupsOver(database).build().json
             .replace("\"schemaVersion\": $SCHEMA", "\"schemaVersion\": 7")
 
-        val thrown = runCatching { restorer.parse(file) }.exceptionOrNull()
+        val thrown = runCatching { restorer.parse(file, AS_OF) }.exceptionOrNull()
 
         assertTrue(
             "refused, because no older file exists yet — Story 5.1 wrote the first one, at v8",
@@ -534,5 +534,8 @@ class BackupLockInterplayTest {
 
     private companion object {
         const val SCHEMA = net.klinik.rental.data.db.SCHEMA_VERSION
+
+        /** The day the reader compares a contract's dates against; after every fixture date. */
+        val AS_OF: LocalDate = LocalDate.of(2026, 10, 31)
     }
 }

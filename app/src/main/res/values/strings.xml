@@ -998,6 +998,14 @@
     <string name="pengaturan_restore_error_version">Cadangan ini dibuat oleh versi aplikasi yang berbeda (versi berkas %1$d, aplikasi ini %2$d). Data yang ada tidak diubah.</string>
     <string name="pengaturan_restore_error_missing_table">Berkas cadangan tidak lengkap — ada bagian yang hilang. Data yang ada tidak diubah.</string>
     <string name="pengaturan_restore_error_bad_row">Berkas cadangan berisi data yang tidak bisa dibaca. Data yang ada tidak diubah.</string>
+    <!--
+      A contract in the file ends (or is marked paid) after today. Said plainly, and with the
+      reason, because the next action is not obvious: the owner cannot edit the file inside the
+      app, and this build refuses the date on purpose — a restored future end date would make a
+      car read "tersedia" while it is still rented, with no way to undo it. An earlier backup is
+      the way back, so the sentence says so.
+    -->
+    <string name="pengaturan_restore_error_future_date">Berkas cadangan ini berisi kontrak dengan tanggal setelah hari ini. Versi aplikasi ini tidak bisa memulihkannya, karena kontrak tersebut akan langsung dianggap selesai dan mobilnya terbaca tersedia. Data yang ada tidak diubah. Coba cadangan yang lebih lama.</string>
     <string name="pengaturan_restore_error_unreadable">Berkas tidak bisa dibuka. Periksa izin berkas lalu coba lagi.</string>
 
     <!--

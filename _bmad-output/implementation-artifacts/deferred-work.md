@@ -1,7 +1,3 @@
-- source_spec: `_bmad-output/implementation-artifacts/spec-audit-restyle-ui.md`
-  summary: Fix the six visual defects that need scrolling or measuring to see — the KPI `FlowRow` weight, the 36sp colliding label, the 16px gutter versus the prototype's 24px, the skeleton/tile height mismatch, the 840dp centred content column, and the stale seven-destination KDoc.
-  evidence: Split from the audit because every one of these needs a scroll, a measurement or a grep to notice, while the four in the parent spec are visible on the first screen. None depends on the others; the parent spec's shell, FAB, rail and card work can merge and ship without this.
-
 - source_spec: `_bmad-output/implementation-artifacts/spec-ui-chrome-theme.md`
   summary: Renter avatars — an emoji per renter, shown in the list rows and the detail header, editable in the renter form.
   evidence: Split because it needs a schema migration (v8 -> v9, a new nullable `avatar` column on `renter`) and a form field, which is a data change rather than chrome. It can merge independently of the top-bar and theme work, and the prototype's own `.avatar` / `.avatar-lg` (34px / 64px) is already matched by `KnAvatar`'s sizes — only the emoji source is missing.
@@ -10,9 +6,6 @@
   summary: A demo build that seeds the prototype's mock dataset on first install, so an installed APK opens with a working fleet, renters, contracts and payments.
   evidence: Split because it is a build-variant plus a seeding path, not a layout change, and it must not run in a real install. The dataset already exists verbatim in `prototype/data.js` (10 vehicles, 8 renters, 8 contracts, ~65 payments with staged arrears), so the work is the seeding and the flag, not the data.
 
-- source_spec: `_bmad-output/implementation-artifacts/spec-ui-chrome-theme.md`
-  summary: KPI tile geometry — the prototype floats the 40dp icon in the tile's top-right corner (`shared.css:421-426`) while `KnKpiTile` stacks it above the label, which makes every tile taller and the label sit lower than the reference.
-  evidence: Split because it is a component-internal change that affects one screen (`Beranda`), while the parent spec changes the frame around all eight. Changing both in one pass would make a regression in either unattributable.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-tiga-cacat-ui.md`
   summary: A demo dataset — the prototype's 10 vehicles, 8 renters, 8 contracts and ~380 payments, delivered as a backup JSON file restorable through the existing Settings restore, so an installed APK opens with a working app.
@@ -33,23 +26,3 @@
   - `createdAt` in `data.js` is `"2026-03-22 08:45:10"`; `Instant.parse` needs `"2026-03-22T08:45:10Z"`.
   - The single `canceled` row (`data.js:117-129`) must have its allocations **dropped** — keeping both double-counts arrears (`PaymentEntity.kt:120-122`).
   - Drop entirely: `ktp`, `address`, `avatar`, `joinDate`, `currentRenterId` — no columns. String ids `car-1`/`cont-1` are fine; `@PrimaryKey val id: String` has no UUID guard.
-- source_spec: `_bmad-output/implementation-artifacts/spec-settlement-tanggal-lunas-di-masa-depan.md`
-  summary: The backup restore path writes `settledThroughDate` verbatim, so a backup carrying a future settlement date restores exactly the hidden-arrears state this change exists to prevent.
-  evidence: |
-    `BackupJsonReader.kt:221` builds `settledThroughDate = row.nullableString("settledThroughDate")?.let(LocalDate::parse)` straight from JSON. The repository's `SettlementInFutureException` does not see writes from this path — and would not block them, since restore runs against an empty `settedThroughDate` column that simply takes whatever JSON says. Pre-existing and outside this spec's scope, which governs the settlement write only; the sibling spec for `endDate` (`BackupJsonReader.kt:220`) has the same gap and is recorded separately above. No matrix row covers restore.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-kontrak-tanggal-akhir-di-masa-depan.md`
-  summary: The backup restore path writes `endDate` verbatim, so a backup carrying a future end date restores the exact state the new guard refuses — the car reads available today for a rental still running.
-  evidence: |
-    `BackupJsonReader.kt:220` builds a `ContractEntity` straight from JSON
-    (`endDate = row.nullableString("endDate")?.let(LocalDate::parse)`). `ContractEntity.init` pins
-    the two active columns to `endDate` and refuses `endDate < startDate`, but carries no
-    comparison to today, so restore is a second writer that bypasses the new invariant entirely.
-    Reachable from a backup written on a device whose clock was ahead, or from a hand-edited file.
-    Pre-existing and outside this spec's scope, which governs `endContract` only; the guard's own
-    KDoc calls the refusal "the whole fix", which overstates it until restore is bounded too. No
-    matrix row covers restore.
-
-- source_spec: `_bmad-output/implementation-artifacts/spec-open-tolak-kontrak-berakhir.md`
-  summary: This was the second deferred item from spec-2-5; closed alongside `ContractRepository.open()`'s `require(isOpen)` guard. Recorded here so the ledger stays the one place a sweep checks.
-  evidence: Closed by spec-open-tolak-kontrak-berakhir. Mirror of the end-date and settlement-date guards — same `asOf`-style "the entry point checks what the constructor would not" reasoning. The original deferred entry from spec-2-5 ("ContractRepository.open() accepts a Contract whose endDate is already set") is the same item, now pinned by `an open call whose contract is already ended is refused and nothing is written` and recorded in the spec above.

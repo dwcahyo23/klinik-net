@@ -689,6 +689,12 @@ class RStrings(private val context: Context) {
                 context.getString(R.string.pengaturan_restore_error_missing_table)
             BackupJsonReader.REASON_BAD_ROW ->
                 context.getString(R.string.pengaturan_restore_error_bad_row)
+            // Its own sentence, not BAD_ROW's: "a row could not be read" tells the owner to try
+            // another file, while this one names a fact about *this* file they can act on — it
+            // was written by a build that allowed a date this one refuses, and an earlier backup
+            // is the way back.
+            BackupJsonReader.REASON_FUTURE_DATE ->
+                context.getString(R.string.pengaturan_restore_error_future_date)
             // NOT_JSON and NO_VERSION share a sentence: from the owner's side "this is not JSON"
             // and "this JSON has no version" are the same next action — pick another file — and
             // two messages that differ only in a word the owner cannot act on are noise.

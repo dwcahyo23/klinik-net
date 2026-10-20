@@ -82,7 +82,7 @@ class BackupRestorerTest {
      */
     @Test
     fun `a whole file restores into an empty database`() = runBlocking {
-        restorer.apply(restorer.parse(FULL_FILE))
+        restorer.apply(restorer.parse(FULL_FILE, AS_OF))
 
         assertEquals("vehicle", 1, database.vehicleDao().observeAll().let { read(it) }.size)
         assertEquals(1, read(database.renterDao().observeAll()).size)
@@ -109,7 +109,7 @@ class BackupRestorerTest {
             read(database.vehicleDao().observeAll()).single().plate,
         )
 
-        restorer.apply(restorer.parse(FULL_FILE))
+        restorer.apply(restorer.parse(FULL_FILE, AS_OF))
 
         val vehicles = read(database.vehicleDao().observeAll())
         assertEquals("only the file's vehicle survives", 1, vehicles.size)
@@ -131,7 +131,7 @@ class BackupRestorerTest {
      */
     @Test
     fun `a restored payment's allocations still sum to its amount`() = runBlocking {
-        restorer.apply(restorer.parse(FULL_FILE))
+        restorer.apply(restorer.parse(FULL_FILE, AS_OF))
 
         val allocations = database.allocationDao().forContract(CONTRACT_ID)
         val total = allocations.sumOf { it.amount }
@@ -156,7 +156,7 @@ class BackupRestorerTest {
                             {"key":"recoveryHash","value":"other"}]""",
         )
 
-        restorer.apply(restorer.parse(json))
+        restorer.apply(restorer.parse(json, AS_OF))
 
         val settings = database.settingDao().all().map { it.key }
         assertEquals("only the business name is stored", listOf("businessName"), settings)
@@ -174,7 +174,7 @@ class BackupRestorerTest {
     fun `an empty file empties the database`() = runBlocking {
         seedDifferentBusiness()
 
-        restorer.apply(restorer.parse(EMPTY_FILE))
+        restorer.apply(restorer.parse(EMPTY_FILE, AS_OF))
 
         assertTrue(read(database.vehicleDao().observeAll()).isEmpty())
         assertTrue(read(database.renterDao().observeAll()).isEmpty())
@@ -195,7 +195,7 @@ class BackupRestorerTest {
             """"status":"canceled","cancelReason":"salah tanggal"""",
         )
 
-        restorer.apply(restorer.parse(json))
+        restorer.apply(restorer.parse(json, AS_OF))
 
         val stored = read(database.paymentDao().observeAllForHistory()).first()
         assertEquals("canceled", stored.status)
@@ -216,7 +216,7 @@ class BackupRestorerTest {
         val before = read(database.vehicleDao().observeAll()).map { it.id }.sorted()
 
         val corrupt = FULL_FILE.replace(""""activeVehicleId":"v1"""", """"activeVehicleId":"v9"""")
-        val rejected = runCatching { restorer.parse(corrupt) }
+        val rejected = runCatching { restorer.parse(corrupt, AS_OF) }
 
         assertTrue("the file is refused", rejected.isFailure)
         assertEquals(
@@ -240,7 +240,7 @@ class BackupRestorerTest {
             """"activeVehicleId":null,"activeRenterId":null""",
         )
 
-        restorer.apply(restorer.parse(json))
+        restorer.apply(restorer.parse(json, AS_OF))
 
         val contract = read(database.contractDao().observeAll()).first()
         assertNull(contract.activeVehicleId)
@@ -266,7 +266,7 @@ class BackupRestorerTest {
         seedDifferentBusiness()
 
         val duplicatePlate = withDuplicatePlate()
-        val restore = restorer.parse(duplicatePlate)
+        val restore = restorer.parse(duplicatePlate, AS_OF)
 
         val failure = runCatching { restorer.apply(restore) }
 
@@ -371,6 +371,9 @@ class BackupRestorerTest {
 
     private companion object {
         const val CONTRACT_ID = "c1"
+
+    /** The day the reader compares a contract's dates against; after every fixture date. */
+    val AS_OF: LocalDate = LocalDate.of(2026, 10, 31)
 
         /** One row in every table, with every foreign key satisfied. */
         val FULL_FILE = """

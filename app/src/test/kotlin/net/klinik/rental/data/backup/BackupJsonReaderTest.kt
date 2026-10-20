@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import java.time.LocalDate
 
 /**
  * [BackupJsonReader]'s contract, on the input side.
@@ -36,6 +37,14 @@ import org.robolectric.annotation.Config
 class BackupJsonReaderTest {
 
     private val version = 8
+
+    /**
+     * The day the reader compares a contract's dates against.
+     *
+     * After every date in [validJson] (`2026-10-01`..`2026-10-05`), so the future-date refusal
+     * cannot fire by accident: a test that wants it has to say so explicitly.
+     */
+    private val AS_OF: LocalDate = LocalDate.of(2026, 10, 31)
 
     /** A complete, valid file. Every other case is this file with one thing changed. */
     private fun validJson(): String = """
@@ -75,7 +84,7 @@ class BackupJsonReaderTest {
 
     @Test
     fun `a valid file reads back into every table`() {
-        val restore = BackupJsonReader.read(validJson(), version)
+        val restore = BackupJsonReader.read(validJson(), version, AS_OF)
 
         assertEquals(1, restore.vehicles.size)
         assertEquals("B 1235 TF", restore.vehicles.first().plate)
@@ -91,7 +100,7 @@ class BackupJsonReaderTest {
     /** The preview is the AC's own shape: four counts and the last period. */
     @Test
     fun `the preview carries the four counts and the last payment date`() {
-        val preview = BackupJsonReader.read(validJson(), version).preview
+        val preview = BackupJsonReader.read(validJson(), version, AS_OF).preview
 
         assertEquals(1, preview.vehicleCount)
         assertEquals(1, preview.renterCount)
@@ -113,7 +122,7 @@ class BackupJsonReaderTest {
         // key is a refusal (asserted twice below), and an empty array is a real fact about the
         // owner's business — "this backup has no deposits" — which the preview has to be able to
         // say. Using the wrong one here would make this test assert the refusal path.
-        val restore = BackupJsonReader.read(emptyTable("payments"), version)
+        val restore = BackupJsonReader.read(emptyTable("payments"), version, AS_OF)
 
         assertTrue("the file really has no payments", restore.payments.isEmpty())
         assertNull("and no last period, rather than the epoch", restore.preview.lastPaymentDate)
@@ -128,7 +137,7 @@ class BackupJsonReaderTest {
      */
     @Test
     fun `an empty table restores as empty rather than being refused`() {
-        val restore = BackupJsonReader.read(emptyTable("vehicles"), version)
+        val restore = BackupJsonReader.read(emptyTable("vehicles"), version, AS_OF)
 
         assertTrue(restore.vehicles.isEmpty())
         assertEquals("while the rest of the file is intact", 1, restore.renters.size)
@@ -255,6 +264,70 @@ class BackupJsonReaderTest {
         assertEquals("contracts", thrown.table)
     }
 
+    // ------------------------------------------------- the future-date refusal
+
+    /**
+     * A contract that ends **after** the day being restored is refused.
+     *
+     * The same state `endContract` refuses to create, reached through the other writer. Under
+     * `isOpen = endDate == null` any stored end date ends the contract on the spot, so restoring
+     * one would free the car for a rental still running — and there is no in-app way to clear it
+     * afterwards, because `endContract` only accepts an open contract.
+     *
+     * The active columns are nulled alongside the date because `ContractEntity.init` pins them
+     * to `endDate`; leaving them set would refuse the row for a different reason and this test
+     * would pass without ever reaching the rule it is about.
+     */
+    @Test
+    fun `a contract ending after today is refused`() {
+        val json = validJson()
+            .replace(""""activeVehicleId":"v1","activeRenterId":"r1"""", """"activeVehicleId":null,"activeRenterId":null""")
+            .replace(""""endDate":null""", """"endDate":"2026-11-15"""")
+
+        val thrown = rejected(json)
+
+        assertEquals(BackupJsonReader.REASON_FUTURE_DATE, thrown.reason)
+        assertEquals("contracts", thrown.table)
+    }
+
+    /**
+     * A settlement marker **after** today is refused too, and for a different harm.
+     *
+     * `settledDays` closes every charge day at or before the marker, so a future marker restores
+     * an app that believes days it has not billed yet are already paid — arrears disappear with
+     * nobody having paid. One guard, two failures, so both are asserted.
+     */
+    @Test
+    fun `a settlement marker after today is refused`() {
+        val json = validJson().replace(
+            """"endDate":null,"settledThroughDate":null""",
+            """"endDate":null,"settledThroughDate":"2026-11-15"""",
+        )
+
+        val thrown = rejected(json)
+
+        assertEquals(BackupJsonReader.REASON_FUTURE_DATE, thrown.reason)
+        assertEquals("contracts", thrown.table)
+    }
+
+    /**
+     * Today itself is **accepted** — the boundary the rule turns on.
+     *
+     * `isAfter`, not `!isBefore`. A contract that ended today is a real contract, and a marker
+     * of today is the ordinary settlement. Refusing it would make the app unable to restore a
+     * backup taken on the same day the rental ended.
+     */
+    @Test
+    fun `a contract ending today is accepted`() {
+        val json = validJson()
+            .replace(""""activeVehicleId":"v1","activeRenterId":"r1"""", """"activeVehicleId":null,"activeRenterId":null""")
+            .replace(""""endDate":null""", """"endDate":"2026-10-31"""")
+
+        val restore = BackupJsonReader.read(json, version, AS_OF)
+
+        assertEquals(LocalDate.of(2026, 10, 31), restore.contracts.first().endDate)
+    }
+
     /**
      * A `pinHash` in the file is dropped **on read**, not only on write.
      *
@@ -270,7 +343,7 @@ class BackupJsonReaderTest {
                             {"key":"pinHash","value":"secret"}]""",
         )
 
-        val settings = BackupJsonReader.read(json, version).settings
+        val settings = BackupJsonReader.read(json, version, AS_OF).settings
 
         assertEquals("only the business name survives", 1, settings.size)
         assertEquals("businessName", settings.first().key)
@@ -320,7 +393,7 @@ class BackupJsonReaderTest {
     }
 
     private fun rejected(json: String): RestoreRejected = try {
-        BackupJsonReader.read(json, version)
+        BackupJsonReader.read(json, version, AS_OF)
         throw AssertionError(
             "the file must be refused, but it parsed — a refusal that does not happen is a " +
                 "successful restore of nothing",

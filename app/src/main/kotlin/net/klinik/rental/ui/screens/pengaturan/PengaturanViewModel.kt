@@ -851,9 +851,19 @@ class PengaturanViewModel(
             restoreErrorMessage.value = strings.pengaturanRestoreUnreadable()
             return
         }
+        // The same guard `endContract` and `settleThrough` use, read from the ViewModel's clock
+        // rather than from inside the reader: a backup written before those guards existed can
+        // carry a future end date, and restoring it would free the car for a rental still running
+        // with no in-app way back. `clock` is optional on this class, so an absent clock cannot
+        // answer "is this date in the future" — and a reader that guessed would be worse than one
+        // that refuses, so the file is reported unreadable rather than restored unchecked.
+        val clock = clock ?: run {
+            restoreErrorMessage.value = strings.pengaturanRestoreUnreadable()
+            return
+        }
         restoreErrorMessage.value = null
         try {
-            pendingRestore.value = restorer.parse(json)
+            pendingRestore.value = restorer.parse(json, asOf = LocalDate.now(clock))
         } catch (e: RestoreRejected) {
             // The reader's own reason, turned into a sentence by one `when`. A generic message
             // here would throw away the only information that helps: which of "wrong file",

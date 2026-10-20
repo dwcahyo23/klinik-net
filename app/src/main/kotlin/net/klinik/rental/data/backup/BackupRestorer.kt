@@ -11,6 +11,7 @@ import net.klinik.rental.data.db.dao.RenterDao
 import net.klinik.rental.data.db.dao.ServiceExceptionDao
 import net.klinik.rental.data.db.dao.SettingDao
 import net.klinik.rental.data.db.dao.VehicleDao
+import java.time.LocalDate
 
 /**
  * Story 5.2's write half: one parsed file in, a database replaced atomically.
@@ -70,11 +71,13 @@ class BackupRestorer(
      * a second place the rule is stated — see that object's KDoc for why the check happens before
      * any row is handed to a caller.
      *
+     * @param asOf the caller's "today", forwarded to the reader's future-date refusal. Passed
+     *   through rather than read here so the rule lives in one place and a test pins the day.
      * @throws RestoreRejected when the file is not JSON, is missing a table, holds a row the
-     *   entities refuse, or carries a different `schemaVersion`.
+     *   entities refuse, carries a different `schemaVersion`, or ends a contract after [asOf].
      */
-    fun parse(json: String): BackupJsonReader.Restore =
-        BackupJsonReader.read(json, SCHEMA_VERSION)
+    fun parse(json: String, asOf: LocalDate): BackupJsonReader.Restore =
+        BackupJsonReader.read(json, SCHEMA_VERSION, asOf)
 
     /**
      * Replaces the whole database with [restore], atomically.

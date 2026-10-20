@@ -71,6 +71,32 @@ object BackupJsonReader {
     const val REASON_BAD_ROW = "bad-row"
 
     /**
+     * A contract whose end or settlement date is after today.
+     *
+     * ## Why restore refuses what the write paths already refuse
+     *
+     * `endContract` and `settleThrough` both refuse a date after today, because under
+     * `isOpen = endDate == null` any written end date ends the contract on the spot, and a
+     * settlement marker closes every charge day at or before it. A backup written by a build
+     * before those guards existed — or on a device whose clock was ahead — carries exactly the
+     * rows they now reject, and restoring it would put the app back into the state the guards
+     * exist to prevent: a car reading `tersedia` for a rental that is still running, or arrears
+     * that have disappeared with nobody having paid.
+     *
+     * ## Why the whole file is refused rather than the row repaired
+     *
+     * Because the alternatives are both worse. Dropping the row would restore a database with a
+     * contract missing, which is data the owner never deleted. Nulling the future date would be
+     * this reader inventing a contract the owner never had — the one thing the class KDoc says a
+     * reader must never do. And a restored future end date has **no in-app fix**: `endContract`
+     * only accepts an open contract, so there is no way to clear it afterwards.
+     *
+     * The cost is real and worth naming: an owner holding such a file cannot restore it. The
+     * message says so plainly, and an earlier backup is the way back.
+     */
+    const val REASON_FUTURE_DATE = "future-date"
+
+    /**
      * Every table from one file, plus what the preview shows.
      *
      * A single value rather than a parse and a preview as two steps, because a preview computed
@@ -112,11 +138,15 @@ object BackupJsonReader {
     /**
      * Reads one backup file's text.
      *
+     * @param asOf the caller's "today", the day [REASON_FUTURE_DATE] compares against. A parameter
+     *   rather than a `LocalDate.now()` here for the reason AD-8 gives everywhere else: a reader
+     *   that reads the system clock is a reader a test cannot pin.
      * @throws RestoreRejected when the text is not JSON, when a key is missing, when a value has
-     *   the wrong type, or when the version is not the app's. Every one of those is a refusal
-     *   the owner can act on, and **none of them may be turned into an empty list**.
+     *   the wrong type, when the version is not the app's, or when a contract carries a date after
+     *   [asOf]. Every one of those is a refusal the owner can act on, and **none of them may be
+     *   turned into an empty list**.
      */
-    fun read(json: String, expectedVersion: Int): Restore {
+    fun read(json: String, expectedVersion: Int, asOf: LocalDate): Restore {
         val root = try {
             JSONObject(json)
         } catch (_: JSONException) {
@@ -142,7 +172,7 @@ object BackupJsonReader {
             schemaVersion = version,
             vehicles = array(root, FIELD_VEHICLES, ::vehicle),
             renters = array(root, FIELD_RENTERS, ::renter),
-            contracts = array(root, FIELD_CONTRACTS, ::contract),
+            contracts = array(root, FIELD_CONTRACTS) { contract(it, asOf) },
             serviceExceptions = array(root, FIELD_SERVICE_EXCEPTIONS, ::serviceException),
             businessAccounts = array(root, FIELD_BUSINESS_ACCOUNTS, ::businessAccount),
             payments = array(root, FIELD_PAYMENTS, ::payment),
@@ -204,22 +234,41 @@ object BackupJsonReader {
         emergencyContact = row.getString("emergencyContact"),
     )
 
-    private fun contract(row: JSONObject) = ContractEntity(
-        id = row.getString("id"),
-        renterId = row.getString("renterId"),
-        vehicleId = row.getString("vehicleId"),
-        startDate = LocalDate.parse(row.getString("startDate")),
-        dailyRate = row.getLong("dailyRate"),
-        restDay = row.nullableInt("restDay")?.let(DayOfWeek::of),
-        // The two active columns are read exactly as written. `ContractEntity.init` pins them to
-        // `endDate`, so a file whose author got that wrong is refused by the entity rather than
-        // repaired here — a repair would be this reader inventing a database the owner never
-        // backed up.
-        activeVehicleId = row.nullableString("activeVehicleId"),
-        activeRenterId = row.nullableString("activeRenterId"),
-        endDate = row.nullableString("endDate")?.let(LocalDate::parse),
-        settledThroughDate = row.nullableString("settledThroughDate")?.let(LocalDate::parse),
-    )
+    /**
+     * One contract row, refusing a date the app's own write paths would refuse.
+     *
+     * See [REASON_FUTURE_DATE] for why a future date is a refusal rather than a repair. Both
+     * dates are checked because they fail differently: an end date frees the car, a settlement
+     * marker hides the arrears. Either one alone is enough to refuse the file.
+     */
+    private fun contract(row: JSONObject, asOf: LocalDate): ContractEntity {
+        val endDate = row.nullableString("endDate")?.let(LocalDate::parse)
+        val settledThroughDate = row.nullableString("settledThroughDate")?.let(LocalDate::parse)
+
+        if (endDate != null && endDate.isAfter(asOf)) {
+            throw RestoreRejected(REASON_FUTURE_DATE, table = FIELD_CONTRACTS)
+        }
+        if (settledThroughDate != null && settledThroughDate.isAfter(asOf)) {
+            throw RestoreRejected(REASON_FUTURE_DATE, table = FIELD_CONTRACTS)
+        }
+
+        return ContractEntity(
+            id = row.getString("id"),
+            renterId = row.getString("renterId"),
+            vehicleId = row.getString("vehicleId"),
+            startDate = LocalDate.parse(row.getString("startDate")),
+            dailyRate = row.getLong("dailyRate"),
+            restDay = row.nullableInt("restDay")?.let(DayOfWeek::of),
+            // The two active columns are read exactly as written. `ContractEntity.init` pins them
+            // to `endDate`, so a file whose author got that wrong is refused by the entity rather
+            // than repaired here — a repair would be this reader inventing a database the owner
+            // never backed up.
+            activeVehicleId = row.nullableString("activeVehicleId"),
+            activeRenterId = row.nullableString("activeRenterId"),
+            endDate = endDate,
+            settledThroughDate = settledThroughDate,
+        )
+    }
 
     private fun serviceException(row: JSONObject) = ServiceExceptionEntity(
         id = row.getString("id"),

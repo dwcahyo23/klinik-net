@@ -96,7 +96,7 @@ class ExportRestoreRoundTripTest {
         seed()
 
         val document = exporter().build()
-        restorer(target).apply(restorer(target).parse(document.json))
+        restorer(target).apply(restorer(target).parse(document.json, AS_OF))
 
         assertEquals("vehicles", read(source.vehicleDao().observeAll()), read(target.vehicleDao().observeAll()))
         assertEquals("renters", read(source.renterDao().observeAll()), read(target.renterDao().observeAll()))
@@ -143,7 +143,7 @@ class ExportRestoreRoundTripTest {
     fun `every restored live deposit's allocations still sum to its amount`() = runBlocking {
         seed()
         val document = exporter().build()
-        restorer(target).apply(restorer(target).parse(document.json))
+        restorer(target).apply(restorer(target).parse(document.json, AS_OF))
 
         val live = read(target.paymentDao().observeAllForHistory()).filter { it.status == "confirmed" }
         assertTrue("the fixture must have a live deposit to check", live.isNotEmpty())
@@ -171,7 +171,7 @@ class ExportRestoreRoundTripTest {
     fun `a cancelled deposit keeps its reason through a round trip`() = runBlocking {
         seed()
         val document = exporter().build()
-        restorer(target).apply(restorer(target).parse(document.json))
+        restorer(target).apply(restorer(target).parse(document.json, AS_OF))
 
         val cancelled = read(target.paymentDao().observeAllForHistory()).first { it.status == "canceled" }
 
@@ -188,7 +188,7 @@ class ExportRestoreRoundTripTest {
     @Test
     fun `an empty database round trips to an empty database`() = runBlocking {
         val document = exporter().build()
-        restorer(target).apply(restorer(target).parse(document.json))
+        restorer(target).apply(restorer(target).parse(document.json, AS_OF))
 
         assertTrue(read(target.vehicleDao().observeAll()).isEmpty())
         assertTrue(read(target.renterDao().observeAll()).isEmpty())
@@ -343,5 +343,8 @@ class ExportRestoreRoundTripTest {
 
     private companion object {
         val CLOCK: Clock = Clock.fixed(Instant.parse("2026-10-19T08:00:00Z"), ZoneOffset.UTC)
+
+        /** The day the reader compares a contract's dates against; after every fixture date. */
+        val AS_OF: LocalDate = LocalDate.of(2026, 10, 31)
     }
 }
