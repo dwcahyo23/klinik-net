@@ -279,7 +279,7 @@ class TunggakanArrearsTest {
     @Test
     fun `a settled contract owes nothing`() = runBlocking {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 17))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 17), asOf = TODAY)
 
         val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
@@ -296,7 +296,7 @@ class TunggakanArrearsTest {
     @Test
     fun `a partial settlement leaves the later days owing`() = runBlocking {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = TODAY)
 
         val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 
@@ -499,5 +499,14 @@ class TunggakanArrearsTest {
             Instant.parse("2026-10-17T09:00:00Z"),
             ZoneOffset.UTC,
         )
+
+        /**
+         * The day [CLOCK] names, as a `LocalDate`.
+         *
+         * `settleThrough` takes the day it compares against as a plain date rather than
+         * reading one, so a settlement write needs it spelled out. Deriving it from [CLOCK]
+         * rather than repeating `2026, 10, 17` is what keeps the two from drifting apart.
+         */
+        val TODAY: LocalDate = LocalDate.of(2026, 10, 17)
     }
 }

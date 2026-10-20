@@ -51,6 +51,48 @@ class SettlementAlreadySettledException(
 )
 
 /**
+ * A settlement dated **after the day the caller says it is**.
+ *
+ * ## Why a future settlement is refused rather than stored
+ *
+ * The marker is not inert. `settledDays` filters every charge day `<= settledThroughDate`,
+ * so settling through 24 October on the 17th does not merely write a date — it closes
+ * **today's** arrears too, and the rupiah behind them disappears from Tunggakan without
+ * anyone having been paid. The owner reads "lunas sampai 24 Okt" and believes the whole
+ * range is settled elsewhere; in fact three days of it are still owed, and nothing on the
+ * screen says so.
+ *
+ * FR-9b's stated purpose is the opposite of that: marking obligations *"sudah tercatat di
+ * tempat lain"*, which cannot be true of days that have not happened. So the write is
+ * refused rather than clamped — clamping forward would close days the owner never named,
+ * which is the same failure `endContract` refuses to commit for an end date.
+ *
+ * ## Why it carries the day it compared against
+ *
+ * For the reason [SettlementBeforeStartException] gives, from the other side: a message that
+ * only said "the date cannot be in the future" leaves the owner to work out which day the
+ * app thinks it is — and a wrong device clock is exactly the case where they most need to be
+ * told. The message says only that the date is after [asOf]: whether [asOf] *is* today is the
+ * caller's knowledge, not this type's, so the sentence stays true for any value it is given.
+ *
+ * ## Why a past date is still accepted
+ *
+ * Only strictly-after-[asOf] is refused. A day marked paid outside the app may be last week,
+ * last year, or before this app existed — that is the entire use case, and refusing it would
+ * make the owner's own history unrecordable.
+ *
+ * @param contractId the contract the settlement was attempted on.
+ * @param asOf the day the check compared against, supplied by the caller rather than read
+ *   from a clock here, so a test pins it by passing it.
+ */
+class SettlementInFutureException(
+    val contractId: String,
+    val asOf: LocalDate,
+) : IllegalStateException(
+    "contract $contractId cannot be settled through a date after $asOf",
+)
+
+/**
  * What a settlement would remove, and what would remain — Story 3.6.
  *
  * ## Why both halves

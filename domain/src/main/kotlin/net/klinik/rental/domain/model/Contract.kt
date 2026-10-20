@@ -34,6 +34,14 @@ import java.time.LocalDate
  *
  * [isOpen] is therefore a *derivation* over [endDate], not a stored flag.
  *
+ * Read **at the entry point** of every write, not by the database: a contract that was
+ * ended at some point and then offered back to `ContractRepository.open()` would insert a
+ * row with both active columns NULL and slip past the two `UNIQUE` indexes, which the
+ * indexes are too coarse to detect. `ContractRepository.open` enforces this with a
+ * `require(isOpen)` that fires before the write, in the same shape as `requirePositiveRate`.
+ * The constructor's own checks (`!endDate.isBefore(startDate)`) are arithmetic, not policy;
+ * the `isOpen` rule is policy and lives at the method that owns the consequence.
+ *
  * ## Why the schedule is a single nullable [restDay]
  *
  * `null` is a seven-day week; a `DayOfWeek` is a six-day week resting on that day.

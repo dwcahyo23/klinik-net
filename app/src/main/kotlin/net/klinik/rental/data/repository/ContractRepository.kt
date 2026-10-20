@@ -39,6 +39,11 @@ import java.util.UUID
  *  - [ContractEndInFutureException] — the end date is after the day the caller says
  *    it is, which would end a running rental on the spot
  *
+ * The settlement refusals — [SettlementBeforeStartException],
+ * [SettlementInFutureException] and [SettlementAlreadySettledException] — live in
+ * `Settlement.kt` beside the settlement's own types rather than in `domain/validation/`,
+ * because they are not contract-shape rules: each is about the one marker FR-9b writes.
+ *
  * [ContractNotOpenException] is used by two paths for the same reason: an ended
  * contract refuses *both* exception edits and a second end, because "this contract
  * has ended" is one fact and two exception types would let one path forget it.
@@ -144,12 +149,33 @@ class ContractRepository(
      * @throws ContractAlreadyActiveException when the vehicle or the renter already
      *   has an open contract. Nothing is written when this throws.
      * @throws InvalidAmountException when [contract]'s rate is zero or negative.
+     * @throws IllegalArgumentException when [contract] is not open — that is,
+     *   when [Contract.endDate] is set. Deliberately not
+     *   [ContractNotOpenException]: that type reads "this contract has already
+     *   ended", which is the *result* an open call could see after a concurrent
+     *   end. This guard reads "the caller passed an ended `Contract`", which
+     *   is an argument the standard type names correctly without a new domain
+     *   concept. No caller in the app reaches this today — `endContract` is the
+     *   only writes path that holds an ended `Contract`, and it has its own
+     *   repository method — but the require makes that an invariant rather than
+     *   a coincidence, so a future caller cannot read past it.
      */
     suspend fun open(contract: Contract) {
         // 1. Fail before the database rather than after. `Contract`'s constructor
         // would also refuse this, but checking here means the rule holds for a
         // caller that has a form and no `Contract` yet.
         requirePositiveRate(contract.dailyRate)
+
+        // 1a. And refuse an `open` call whose contract is already ended. `Contract.isOpen`
+        // is `endDate == null` (`Contract.kt:143`), and `toEntity()` derives both active
+        // columns from it — so writing an ended contract through `open` would insert a
+        // row with both slots NULL and the unique indexes would never see it. That is the
+        // structural failure mode the indexes exist to prevent, reached through the wrong
+        // entry point. `IllegalArgumentException`, not `ContractNotOpenException`, for the
+        // reason recorded on the `@throws` block above.
+        require(contract.isOpen) {
+            "contract ${contract.id} cannot be opened: endDate is set"
+        }
 
         inTransaction {
             // 2. The vehicle side first, so a vehicle *and* renter that are both
@@ -404,6 +430,16 @@ class ContractRepository(
      * something. Refusing names the start date, which is the day the owner is looking
      * for — the same reasoning [addServiceException] gives for the identical check.
      *
+     * ## Why a future date is refused
+     *
+     * Because the marker is not inert. `settledDays` filters every charge day at or before
+     * `settledThroughDate`, so a marker six weeks out does not merely store a date — it closes
+     * **today's** arrears too, and the rupiah behind them leaves the arrears figure without
+     * anyone having been paid. FR-9b marks obligations that are *"sudah tercatat di tempat
+     * lain"*, which cannot be true of days that have not happened. Refused rather than
+     * clamped: clamping forward would close days the owner never named, which is the same
+     * failure [endContract] refuses to commit for an end date.
+     *
      * ## Why an ended contract may still be settled
      *
      * Deliberately, and unlike the exception writes. A contract that ended months ago
@@ -427,22 +463,62 @@ class ContractRepository(
      * reached by the sheet; that is a convenience, not the rule. The rule lives here, because
      * this is the layer that owns it and a second caller would not consult the sheet.
      *
+     * ## Why "today" arrives as [asOf] rather than from a clock here
+     *
+     * The same rule, and for the same reason, as [endContract]: this class keeps no clock
+     * (AD-8), so a `LocalDate.now()` inside it would be a second source of "today" that a test
+     * cannot pin — and the refusal it drives names that day, so the day has to be the
+     * caller's. [asOf] is a parameter rather than a constructor argument, so the class stays
+     * three-argument and every construction site is untouched.
+     *
+     * @param contractId the contract the settlement is written to.
+     * @param date the day to settle through; `date < startDate` raises
+     *   [SettlementBeforeStartException], `date > asOf` raises [SettlementInFutureException],
+     *   and when both apply the before-start check wins so the message names the field the
+     *   owner cannot choose again.
+     * @param asOf the caller's "today". A [date] strictly after it is refused, because
+     *   `settledDays` closes every charge day at or before the marker — so a future date would
+     *   settle arrears the owner has not been paid for. A past date is accepted: a day marked
+     *   paid elsewhere is the whole point of FR-9b, and it may be last year.
+     *
      * @throws SettlementBeforeStartException when [date] precedes the contract's own
      *   start date. Nothing is written.
+     * @throws SettlementInFutureException when [date] is after [asOf]. Nothing is written.
      * @throws SettlementAlreadySettledException when [date] precedes a settlement this
      *   contract already carries. Nothing is written.
      * @throws UnknownContractException when nobody holds that id. Deliberately **not**
      *   [ContractNotOpenException]: that type reads "this contract has ended", which is
      *   the one state this write accepts — an ended contract with days paid elsewhere is
      *   precisely what FR-9b exists for.
+     *
+     *   **The first two overlap, and the start date wins.** A [date] can be both before
+     *   `startDate` and after `asOf` — reachable whenever a contract's own start date is in
+     *   the future, which `open` permits. The two `if`s below are ordered, not independent:
+     *   the before-start check runs first, so the refusal names the figure the owner cannot
+     *   choose again rather than adding a second complaint about one field. Swapping them
+     *   would change the answer with **no compiler signal**, so the order is part of the
+     *   contract and `SettleContractTest`'s `ORDER` row pins it.
      */
-    suspend fun settleThrough(contractId: String, date: LocalDate) {
+    suspend fun settleThrough(contractId: String, date: LocalDate, asOf: LocalDate) {
         inTransaction {
             val stored = dao.findById(contractId) ?: throw UnknownContractException(contractId)
             if (date.isBefore(stored.startDate)) {
                 throw SettlementBeforeStartException(
                     contractId = contractId,
                     startDate = stored.startDate,
+                )
+            }
+            // And a future date is refused from the other side, for the same reason
+            // `endContract` refuses one. The marker is not inert: `settledDays` closes every
+            // charge day at or before it, so a date six weeks out would settle the arrears of
+            // days that have not happened — hiding rupiah the owner has not been paid. Ordered
+            // after the start-date check so that when both apply the owner gets the message
+            // naming a figure they can act on, rather than a second complaint about the same
+            // figure.
+            if (date.isAfter(asOf)) {
+                throw SettlementInFutureException(
+                    contractId = contractId,
+                    asOf = asOf,
                 )
             }
             // Equal or later is accepted: re-settling the same day is idempotent, and

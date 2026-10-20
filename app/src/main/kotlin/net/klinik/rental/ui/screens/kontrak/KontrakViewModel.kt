@@ -18,6 +18,7 @@ import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.SettlementAlreadySettledException
 import net.klinik.rental.data.repository.SettlementBeforeStartException
+import net.klinik.rental.data.repository.SettlementInFutureException
 import net.klinik.rental.data.repository.UnknownContractException
 import net.klinik.rental.data.repository.VehicleRepository
 import net.klinik.rental.domain.model.Contract
@@ -1074,12 +1075,28 @@ class KontrakViewModel(
             amountRemaining = 0L,
         )
         if (date == null) return
+        // A date after today is refused **here**, on the field, and the impact is not
+        // computed: `settlementImpact` would otherwise promise a change the repository
+        // will refuse on confirm, and a live confirm over those figures is the worst state
+        // this sheet can be in. The figures stay zeroed so `canSettle` is false, and the
+        // refusal names the same day `settleThrough` would compare against — the one
+        // figure a wrong device clock makes invisible elsewhere.
+        val today = LocalDate.now(clock)
+        if (date.isAfter(today)) {
+            val live = settleSheet.value
+            if (live != null && live.settleDate == date) {
+                settleSheet.value = live.copy(
+                    dateError = strings.kontrakErrorSettleInFuture(today),
+                )
+            }
+            return
+        }
         viewModelScope.launch {
             try {
                 val impact = payments.settlementImpact(
                     contractId = contractId,
                     date = date,
-                    asOf = LocalDate.now(clock),
+                    asOf = today,
                 )
                 // Re-read rather than writing `after` back: the owner may have kept
                 // interacting while the allocation ran, and a stale copy would discard it.
@@ -1122,6 +1139,31 @@ class KontrakViewModel(
      * Guarded by [savingException] for the reason that flag is shared: this writes the
      * same `contract` row the exception editor and the end sheet do, so all three are one
      * conflict rather than three independent ones.
+     *
+     * ## The three date-level refusals
+     *
+     * `SettlementBeforeStartException`, `SettlementInFutureException` and
+     * `SettlementAlreadySettledException` are all about the *date*, so all three land on the
+     * date field — the only thing the owner can change — and all three leave the sheet up,
+     * unlike `UnknownContractException` which closes it because there is no field left to
+     * blame. Each names a figure the owner cannot otherwise see: the start date, today, and
+     * the day the contract already carries.
+     *
+     * **When before-start and in-future both apply, the start date wins.** The repository
+     * checks it first, so a date that is both before the start and after today reports the
+     * start date: that is the constraint the owner cannot work around by typing again, and
+     * "too far ahead" would be a second complaint about one field.
+     *
+     * Each catch lands on the field only when the sheet that asked is **still the live one**,
+     * and falls to the sheet's own banner otherwise. `closeSettle` and `openSettle` are not
+     * behind [savingException] — a second settlement must not be able to block a close, and
+     * locking them would leave the owner trapped in a sheet they cannot dismiss — so the sheet
+     * under the suspended write can be gone or replaced, and a refusal about one contract
+     * must not appear on another's field. That is the same identity check the success path
+     * above uses, and the one `endContract` applies for the same reason.
+     *
+     * `asOf` is this clock's day, not one read inside the repository: [endContract] takes it
+     * the same way, and the refusal names it, so the day has to be the caller's.
      */
     fun settleContract() {
         if (!savingException.compareAndSet(false, true)) return
@@ -1140,7 +1182,7 @@ class KontrakViewModel(
 
         viewModelScope.launch {
             try {
-                contracts.settleThrough(contractId, date)
+                contracts.settleThrough(contractId, date, asOf = LocalDate.now(clock))
                 val live = settleSheet.value
                 if (live != null && live === current) settleSheet.value = null
                 settleError.value = null
@@ -1149,24 +1191,59 @@ class KontrakViewModel(
                     current.daysClosed,
                 )
             } catch (e: SettlementBeforeStartException) {
+                // Re-read rather than writing `current` back: the owner may have kept
+                // interacting while Room was doing the write, and a stale `copy` would
+                // discard that. And the identity check is the success path's own, for the
+                // reason [endContract] gives — a before-start refusal about contract A must
+                // not land on contract B's field.
                 val live = settleSheet.value
-                if (live != null) {
+                if (live != null && live === current) {
                     settleSheet.value = live.copy(
                         dateError = strings.kontrakErrorSettleBeforeStart(e.startDate),
                     )
                 } else {
                     settleError.value = strings.kontrakErrorSettleBeforeStart(e.startDate)
                 }
+            } catch (e: SettlementInFutureException) {
+                // The date is the only thing the owner can change, so the refusal lands on
+                // it — and it names the day the repository compared against, because a
+                // message that only said "not in the future" would leave the owner to work
+                // out which day this app thinks it is. A wrong device clock is invisible
+                // everywhere else in the app; this is the one message that would show it.
+                //
+                // Zero the impact figures as well, for the same reason `onSettleChange`
+                // refuses them: figures beside a refusal that says "the action would do
+                // nothing" would be a dialog that promises what it cannot deliver.
+                val live = settleSheet.value
+                if (live != null && live === current) {
+                    settleSheet.value = live.copy(
+                        dateError = strings.kontrakErrorSettleInFuture(e.asOf),
+                        daysClosed = 0,
+                        amountRemoved = 0L,
+                        daysRemaining = 0,
+                        amountRemaining = 0L,
+                    )
+                } else {
+                    settleError.value = strings.kontrakErrorSettleInFuture(e.asOf)
+                }
             } catch (e: SettlementAlreadySettledException) {
                 // Named on the **date field**, not the banner: the fix is a different day,
                 // and the field is where the owner picks one. The message carries both dates
-                // so they can tell which of the two is the mistake.
+                // so they can tell which of the two is the mistake. Same impact-zero rule
+                // as the in-future arm: a refusal that says "already settled" beside the
+                // figures that *would* be closed is the same dialog-that-overpromises.
                 val live = settleSheet.value
                 val message = strings.kontrakErrorSettleAlreadySettled(
                     existing = strings.formatExceptionDate(e.settledThroughDate),
                 )
-                if (live != null) {
-                    settleSheet.value = live.copy(dateError = message)
+                if (live != null && live === current) {
+                    settleSheet.value = live.copy(
+                        dateError = message,
+                        daysClosed = 0,
+                        amountRemoved = 0L,
+                        daysRemaining = 0,
+                        amountRemaining = 0L,
+                    )
                 } else {
                     settleError.value = message
                 }

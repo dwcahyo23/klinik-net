@@ -33,19 +33,10 @@
   - `createdAt` in `data.js` is `"2026-03-22 08:45:10"`; `Instant.parse` needs `"2026-03-22T08:45:10Z"`.
   - The single `canceled` row (`data.js:117-129`) must have its allocations **dropped** — keeping both double-counts arrears (`PaymentEntity.kt:120-122`).
   - Drop entirely: `ktp`, `address`, `avatar`, `joinDate`, `currentRenterId` — no columns. String ids `car-1`/`cont-1` are fine; `@PrimaryKey val id: String` has no UUID guard.
-- source_spec: `_bmad-output/implementation-artifacts/spec-kontrak-tanggal-akhir-di-masa-depan.md`
-  summary: `settleThrough(contractId, date)` accepts a settlement date after today — it refuses only `date < startDate`, so marking a contract settled through a future day closes days that have not happened and hides the arrears that would be owed.
+- source_spec: `_bmad-output/implementation-artifacts/spec-settlement-tanggal-lunas-di-masa-depan.md`
+  summary: The backup restore path writes `settledThroughDate` verbatim, so a backup carrying a future settlement date restores exactly the hidden-arrears state this change exists to prevent.
   evidence: |
-    The same failure class this spec closed for `endContract`, on the sibling path. Not caused by
-    that change: `settleThrough` and `ContractDateField` are untouched by its diff, and
-    `SettleContractTest.kt:101` and `:349` already pass 24 Oct against a suite `asOf` of 17 Oct,
-    so a future settlement is a pinned, working behaviour today rather than a regression.
-    `spec-3-6` recorded this as unreachable because "the picker only offers past dates" — that is
-    no longer true in the code: all three sheets share `ContractDateField`
-    (`ExceptionFormSheet.kt:491`), which binds no `selectableDates` at all. Adding
-    `selectableDates = ...max(today)` there is NOT the fix, because the contract START date field
-    uses the same component and `open()` accepts a future start date. The guard belongs in
-    `settleThrough`, mirroring `endContract`'s `asOf` parameter.
+    `BackupJsonReader.kt:221` builds `settledThroughDate = row.nullableString("settledThroughDate")?.let(LocalDate::parse)` straight from JSON. The repository's `SettlementInFutureException` does not see writes from this path — and would not block them, since restore runs against an empty `settedThroughDate` column that simply takes whatever JSON says. Pre-existing and outside this spec's scope, which governs the settlement write only; the sibling spec for `endDate` (`BackupJsonReader.kt:220`) has the same gap and is recorded separately above. No matrix row covers restore.
 
 - source_spec: `_bmad-output/implementation-artifacts/spec-kontrak-tanggal-akhir-di-masa-depan.md`
   summary: The backup restore path writes `endDate` verbatim, so a backup carrying a future end date restores the exact state the new guard refuses — the car reads available today for a rental still running.
@@ -58,3 +49,7 @@
     Pre-existing and outside this spec's scope, which governs `endContract` only; the guard's own
     KDoc calls the refusal "the whole fix", which overstates it until restore is bounded too. No
     matrix row covers restore.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-open-tolak-kontrak-berakhir.md`
+  summary: This was the second deferred item from spec-2-5; closed alongside `ContractRepository.open()`'s `require(isOpen)` guard. Recorded here so the ledger stays the one place a sweep checks.
+  evidence: Closed by spec-open-tolak-kontrak-berakhir. Mirror of the end-date and settlement-date guards — same `asOf`-style "the entry point checks what the constructor would not" reasoning. The original deferred entry from spec-2-5 ("ContractRepository.open() accepts a Contract whose endDate is already set") is the same item, now pinned by `an open call whose contract is already ended is refused and nothing is written` and recorded in the spec above.

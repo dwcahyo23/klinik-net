@@ -1250,6 +1250,75 @@ class KontrakViewModelTest {
         }
 
     /**
+     * A settlement date after today is refused on the date field, naming **today**, and the
+     * arrears are untouched.
+     *
+     * The clock is pinned at 17 October 2026, so 18 October is one day out. Before this guard
+     * existed that write succeeded, and it was not inert: `settledDays` closes every charge
+     * day at or before the marker, so a marker on the 18th closed **today's** arrears too —
+     * the rupiah behind them left the Tunggakan figure without anyone having been paid.
+     *
+     * Three assertions, and they are the AC's own: the field carries a message naming today,
+     * the contract carries no marker, and the arrears figure is exactly what it was. Asserting
+     * on the marker alone would be the narrow claim — the marker is one column, and the figure
+     * is what the owner reads.
+     *
+     * The figure is read against `LocalDate.now(CLOCK)` rather than a literal, so it cannot
+     * drift from the day `KontrakViewModel` itself compares against.
+     *
+     * The message is asserted as `17 Okt 2026`, not `17 Okt`: the refusal names *today*, and
+     * the year is the part that says which 17 October it is. See
+     * `RStrings.kontrakErrorSettleInFuture`.
+     */
+    @Test
+    fun `a future settlement date is refused on the date field naming today`() = runTest(dispatcher) {
+        seed()
+        val viewModel = observingViewModel()
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val row = viewModel.uiState.value.rows.single()
+        val contractId = row.contract.id
+        val today = LocalDate.now(CLOCK)
+        val owedBefore = payments.currentArrears(contractId, today)
+
+        viewModel.openSettle(row)
+        dispatcher.scheduler.advanceUntilIdle()
+        assertNotNull("the settle sheet must be open", viewModel.uiState.value.settleSheet)
+
+        // One day after the pinned clock's 17 October 2026.
+        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 18)) }
+        // And the impact figures are drained here, so the instance the write below captures is
+        // still the live one — the identity check its refusal depends on.
+        dispatcher.scheduler.advanceUntilIdle()
+        viewModel.settleContract()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNotNull("the sheet stays open, because the date is the owner's to fix", state.settleSheet)
+        val error = state.settleSheet!!.dateError
+        assertNotNull("the refusal lands on the date field", error)
+        assertTrue(
+            "naming today, so the owner can see which day the app compared against: $error",
+            error!!.contains("17 Okt 2026"),
+        )
+        assertTrue(
+            "and specifically in the year form, so a dropped year would fail: $error",
+            error.contains("2026"),
+        )
+        assertNull(
+            "nothing was written — the contract carries no marker",
+            database.contractDao().findById(contractId)!!.settledThroughDate,
+        )
+        assertEquals(
+            "and the arrears are exactly what they were — the whole point of the refusal",
+            owedBefore,
+            payments.currentArrears(contractId, today),
+        )
+        assertNull("with no sheet banner, since the field carries it", viewModel.settleErrorMessage.value)
+    }
+
+    /**
      * An already-ended contract refuses, on the sheet's **own banner** rather than a
      * field — because there is no field to blame: the whole form is about to be wrong.
      */

@@ -155,7 +155,10 @@ class SettleContractViewModelTest {
         viewModel.openSettle(budiRow(viewModel))
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        // `today` (= 17 Oct) closes the whole open period — dates after today are refused
+        // by the repo and never reach the impact computation, so for a "computes the impact"
+        // assertion the picked day must sit at or before today.
+        viewModel.onSettleChange { it.selectSettleDate(today) }
         dispatcher.scheduler.advanceUntilIdle()
 
         val sheet = viewModel.uiState.value.settleSheet!!
@@ -183,7 +186,9 @@ class SettleContractViewModelTest {
         viewModel.openSettle(budiRow(viewModel))
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        // `today` (= 17 Oct) closes the whole open period — dates after today are refused
+        // by the repo and never reach the impact computation.
+        viewModel.onSettleChange { it.selectSettleDate(today) }
         dispatcher.scheduler.advanceUntilIdle()
         assertEquals("the whole period first", 17, viewModel.uiState.value.settleSheet!!.daysClosed)
 
@@ -208,7 +213,9 @@ class SettleContractViewModelTest {
         val viewModel = observingViewModel()
         viewModel.openSettle(budiRow(viewModel))
         dispatcher.scheduler.advanceUntilIdle()
-        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        // `today`, not a later day: a settlement date after the pinned clock is refused, and
+        // this test is about the sheet closing on success, not about which day was picked.
+        viewModel.onSettleChange { it.selectSettleDate(today) }
         dispatcher.scheduler.advanceUntilIdle()
 
         viewModel.settleContract()
@@ -217,10 +224,10 @@ class SettleContractViewModelTest {
         val state = viewModel.uiState.value
         assertNull("the sheet is gone", state.settleSheet)
         assertNull("and leaves no failure", viewModel.settleErrorMessage.value)
-        assertEquals("17 hari ditandai lunas sampai 24 Okt", viewModel.snackbarMessage.value)
+        assertEquals("17 hari ditandai lunas sampai 17 Okt", viewModel.snackbarMessage.value)
         assertEquals(
             "the marker is stored",
-            LocalDate.of(2026, 10, 24),
+            today,
             database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate,
         )
         assertEquals(
@@ -338,10 +345,13 @@ class SettleContractViewModelTest {
         viewModel.openSettle(budiRow(viewModel))
         dispatcher.scheduler.advanceUntilIdle()
 
-        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        // `today` (= 17 Oct) closes the whole open period — dates after today are refused
+        // by the repo, so the "successful read" half of this test has to sit at or before
+        // today.
+        viewModel.onSettleChange { it.selectSettleDate(today) }
         dispatcher.scheduler.advanceUntilIdle()
         assertTrue(
-            "a date past every charge day leaves the button available",
+            "today closes the whole open period, so the button is available",
             viewModel.uiState.value.settleSheet!!.canSettle,
         )
 
@@ -386,8 +396,10 @@ class SettleContractViewModelTest {
         val viewModel = observingViewModel()
         viewModel.openSettle(budiRow(viewModel))
         dispatcher.scheduler.advanceUntilIdle()
-        // Pick a date that does close something, so a *successful* read would enable it.
-        viewModel.onSettleChange { it.selectSettleDate(LocalDate.of(2026, 10, 24)) }
+        // `today` (= 17 Oct) closes some days — dates after today are refused by the repo
+        // and never reach the read; we need a successfully-read date to prove the *button*
+        // is gone on failure, not just on any refusal.
+        viewModel.onSettleChange { it.selectSettleDate(today) }
         dispatcher.scheduler.advanceUntilIdle()
         assertTrue(
             "the read succeeds normally, so the button is available",

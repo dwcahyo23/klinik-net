@@ -12,6 +12,7 @@ import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.SettlementAlreadySettledException
 import net.klinik.rental.data.repository.SettlementBeforeStartException
+import net.klinik.rental.data.repository.SettlementInFutureException
 import net.klinik.rental.domain.model.Payment
 import net.klinik.rental.data.repository.UnknownContractException
 import org.junit.After
@@ -92,13 +93,28 @@ class SettleContractTest {
      * leaves 0 days and Rp 0 — which `arrearsOf` reads as LANCAR, exactly the state a
      * period whose days all carry full rows produces. **No allocation row is written**,
      * and that is asserted against the table rather than described.
+     *
+     * ## Why this one passes its own [asOf]
+     *
+     * Because its subject is "the date after every charge day", not the future-date rule,
+     * and moving the settle date back to 17 October would delete that subject: with the
+     * cutoff at 25 and today at the 17th, no charge day exists past the 17th, so settling
+     * through it closes the same seventeen days and the test would stop being about a date
+     * beyond the period. So the settlement stays on 24 October and the call passes 24 October
+     * as the day it is compared against — the same device `ending a settled contract
+     * preserves the settlement` uses below. The rule itself is pinned by the `FUTURE` and
+     * `FUTURE_FAR` tests in this file and by `KontrakViewModelTest`.
      */
     @Test
     fun `settling the whole period closes every day without writing a row`() = runBlocking {
         assertEquals("the whole period is owed first", 4_250_000, payments.currentArrears(CONTRACT_ID, asOf))
         assertEquals(0, database.allocationDao().forContract(CONTRACT_ID).size)
 
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 24))
+        contracts.settleThrough(
+            CONTRACT_ID,
+            LocalDate.of(2026, 10, 24),
+            asOf = LocalDate.of(2026, 10, 24),
+        )
 
         assertEquals("and nothing after the settlement", 0, payments.currentArrears(CONTRACT_ID, asOf))
         assertEquals(
@@ -155,7 +171,7 @@ class SettleContractTest {
         val rowsBefore = database.allocationDao().forContract(CONTRACT_ID).toList()
         assertEquals("3 October is what it was placed on", 3, rowsBefore.size)
 
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 2))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 2), asOf = asOf)
 
         assertEquals(
             "the deposit's stored rows are NOT rewritten — settlement touches no row, " +
@@ -214,7 +230,7 @@ class SettleContractTest {
         val before = database.allocationDao().forContract(CONTRACT_ID)
         assertTrue("the fixture really does have rows", before.isNotEmpty())
 
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5), asOf = asOf)
 
         val after = database.allocationDao().forContract(CONTRACT_ID)
         assertEquals("the row count is unchanged, not rewritten", before.size, after.size)
@@ -242,7 +258,7 @@ class SettleContractTest {
         val otherBefore = payments.currentArrears(OTHER_CONTRACT_ID, asOf)
         assertEquals("the other contract owes the whole period", 4_250_000, otherBefore)
 
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = asOf)
 
         assertNull(
             "the other contract carries no marker",
@@ -269,11 +285,139 @@ class SettleContractTest {
     @Test
     fun `a settlement before the contract's start is refused`() {
         assertThrows(SettlementBeforeStartException::class.java) {
-            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 9, 30)) }
+            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 9, 30), asOf = asOf) }
         }
         assertNull(
             "and the marker was not written",
             runBlocking { database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate },
+        )
+    }
+
+    /**
+     * `SETTLE_FUTURE` — a settlement after today is refused, and nothing is written.
+     *
+     * The dangerous one, because the marker is not inert: `settledDays` closes every charge
+     * day at or before it, so a marker on the 18th would close **today's** arrears as well as
+     * whatever it covers later. Before this guard existed that write succeeded, and the
+     * rupiah behind it left the arrears figure without anyone having been paid — FR-9b is for
+     * days *"sudah tercatat di tempat lain"*, which cannot be true of days that have not
+     * happened.
+     *
+     * Asserted on the arrears as well as on the marker: the marker is the narrow claim, and
+     * the figure the owner reads off Tunggakan is the one that matters.
+     */
+    @Test
+    fun `a settlement date after today is refused and the arrears stand`() {
+        assertEquals(
+            "precondition: the whole period is owed",
+            4_250_000,
+            runBlocking { payments.currentArrears(CONTRACT_ID, asOf) },
+        )
+
+        val refused = assertThrows(SettlementInFutureException::class.java) {
+            runBlocking {
+                contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 18), asOf = asOf)
+            }
+        }
+
+        assertEquals("and it names the day it compared against", asOf, refused.asOf)
+        assertEquals("on the contract it was attempted for", CONTRACT_ID, refused.contractId)
+        assertNull(
+            "so no marker was written",
+            runBlocking { database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate },
+        )
+        assertEquals(
+            "and today's arrears are untouched — the rupiah the owner has not been paid for " +
+                "is still in the figure",
+            4_250_000,
+            runBlocking { payments.currentArrears(CONTRACT_ID, asOf) },
+        )
+    }
+
+    /**
+     * `SETTLE_FUTURE_FAR` — the same refusal six weeks out, so the rule is a **boundary** and
+     * not a tolerance.
+     *
+     * A "close enough" reading would take 18 October and refuse 28 November, and a marker six
+     * weeks out hides more arrears than any other date — so the far case is its own row
+     * rather than a variation of the near one.
+     */
+    @Test
+    fun `a settlement date six weeks out is refused the same way`() {
+        assertThrows(SettlementInFutureException::class.java) {
+            runBlocking {
+                contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 11, 28), asOf = asOf)
+            }
+        }
+        assertNull(
+            "the marker was not written either",
+            runBlocking { database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate },
+        )
+        assertEquals(
+            "and the arrears still stand",
+            4_250_000,
+            runBlocking { payments.currentArrears(CONTRACT_ID, asOf) },
+        )
+    }
+
+    /**
+     * `ORDER` — a date that is both future **and** before the start reports the start-date
+     * refusal, not this one.
+     *
+     * Only reachable on a contract whose own start date is in the future, which `open` permits
+     * since it guards only the rate. The two `if`s are ordered rather than independent, so this
+     * pins the order: the start date is a fact the owner cannot change by typing again, whereas
+     * "too far ahead" would be a second complaint about the same field. Swapping them would
+     * change the answer with no compiler signal.
+     */
+    @Test
+    fun `a future date before the start reports the start-date refusal first`() = runBlocking {
+        seedFutureStartContract()
+
+        assertThrows(SettlementBeforeStartException::class.java) {
+            runBlocking {
+                // 20 October: after `asOf` (the 17th) and before the 1 November start.
+                contracts.settleThrough(
+                    FUTURE_START_CONTRACT_ID,
+                    LocalDate.of(2026, 10, 20),
+                    asOf = asOf,
+                )
+            }
+        }
+        assertNull(
+            "and nothing was written",
+            runBlocking { database.contractDao().findById(FUTURE_START_CONTRACT_ID)!!.settledThroughDate },
+        )
+    }
+
+    /**
+     * `NOT_STARTED` — a contract that has not begun is refused **both** ways, by the two checks
+     * in order.
+     *
+     * The same impossibility, and for the same reason, that the end-date guard records: below
+     * the start is `BEFORE_START`, and from its own start onward every date is still ahead of
+     * today and so is `FUTURE`. Both messages are truthful and each names the constraint that
+     * actually blocks the owner. `ORDER` above covers the first half; this adds the second,
+     * because "no date at all is accepted" is a different fact from "the two checks are ordered".
+     */
+    @Test
+    fun `a contract that has not started refuses every settlement date`() = runBlocking {
+        seedFutureStartContract()
+
+        assertThrows(SettlementBeforeStartException::class.java) {
+            runBlocking {
+                contracts.settleThrough(FUTURE_START_CONTRACT_ID, LocalDate.of(2026, 10, 20), asOf = asOf)
+            }
+        }
+        assertThrows(SettlementInFutureException::class.java) {
+            runBlocking {
+                // From its own start date onward, which is still ahead of today.
+                contracts.settleThrough(FUTURE_START_CONTRACT_ID, LocalDate.of(2026, 11, 1), asOf = asOf)
+            }
+        }
+        assertNull(
+            "and neither attempt wrote a marker",
+            runBlocking { database.contractDao().findById(FUTURE_START_CONTRACT_ID)!!.settledThroughDate },
         )
     }
 
@@ -288,7 +432,7 @@ class SettleContractTest {
 @Test
     fun `settling an unknown contract is refused`() {
         assertThrows(UnknownContractException::class.java) {
-            runBlocking { contracts.settleThrough("no-such-contract", asOf) }
+            runBlocking { contracts.settleThrough("no-such-contract", asOf, asOf = asOf) }
         }
     }
 
@@ -345,8 +489,14 @@ class SettleContractTest {
         assertEquals(chargeDays.toInt(), impact.daysClosed)
         assertEquals(before, impact.amountRemoved)
 
-        // And the figures describe what the write would really do.
-        contracts.settleThrough(REST_DAY_CONTRACT_ID, LocalDate.of(2026, 10, 24))
+        // And the figures describe what the write would really do. 24 October as its own `asOf`,
+        // for the reason `settling the whole period closes every day without writing a row`
+        // gives: this test is about the six-day arithmetic, not the future-date rule.
+        contracts.settleThrough(
+            REST_DAY_CONTRACT_ID,
+            LocalDate.of(2026, 10, 24),
+            asOf = LocalDate.of(2026, 10, 24),
+        )
         assertEquals(
             "a full settlement leaves nothing owing",
             0,
@@ -365,13 +515,16 @@ class SettleContractTest {
      */
     @Test
     fun `settled days are not billed again after the period rolls over`() = runBlocking {
-        // Settled through 20 October, which is inside the period that is current today.
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+        // Settled through 17 October — today's own date, and inside the period that is
+        // current. It used to be the 20th, which this write no longer accepts: a marker
+        // three days ahead would settle arrears for days that have not happened. The subject
+        // is the rollover, and 17 October carries it exactly as the 20th did.
+        contracts.settleThrough(CONTRACT_ID, asOf, asOf = asOf)
         // And a period that is fully closed leaves nothing owing, in the same period.
         assertEquals(
             "the days at or before the marker are closed, not billed",
             0,
-            payments.currentArrears(CONTRACT_ID, LocalDate.of(2026, 10, 20)),
+            payments.currentArrears(CONTRACT_ID, asOf),
         )
 
         // Now the rollover: with a 25th cutoff, `asOf` 26 Oct opens the 25 Oct - 24 Nov
@@ -407,7 +560,7 @@ class SettleContractTest {
     fun `an ended contract can still be settled`() = runBlocking {
         contracts.endContract(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = asOf)
 
-        contracts.settleThrough(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 5))
+        contracts.settleThrough(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 5), asOf = asOf)
 
         val stored = database.contractDao().findById(OTHER_CONTRACT_ID)!!
         assertEquals(LocalDate.of(2026, 10, 5), stored.settledThroughDate)
@@ -427,7 +580,7 @@ class SettleContractTest {
      */
     @Test
     fun `ending a settled contract preserves the settlement`() = runBlocking {
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5), asOf = asOf)
 
         // This test **deliberately** passes the end date as its own `asOf`, rather than
         // the suite's `asOf` (17 Oct) that the sibling test above uses. The two differ on
@@ -464,35 +617,35 @@ class SettleContractTest {
      */
     @Test
     fun `settling back behind an existing settlement is refused`() = runBlocking {
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+        contracts.settleThrough(CONTRACT_ID, asOf, asOf = asOf)
 
         assertThrows(SettlementAlreadySettledException::class.java) {
-            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5)) }
+            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5), asOf = asOf) }
         }
 
         val stored = database.contractDao().findById(CONTRACT_ID)!!
         assertEquals(
             "the marker stands — nothing was reopened",
-            LocalDate.of(2026, 10, 20),
+            asOf,
             stored.settledThroughDate,
         )
         assertEquals(
             "and the days it covers are still closed",
             0,
-            payments.currentArrears(CONTRACT_ID, LocalDate.of(2026, 10, 20)),
+            payments.currentArrears(CONTRACT_ID, asOf),
         )
     }
 
     /** The refusal carries **both** dates, so the message can name what it already covers. */
     @Test
     fun `the backwards refusal carries both dates`() = runBlocking {
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+        contracts.settleThrough(CONTRACT_ID, asOf, asOf = asOf)
 
         val refused = assertThrows(SettlementAlreadySettledException::class.java) {
-            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5)) }
+            runBlocking { contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5), asOf = asOf) }
         }
 
-        assertEquals("what the contract already covers", LocalDate.of(2026, 10, 20), refused.settledThroughDate)
+        assertEquals("what the contract already covers", asOf, refused.settledThroughDate)
         assertEquals("and what was asked for", LocalDate.of(2026, 10, 5), refused.attemptedDate)
         assertEquals(CONTRACT_ID, refused.contractId)
     }
@@ -500,15 +653,15 @@ class SettleContractTest {
     /** Re-settling the **same** day is idempotent, and moving forward closes more days. */
     @Test
     fun `settling the same day again or later is accepted`() = runBlocking {
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = asOf)
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = asOf)
         assertEquals(
             "re-settling the same day changes nothing",
             LocalDate.of(2026, 10, 10),
             database.contractDao().findById(CONTRACT_ID)!!.settledThroughDate,
         )
 
-        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 15))
+        contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 15), asOf = asOf)
         assertEquals(
             "moving the marker forward is the direction the owner can always mean",
             LocalDate.of(2026, 10, 15),
@@ -536,7 +689,14 @@ class SettleContractTest {
         seedContract(OTHER_CONTRACT_ID, "v2", "r2", "B 9876 AB", "Siti Aminah")
     }
 
-    private suspend fun seedContract(id: String, vehicleId: String, renterId: String, plate: String, name: String) {
+    private suspend fun seedContract(
+        id: String,
+        vehicleId: String,
+        renterId: String,
+        plate: String,
+        name: String,
+        startDate: LocalDate = LocalDate.of(2026, 10, 1),
+    ) {
         database.vehicleDao().insert(
             VehicleEntity(
                 id = vehicleId,
@@ -563,7 +723,7 @@ class SettleContractTest {
                 id = id,
                 renterId = renterId,
                 vehicleId = vehicleId,
-                startDate = LocalDate.of(2026, 10, 1),
+                startDate = startDate,
                 dailyRate = RATE,
                 restDay = null,
                 activeVehicleId = vehicleId,
@@ -587,10 +747,31 @@ class SettleContractTest {
         )
     }
 
+    /**
+     * A contract that has **not started yet** — its 1 November start is a fortnight past
+     * `asOf`, which `open()` permits because it guards only the rate.
+     *
+     * Its own vehicle and renter, for the same reason `seedRestDayContract` takes its own: two
+     * open contracts cannot share a vehicle or a renter without colliding on the one-active
+     * indexes. Seeded per test rather than in `seed()` so the tests that do not need it are
+     * not reading a row they never touch.
+     */
+    private suspend fun seedFutureStartContract() {
+        seedContract(
+            FUTURE_START_CONTRACT_ID,
+            "v4",
+            "r4",
+            "B 5555 ZZ",
+            "Dewi Lestari",
+            startDate = LocalDate.of(2026, 11, 1),
+        )
+    }
+
     private companion object {
         const val CONTRACT_ID = "c1"
         const val OTHER_CONTRACT_ID = "c2"
         const val REST_DAY_CONTRACT_ID = "c3"
+        const val FUTURE_START_CONTRACT_ID = "c4"
         const val RATE = 250_000L
     }
 }

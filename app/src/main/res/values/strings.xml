@@ -812,6 +812,14 @@
     -->
     <string name="kontrak_error_settle_before_start">Kontrak dimulai %1$s, jadi tidak bisa ditandai lunas sebelum tanggal itu.</string>
     <!--
+      A settlement date after today. `%1$s` is the day the app compared against, in the
+      month form **with the year** (`17 Okt 2026`) — deliberately not the year-less form the
+      refusal above it uses, and for the same reason the end sheet's copy uses the year: the
+      refused date and the named day sit days apart, so the year is what tells them apart.
+      Naming that day is also the only way the owner can see that the device's clock is wrong.
+    -->
+    <string name="kontrak_error_settle_in_future">Tanggal lunas tidak bisa melewati %1$s.</string>
+    <!--
       The backwards-settlement refusal. Names the day the contract **already** covers
       rather than the rejected one, because that is the one the owner cannot see — the
       rejected date is still in the field they picked it into, while the existing marker is

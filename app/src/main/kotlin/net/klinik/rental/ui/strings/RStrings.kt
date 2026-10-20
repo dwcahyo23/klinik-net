@@ -451,6 +451,26 @@ class RStrings(private val context: Context) {
         )
 
     /**
+     * A settlement dated after the day the repository compared against.
+     *
+     * The same shape as [kontrakErrorContractEndInFuture] and for the same reason, so it
+     * takes a `LocalDate` and renders it in the **month form with the year** — `17 Okt 2026`
+     * — rather than through [formatExceptionDate], which is `17 Okt`. This message appears
+     * when a date is refused for being after today, so the two dates sit close together, and
+     * a month-only form would leave the owner unable to tell them apart. Naming that day is
+     * this sentence's whole job, so the figure has to carry the one part that distinguishes
+     * it.
+     *
+     * It also stays the only way to notice a wrong device clock: everything else on the
+     * sheet reads from the same clock, so nothing else would disagree.
+     */
+    fun kontrakErrorSettleInFuture(asOf: java.time.LocalDate): String =
+        context.getString(
+            R.string.kontrak_error_settle_in_future,
+            formatTanggalBulanTahun(asOf),
+        )
+
+    /**
      * A settlement dated earlier than one the contract already carries.
      *
      * Takes the **existing** date, not the rejected one: the rejected date is still in the

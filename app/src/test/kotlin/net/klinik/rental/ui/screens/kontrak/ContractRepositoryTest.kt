@@ -1382,6 +1382,48 @@ class ContractRepositoryTest {
     }
 
     /**
+     * `OPEN_ENDED` — an `open` call whose `Contract` is already ended is refused, and
+     * nothing is written.
+     *
+     * `Contract.isOpen` is `endDate == null`, and `toEntity()` derives both active columns
+     * from it — so writing an ended contract through `open` would insert a row with both
+     * slots NULL and the two `UNIQUE` active indexes would never see it. That is the
+     * structural failure mode the indexes exist to prevent, reached through the wrong
+     * entry point. No caller in the app reaches this today (`endContract` is the only
+     * method that holds an ended `Contract`), so the test constructs one directly via the
+     * domain factory, which is exactly the path a future caller would take.
+     *
+     * The success half is asserted in the same test: an `isOpen == true` contract still
+     * reaches the write, so a regression that broke both halves cannot pass.
+     */
+    @Test
+    fun `an open call whose contract is already ended is refused and nothing is written`() = runBlocking {
+        seed()
+        val ended = Contract(
+            id = CONTRACT_ID,
+            renterId = RENTER_ID,
+            vehicleId = VEHICLE_ID,
+            startDate = LocalDate.of(2026, 10, 1),
+            dailyRate = 250_000L,
+            restDay = DayOfWeek.SUNDAY,
+            endDate = LocalDate.of(2026, 10, 15),
+        )
+
+        assertThrows(IllegalArgumentException::class.java) {
+            runBlocking { repository.open(ended) }
+        }
+
+        val row = database.contractDao().findById(CONTRACT_ID)
+        assertNull("the refused row never landed", row)
+
+        // The success half: an open contract still takes the original path.
+        repository.open(contract(id = CONTRACT_ID))
+        val written = requireNotNull(database.contractDao().findById(CONTRACT_ID))
+        assertEquals("written through the guarded path", VEHICLE_ID, written.activeVehicleId)
+        assertEquals("with the renter slot set", RENTER_ID, written.activeRenterId)
+    }
+
+    /**
      * A contract that has not started yet has **no** end date it can accept.
      *
      * `open()` permits a future start date, so this is reachable through the form. Under
