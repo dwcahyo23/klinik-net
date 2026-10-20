@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.width
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
@@ -36,6 +35,14 @@ import net.klinik.rental.ui.theme.knSpacing
  * where two of them plainly fit. The threshold is [MasterDetailBreakpoint] — the same 600dp the
  * shell uses, applied to the space this layout actually has.
  *
+ * ## Why this component adds no padding of its own
+ *
+ * Because the gutter belongs to the screen. `shared.css:285-289` pads `.page-body` once, and
+ * this component used to add a second `spacing.xxl` on top — which shipped 48dp where the
+ * prototype has 24dp, on all three screens that use it. Those three callers were already
+ * padding correctly; removing the padding here rather than there fixes all three with one
+ * edit, and keeps the fourth caller right by default.
+ *
  * @param list the left pane: rows, their skeleton, or their empty state.
  * @param detail the right pane: the selected item, or `null` content when nothing is selected.
  *   A pane with nothing in it draws nothing rather than an empty state of its own — an empty
@@ -52,14 +59,7 @@ fun KnMasterDetail(
     BoxWithConstraints(modifier.fillMaxSize()) {
         if (maxWidth >= MasterDetailBreakpoint) {
             Row(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = spacing.xxl,
-                        end = spacing.xxl,
-                        top = spacing.xxl,
-                        bottom = spacing.xxl,
-                    ),
+                modifier = Modifier.fillMaxSize(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.xl),
             ) {
                 Box(
@@ -78,14 +78,7 @@ fun KnMasterDetail(
             // the detail is reachable by scrolling rather than pushed off the screen: a pane
             // that needs the whole window to reach is a pane the owner never sees.
             Column(
-                modifier = Modifier
-                    .fillMaxSize()
-                    .padding(
-                        start = spacing.xxl,
-                        end = spacing.xxl,
-                        top = spacing.xxl,
-                        bottom = spacing.xxl,
-                    ),
+                modifier = Modifier.fillMaxSize(),
                 verticalArrangement = Arrangement.spacedBy(spacing.xl),
             ) {
                 Box(

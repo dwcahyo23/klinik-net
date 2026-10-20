@@ -1188,8 +1188,6 @@ class AppShellTest {
             onCustomFromChange = {},
             onCustomToChange = {},
             onApplyCustomRange = {},
-            onExportCsv = {},
-            onPrint = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
         ),

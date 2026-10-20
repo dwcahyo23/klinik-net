@@ -209,7 +209,6 @@ private fun LaporanRoute(wiring: Screens.Laporan, onExportCsv: () -> Unit) {
         onCustomToChange = wiring.onCustomToChange,
         onApplyCustomRange = wiring.onApplyCustomRange,
         onExportCsv = onExportCsv,
-        onPrint = wiring.onPrint,
     )
 }
 
@@ -780,19 +779,22 @@ internal class Screens(
         val periodOptions: List<String>,
         val onSelectPeriod: (Int) -> Unit,
         /**
-         * The three mode chips, the two custom-range fields, the apply button and the two
-         * exports.
+         * The three mode chips, the two custom-range fields and the apply button.
          *
          * Required, not defaulted — a chip or a button wired to `{}` renders and does
          * nothing, which is the "control that reaches nothing" shape this class has refused
          * to ship twice.
+         *
+         * The CSV export is deliberately **absent** from this class. Its trigger half needs a
+         * `ComponentActivity` for the `CreateDocument` launcher, so it is built by the route
+         * (see `NavGraph`) and passed to `LaporanRoute` directly. A field here would have been
+         * shadowed by that parameter — a `{}` sitting one declaration away from the real
+         * wiring, which is the same dead control this app has already shipped twice.
          */
         val onSelectMode: (net.klinik.rental.ui.screens.laporan.ReportMode) -> Unit,
         val onCustomFromChange: (String) -> Unit,
         val onCustomToChange: (String) -> Unit,
         val onApplyCustomRange: () -> Unit,
-        val onExportCsv: () -> Unit,
-        val onPrint: () -> Unit,
         /**
          * The file the export is written to, once the owner has chosen one.
          *

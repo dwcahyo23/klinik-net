@@ -25,7 +25,6 @@ import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.Download
 import com.composables.icons.lucide.Lucide
-import com.composables.icons.lucide.Printer
 import com.composables.icons.lucide.TrendingUp
 import com.composables.icons.lucide.UserCheck
 import com.composables.icons.lucide.Wallet
@@ -87,7 +86,6 @@ import net.klinik.rental.ui.theme.knTypography
  * @param onApplyCustomRange applies the typed range. Required, likewise.
  * @param onExportCsv opens the file picker for the CSV. Required: a button wired to `{}`
  *   renders and does nothing, which is the defect this repo has shipped three times.
- * @param onPrint opens the print sheet. Required, for the same reason.
  */
 @Composable
 fun LaporanScreen(
@@ -99,7 +97,6 @@ fun LaporanScreen(
     onCustomToChange: (String) -> Unit,
     onApplyCustomRange: () -> Unit,
     onExportCsv: () -> Unit,
-    onPrint: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -112,17 +109,16 @@ fun LaporanScreen(
         Column(Modifier.fillMaxSize()) {
             KnTopBar(
                 title = stringResource(R.string.laporan_title),
-                // The two exports live in the **bar**, matching `reports.html:28-38`: they are
-                // the screen's actions, not a card's. And the bar is where the theme toggle is
+                // The export lives in the **bar**, matching `reports.html:28-38`: it is
+                // the screen's action, not a card's. And the bar is where the theme toggle is
                 // mounted, so a screen with a hand-rolled heading loses that control.
+                //
+                // One button, not two. The prototype's second action was "Cetak / PDF", and
+                // the app rendered it wired to `{}` — a control that reaches nothing, which
+                // this repo has shipped three times. Story 4.5's Never-list and the
+                // architecture's deferred table both rule out a print export, so the button
+                // is gone rather than waiting to be implemented.
                 actions = {
-                    KnButton(
-                        label = stringResource(R.string.laporan_export_print),
-                        onClick = onPrint,
-                        icon = Lucide.Printer,
-                        variant = KnButtonVariant.Secondary,
-                        modifier = Modifier.testTag(TAG_EXPORT_PRINT),
-                    )
                     KnButton(
                         label = stringResource(R.string.laporan_export_csv),
                         onClick = onExportCsv,
@@ -634,7 +630,6 @@ internal const val TAG_CUSTOM_APPLY = "laporan-custom-apply"
 internal const val TAG_BREAKDOWN = "laporan-breakdown"
 internal const val TAG_BREAKDOWN_HEADER = "laporan-breakdown-header"
 internal const val TAG_EXPORT_CSV = "laporan-export-csv"
-internal const val TAG_EXPORT_PRINT = "laporan-export-print"
 internal const val TAG_METRICS = "laporan-metrics"
 internal const val TAG_KPI_INCOME = "laporan-kpi-income"
 internal const val TAG_KPI_ARREARS = "laporan-kpi-arrears"
@@ -682,7 +677,6 @@ private fun LaporanScreenPreview() {
             onCustomToChange = {},
             onApplyCustomRange = {},
             onExportCsv = {},
-            onPrint = {},
         )
     }
 }

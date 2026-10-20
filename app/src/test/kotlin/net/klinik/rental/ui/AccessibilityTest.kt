@@ -840,8 +840,6 @@ class AccessibilityTest {
             onCustomFromChange = {},
             onCustomToChange = {},
             onApplyCustomRange = {},
-            onExportCsv = {},
-            onPrint = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
         ),

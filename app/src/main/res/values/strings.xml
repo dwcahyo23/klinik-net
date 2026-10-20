@@ -1445,7 +1445,6 @@
     <string name="laporan_table_count">%1$d baris</string>
 
     <string name="laporan_export_csv">Ekspor CSV</string>
-    <string name="laporan_export_print">Cetak / PDF</string>
     <string name="laporan_csv_title">LAPORAN SETORAN — PT KLINIK NET RENT CAR</string>
     <string name="laporan_csv_period">Periode</string>
     <string name="laporan_csv_printed">Dicetak</string>

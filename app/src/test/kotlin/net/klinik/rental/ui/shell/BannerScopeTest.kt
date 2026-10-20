@@ -272,8 +272,6 @@ class BannerScopeTest {
             onCustomFromChange = {},
             onCustomToChange = {},
             onApplyCustomRange = {},
-            onExportCsv = {},
-            onPrint = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
         ),

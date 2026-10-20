@@ -24,6 +24,8 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.domain.calculate.riskOf
 import net.klinik.rental.ui.components.KnBadgeTone
+import net.klinik.rental.ui.WindowGutter
+import net.klinik.rental.ui.leftInsetOf
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -200,6 +202,48 @@ class TunggakanScreenTest {
     }
 
     // ------------------------------------------------- master-detail (both orientations)
+
+    /**
+     * The screen's own gutter, measured against the **window**.
+     *
+     * `shared.css:285-289` pads `.page-body` once, with `--sp-6`. The app used to apply that
+     * twice on every master-detail screen — the caller's column padded it, and `KnMasterDetail`
+     * padded again — which shipped 48dp where the prototype has 24dp. The padding now lives in
+     * exactly one place: the caller's column.
+     *
+     * That is what makes this assertion necessary and not redundant with `MasterDetailGutterTest`.
+     * The component test proves `KnMasterDetail` no longer pads; it cannot prove this screen
+     * still does. Delete `.padding(spacing.xxl)` from `TunggakanScreen.kt:186` — the apparent
+     * duplicate — and every component assertion stays green while this screen renders its list
+     * flush against the window edge.
+     *
+     * Measured from the root's left edge, not from a parent, so the number is the gutter the
+     * owner sees rather than a difference between two internal offsets that happened to cancel.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp-land")
+    fun `the list keeps a single 24dp gutter from the window edge`() {
+        compose.setContent { theme { Screen(state = arrearsState()) } }
+
+        assertEquals(
+            "the arrears list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag(TAG_ROW_PREFIX + "c1")),
+        )
+    }
+
+    /** Narrow — the panes stack, and the gutter must be the same there. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w560dp-h2400dp-port")
+    fun `the stacked list keeps a single 24dp gutter from the window edge`() {
+        compose.setContent { theme { Screen(state = arrearsState()) } }
+
+        assertEquals(
+            "the stacked arrears list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag(TAG_ROW_PREFIX + "c1")),
+        )
+    }
 
     /**
      * In landscape the list and the detail are **both** on screen.

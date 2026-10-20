@@ -10,6 +10,7 @@ import androidx.compose.ui.test.assertIsNotEnabled
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithTag
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
 import androidx.compose.ui.test.performSemanticsAction
@@ -292,32 +293,43 @@ class LaporanScreenTest {
     }
 
     /**
-     * The two export buttons reach their handlers.
+     * The CSV export reaches its handler.
      *
      * A button wired to `{}` renders and ignores the tap, which is the defect this repo has
      * shipped three times. So the assertion is the **call**, not the presence.
      */
     @Test
-    fun `the export buttons reach their handlers`() {
+    fun `the export button reaches its handler`() {
         var exported = 0
-        var printed = 0
         compose.setContent {
             theme {
                 Screen(
                     state = populated(),
                     onExportCsv = { exported = exported + 1 },
-                    onPrint = { printed = printed + 1 },
                 )
             }
         }
 
         compose.onNodeWithTag(TAG_EXPORT_CSV).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
-        compose.onNodeWithTag(TAG_EXPORT_PRINT).performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
 
         assertEquals("the CSV export", 1, exported)
-        assertEquals("the print", 1, printed)
+    }
+
+    /**
+     * The print button is gone, not merely unimplemented.
+     *
+     * The prototype has a second action beside the CSV, and the app once rendered it wired to
+     * `{}` — visible, clickable, and reaching nothing. Removing the *code* is not enough on
+     * its own: a tag constant left behind would let this test pass while the button came back
+     * in some later commit. So the assertion names the tag that must not exist.
+     */
+    @Test
+    fun `the print button is absent from the tree`() {
+        compose.setContent { theme { Screen(state = populated()) } }
+
+        compose.onAllNodesWithTag(TAG_PRINT_MUST_BE_ABSENT).assertCountEquals(0)
+        compose.onNodeWithText("Cetak / PDF").assertDoesNotExist()
     }
 
     /** The period history lists the periods, each with its own total. */
@@ -347,7 +359,6 @@ class LaporanScreenTest {
         onCustomToChange: (String) -> Unit = {},
         onApplyCustomRange: () -> Unit = {},
         onExportCsv: () -> Unit = {},
-        onPrint: () -> Unit = {},
     ) {
         LaporanScreen(
             state = state,
@@ -358,7 +369,6 @@ class LaporanScreenTest {
             onCustomToChange = onCustomToChange,
             onApplyCustomRange = onApplyCustomRange,
             onExportCsv = onExportCsv,
-            onPrint = onPrint,
         )
     }
 
@@ -438,3 +448,14 @@ class LaporanScreenTest {
         ),
     )
 }
+
+/**
+ * The tag the print button used to carry, kept here as a literal.
+ *
+ * The production constant is gone, so the test cannot import it — and that is the point. A test
+ * that imported the constant would stop compiling the day it was deleted, which is a louder
+ * failure but still a *compile* failure rather than the assertion this defect needs. Spelling the
+ * string out here means the check survives the deletion: reintroduce a print button under this
+ * tag and `the print button is absent from the tree` fails.
+ */
+private const val TAG_PRINT_MUST_BE_ABSENT = "laporan-export-print"

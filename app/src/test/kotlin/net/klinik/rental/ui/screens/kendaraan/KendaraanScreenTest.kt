@@ -24,18 +24,29 @@ import androidx.compose.ui.test.SemanticsNodeInteractionCollection
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.asAndroidBitmap
+import androidx.compose.ui.test.captureToImage
+import androidx.compose.ui.test.onRoot
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.composables.icons.lucide.CarFront
 import com.composables.icons.lucide.Lucide
 import net.klinik.rental.domain.model.Vehicle
+import net.klinik.rental.ui.WindowGutter
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.format.formatRupiah
+import net.klinik.rental.ui.leftInsetOf
+import net.klinik.rental.ui.theme.DarkColors
 import net.klinik.rental.ui.theme.KlinikNetTheme
+import net.klinik.rental.ui.theme.LightColors
+import org.junit.Assert.assertEquals
+import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
 import org.junit.Rule
 import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.annotation.Config
+import org.robolectric.annotation.GraphicsMode
 
 /**
  * Robolectric render of the fleet screen.
@@ -184,6 +195,54 @@ class KendaraanScreenTest {
             .assertCountEquals(0)
     }
 
+    /**
+     * Each status paints its badge in its **own** tone.
+     *
+     * The test above asserts the label, and a label is exactly what the swapped mapping got
+     * right: every row read "Tersedia"/"Tersewa" correctly while carrying the other status's
+     * colour. So the assertion here is the **pixel**, not the string — the badge's own fill,
+     * compared against the tone token it is supposed to be.
+     *
+     * All three statuses are in one tree so a bug that paints every badge the same colour is
+     * caught rather than passing because it matched the single status under test.
+     *
+     * The colours are read from the shipped tokens rather than typed as hex, for the reason
+     * `NumPadRejectTest` records: a literal would keep passing after the token changed, which
+     * is precisely when this test is needed.
+     *
+     * Requires `NATIVE` graphics, which is what `captureToImage` needs to rasterise. The class
+     * is not annotated globally because the other tests here never ask for pixels.
+     */
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `each status paints its badge in its own tone`() {
+        compose.setContent { theme { KendaraanScreenState(allThreeStatusesState()) } }
+
+        assertBadgeTone("kendaraan-row-v1", "Tersedia", expected = InfoBg)
+        assertBadgeTone("kendaraan-row-v2", "Tersewa", expected = SuccessBg)
+        assertBadgeTone("kendaraan-row-v3", "Servis", expected = WarningBg)
+    }
+
+    /**
+     * The same three tones in the **dark** theme.
+     *
+     * The `-bg` companions differ per theme (`shared.css` line 103), so a light-only assertion
+     * would pass here even if the mapping resolved through the wrong dark token — the badge
+     * would look right on a light screen and wrong on a dark one, which is the defect shipping
+     * green. Same three statuses, same three expectations, read from `DarkColors`.
+     */
+    @Test
+    @GraphicsMode(GraphicsMode.Mode.NATIVE)
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `each status paints its badge in its own tone in the dark theme`() {
+        compose.setContent { theme(darkTheme = true) { KendaraanScreenState(allThreeStatusesState()) } }
+
+        assertBadgeTone("kendaraan-row-v1", "Tersedia", expected = DarkColors.semanticBg.info)
+        assertBadgeTone("kendaraan-row-v2", "Tersewa", expected = DarkColors.semanticBg.success)
+        assertBadgeTone("kendaraan-row-v3", "Servis", expected = DarkColors.semanticBg.warning)
+    }
+
     // --------------------------------------------------------------- filters
 
     /** All four chips render, so the other filters stay reachable after a tap. */
@@ -214,6 +273,45 @@ class KendaraanScreenTest {
         assertTrue(
             "a filtered-out row must not remain in the list",
             compose.onAllNodes(hasTestTag("kendaraan-row-v1")).fetchSemanticsNodes().isEmpty(),
+        )
+    }
+
+    /**
+     * The screen's own gutter, measured against the **window**.
+     *
+     * `shared.css:285-289` pads `.page-body` once, with `--sp-6`. This screen used to apply it
+     * twice — its own `Column` at `KendaraanScreen.kt:160` padded, and `KnMasterDetail` padded
+     * again — which shipped 48dp where the prototype has 24dp. The padding now lives in exactly
+     * one place: this screen's `Column`.
+     *
+     * That is what makes this assertion necessary rather than redundant with
+     * `MasterDetailGutterTest`. The component test proves `KnMasterDetail` no longer pads; it
+     * cannot prove this screen still does. Delete `.padding(spacing.xxl)` here — the apparent
+     * duplicate — and every component assertion stays green while this screen renders its list
+     * flush against the window edge.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the list keeps a single gutter from the window edge`() {
+        compose.setContent { theme { KendaraanScreenState(populatedState()) } }
+
+        assertEquals(
+            "the fleet list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag("kendaraan-row-v1")),
+        )
+    }
+
+    /** Narrow — the panes stack, and the gutter must be the same there. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w560dp-h2400dp-port")
+    fun `the stacked list keeps a single gutter from the window edge`() {
+        compose.setContent { theme { KendaraanScreenState(populatedState()) } }
+
+        assertEquals(
+            "the stacked fleet list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag("kendaraan-row-v1")),
         )
     }
 
@@ -492,10 +590,16 @@ class KendaraanScreenTest {
     // ------------------------------------------------------------------ helpers
 
     /** Wraps in the app theme — a screen composed outside it silently gets the
-     *  light defaults (`staticCompositionLocalOf`, Story 2.1's noted gotcha). */
+     *  light defaults (`staticCompositionLocalOf`, Story 2.1's noted gotcha).
+     *
+     *  `darkTheme` defaults to false so every pre-existing call site keeps the theme it was
+     *  written against; the dark variant is opted into by name. */
     @Composable
-    private fun theme(content: @Composable () -> Unit) {
-        KlinikNetTheme(darkTheme = false) { content() }
+    private fun theme(
+        darkTheme: Boolean = false,
+        content: @Composable () -> Unit,
+    ) {
+        KlinikNetTheme(darkTheme = darkTheme) { content() }
     }
 
     /** Routes the state through the screen with no-op actions. */
@@ -664,10 +768,88 @@ class KendaraanScreenTest {
         return "(text=${text?.joinToString(", ")?.take(30)}, ${size.width}x${size.height})"
     }
 
+    /**
+     * Asserts the fill a badge actually painted, against the tone token it should be.
+     *
+     * The badge's own node carries no test tag, so it is located the way a user finds it:
+     * by its label, scoped to the row, and then sampled at its **top-left corner**. That
+     * corner is inside the pill's padding rather than under the glyphs, which matters —
+     * sampling a glyph pixel would read the text colour and pass for a wrong background.
+     *
+     * The label is asserted too, so a failure here cannot be a node that merely happened to
+     * be at those coordinates.
+     */
+    private fun assertBadgeTone(rowTag: String, label: String, expected: Color) {
+        val nodes = compose.onAllNodes(
+            hasText(label) and insideRow(rowTag),
+            useUnmergedTree = true,
+        ).fetchSemanticsNodes()
+        assertEquals("$rowTag should carry exactly one '$label' badge", 1, nodes.size)
+
+        val bounds = nodes.single().boundsInRoot
+        assertTrue(
+            "$rowTag's '$label' badge measured ${bounds.width}x${bounds.height} — nothing to sample",
+            bounds.width > 0 && bounds.height > 0,
+        )
+
+        val bitmap = compose.onRoot().captureToImage().asAndroidBitmap()
+        // The sample point is inside the badge's own bounds **and** inside the captured image.
+        // `getPixel` throws `IllegalArgumentException` on either violation, which would replace
+        // a clear "the badge moved" message with a stack trace about array bounds — so the
+        // check is explicit and says what it meant. Truncating before comparing matters too: a
+        // fractional `left` of 24.7 truncates to 24, and `24.7 >= 24` would let the real
+        // coordinate out to throw.
+        val sampleX = bounds.left.toInt()
+        val sampleY = bounds.top.toInt()
+        val inWindow = sampleX >= 0 && sampleY >= 0 &&
+            sampleX < bitmap.width && sampleY < bitmap.height
+        assertTrue(
+            "$rowTag's '$label' badge samples at ($sampleX, $sampleY), which is outside the " +
+                "${bitmap.width}x${bitmap.height} capture — the node is off-window or scrolled",
+            inWindow,
+        )
+
+        val actual = Color(bitmap.getPixel(sampleX, sampleY))
+        assertEquals(
+            "$rowTag's '$label' badge paints ${describeColour(actual)}, " +
+                "expected ${describeColour(expected)}",
+            expected,
+            actual,
+        )
+    }
+
+    /** `#AARRGGBB`, so a failure names a colour rather than printing a float triple. */
+    private fun describeColour(c: Color): String =
+        "#%08X".format(
+            ((c.alpha * 255).toInt() shl 24) or
+                ((c.red * 255).toInt() shl 16) or
+                ((c.green * 255).toInt() shl 8) or
+                (c.blue * 255).toInt(),
+        )
+
+    /** A fleet carrying all three statuses, so one tree exercises all three tones. */
+    private fun allThreeStatusesState(): KendaraanUiState {
+        val rows = listOf(
+            row("v1", "B 1235 TF", "Agya", 250_000L, VehicleStatus.Tersedia),
+            row("v2", "B 9876 AB", "Brio", 275_000L, VehicleStatus.Tersewa),
+            row("v3", "B 1122 EE", "Avanza", 300_000L, VehicleStatus.Servis),
+        )
+        return KendaraanUiState(rows = rows, counts = countByStatus(rows))
+    }
+
     private companion object {
         val MIN_TARGET: Dp = 48.dp
         const val TAG_ADD = "kendaraan-add"
         const val TAG_EMPTY_FLEET = "kendaraan-empty-fleet"
         const val TAG_EMPTY_SEARCH = "kendaraan-empty-search"
+
+        /**
+         * The three fills `prototype/cars.html:177-179` asks for, read from the theme's
+         * own tokens rather than typed as hex — a typed hex would go on passing after the
+         * token changed, which is when this assertion is worth having.
+         */
+        val InfoBg: Color = LightColors.semanticBg.info
+        val SuccessBg: Color = LightColors.semanticBg.success
+        val WarningBg: Color = LightColors.semanticBg.warning
     }
 }

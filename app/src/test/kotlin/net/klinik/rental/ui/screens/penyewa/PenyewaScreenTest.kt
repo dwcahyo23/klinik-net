@@ -28,7 +28,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.UserPlus
 import net.klinik.rental.domain.model.Renter
+import net.klinik.rental.ui.WindowGutter
 import net.klinik.rental.ui.components.KnButton
+import net.klinik.rental.ui.leftInsetOf
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertTrue
@@ -331,6 +333,45 @@ class PenyewaScreenTest {
         compose.setContent { theme { Screen(state = populatedState()) } }
 
         compose.onNodeWithTag("penyewa-row-r1").assertAtLeast(MIN_TARGET, "list row")
+    }
+
+    /**
+     * The screen's own gutter, measured against the **window**.
+     *
+     * `shared.css:285-289` pads `.page-body` once, with `--sp-6`. This screen used to apply it
+     * twice — its own `Box` at `PenyewaScreen.kt:145` padded, and `KnMasterDetail` padded again —
+     * which shipped 48dp where the prototype has 24dp. The padding now lives in exactly one
+     * place: this screen's `Box`.
+     *
+     * That is what makes this assertion necessary rather than redundant with
+     * `MasterDetailGutterTest`. The component test proves `KnMasterDetail` no longer pads; it
+     * cannot prove this screen still does. Delete `.padding(spacing.xxl)` here — the apparent
+     * duplicate — and every component assertion stays green while this screen renders its list
+     * flush against the window edge.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the list keeps a single gutter from the window edge`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        assertEquals(
+            "the renter list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag("penyewa-row-r1")),
+        )
+    }
+
+    /** Narrow — the panes stack, and the gutter must be the same there. */
+    @Test
+    @Config(sdk = [34], qualifiers = "w560dp-h2400dp-port")
+    fun `the stacked list keeps a single gutter from the window edge`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        assertEquals(
+            "the stacked renter list must start one gutter in from the window edge",
+            WindowGutter,
+            compose.leftInsetOf(compose.onNodeWithTag("penyewa-row-r1")),
+        )
     }
 
     /** The search bar's clear button is the node most likely to be sized by its glyph. */

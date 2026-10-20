@@ -626,13 +626,18 @@ private val VehicleStatus.labelRes: Int
 /**
  * Tone per status.
  *
- * Tersedia is `Success`, tersewa is `Brand` and servis is `Warning` — the four
- * semantic colours of the design system, with no fifth status colour invented.
+ * Tersedia is `Info`, tersewa is `Success` and servis is `Warning` — three of the
+ * design system's semantic colours, with no fourth status colour invented.
+ *
+ * The mapping is `prototype/cars.html:177-179`: `rented` is `badge-success` and
+ * `available` is `badge-info`. It shipped the other way round, which reads as a
+ * fleet at full capacity looking idle and a fleet fully booked looking free —
+ * the two states an owner most needs told apart at a glance.
  */
 private val VehicleStatus.tone: KnBadgeTone
     get() = when (this) {
-        VehicleStatus.Tersedia -> KnBadgeTone.Success
-        VehicleStatus.Tersewa -> KnBadgeTone.Brand
+        VehicleStatus.Tersedia -> KnBadgeTone.Info
+        VehicleStatus.Tersewa -> KnBadgeTone.Success
         VehicleStatus.Servis -> KnBadgeTone.Warning
     }
 

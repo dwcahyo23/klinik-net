@@ -1022,11 +1022,10 @@ private fun KlinikNetApp(
                     onCustomFromChange = laporan::setCustomFrom,
                     onCustomToChange = laporan::setCustomTo,
                     onApplyCustomRange = laporan::applyCustomRange,
-                    // The export's two halves. The **picker** is the shell's — a launcher needs
-                    // a `ComponentActivity` — and the **write** is the ViewModel's, because the
-                    // CSV it writes is built from the report's own state.
-                    onExportCsv = {},
-                    onPrint = {},
+                    // The export's **write** half is the ViewModel's, because the CSV it
+                    // writes is built from the report's own state. The **trigger** half is
+                    // not here: the `CreateDocument` launcher needs a `ComponentActivity`,
+                    // so `NavGraph` builds it and hands it to the route directly.
                     onExportFileChosen = laporan::exportTo,
                     csvFilename = { laporan.csvFilename() },
                 ),
