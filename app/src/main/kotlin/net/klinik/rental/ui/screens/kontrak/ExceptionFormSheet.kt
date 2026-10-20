@@ -480,6 +480,16 @@ private fun ExceptionDateField(
  * a message rather than from an option that silently vanished, and the guarantee still
  * holds for a caller that never came through the UI.
  *
+ * **And do not add `max(today)` here.** This function is shared by three fields whose
+ * valid ranges differ, and the two date-level rules are both about *reading* a stored
+ * fact rather than about the calendar: an **end** date after today is refused because
+ * `isOpen` is `endDate == null`, so any stored date ends the contract on the spot — but a
+ * **start** date in the future is perfectly legal (`open` accepts it, and a rental that
+ * has not begun yet is a real thing to record). A `max(today)` here would silently make
+ * future-start contracts unrecordable through the one form that can record them, and no
+ * test in the start-date path would notice, because the sheet would simply refuse a date
+ * the app is supposed to accept.
+ *
  * ## Why the field is disabled
  *
  * The date arrives from the dialog, never from typing, and a disabled `KnField` with

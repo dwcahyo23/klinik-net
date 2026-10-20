@@ -749,6 +749,14 @@
       why the second attempt did nothing.
     -->
     <string name="kontrak_error_contract_end_before_start">Kontrak dimulai %1$s, jadi tidak bisa berakhir sebelum tanggal itu.</string>
+    <!--
+      A date after today. `%1$s` is the day the app compared against, in the month form
+      **with the year** (`17 Okt 2026`) — deliberately not the year-less form the two
+      refusals above it use. This message appears when a date is refused for being after
+      today, so the two dates sit close together, and without the year the owner cannot
+      tell which 17 October is being refused. Naming that day is this sentence's whole job.
+    -->
+    <string name="kontrak_error_contract_end_in_future">Tanggal berakhir tidak bisa melewati hari ini (%1$s).</string>
     <string name="kontrak_error_contract_end_blank_date">Pilih tanggal berakhirnya kontrak sebelum kirim.</string>
     <string name="kontrak_error_contract_not_open">Kontrak ini sudah berakhir, jadi tidak bisa diubah lagi.</string>
     <string name="kontrak_error_contract_end_unexpected">Gagal mengakhiri kontrak. Coba lagi.</string>

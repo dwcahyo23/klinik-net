@@ -6,6 +6,7 @@ import net.klinik.rental.R
 import net.klinik.rental.data.backup.BackupJsonReader
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.format.formatTanggalBulan
+import net.klinik.rental.ui.format.formatTanggalBulanTahun
 
 /**
  * Indonesian copy for the screens that raise typed domain exceptions.
@@ -348,6 +349,26 @@ class RStrings(private val context: Context) {
         context.getString(
             R.string.kontrak_error_contract_end_before_start,
             formatExceptionDate(startDate),
+        )
+
+    /**
+     * An end date after the day the repository compared against.
+     *
+     * Renders that day in the **month form with the year** — `17 Okt 2026` — rather than
+     * through [formatExceptionDate], which is `17 Okt`. The year is the part that says
+     * *which* 17 October is: this message appears when a date is refused for being after
+     * today, so the two dates sit close together, and a month-only form would leave the
+     * owner unable to tell them apart. Naming that day is this sentence's whole job, so the
+     * figure has to carry the one part that distinguishes it.
+     *
+     * That is also why it takes a `LocalDate` where its sibling refusals take an
+     * already-formatted `String`: the formatting is load-bearing here, not the caller's
+     * business.
+     */
+    fun kontrakErrorContractEndInFuture(asOf: java.time.LocalDate): String =
+        context.getString(
+            R.string.kontrak_error_contract_end_in_future,
+            formatTanggalBulanTahun(asOf),
         )
 
     /**

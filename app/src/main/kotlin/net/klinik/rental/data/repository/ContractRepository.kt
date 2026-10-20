@@ -13,6 +13,7 @@ import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.parse.requirePositiveRate
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
 import net.klinik.rental.domain.validation.ContractEndBeforeStartException
+import net.klinik.rental.domain.validation.ContractEndInFutureException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.ServiceExceptionBeforeContractStartException
@@ -35,6 +36,8 @@ import java.util.UUID
  *    exception for that date
  *  - [ContractEndBeforeStartException] — the end date precedes the contract's own
  *    start date, which is structurally impossible
+ *  - [ContractEndInFutureException] — the end date is after the day the caller says
+ *    it is, which would end a running rental on the spot
  *
  * [ContractNotOpenException] is used by two paths for the same reason: an ended
  * contract refuses *both* exception edits and a second end, because "this contract
@@ -226,12 +229,38 @@ class ContractRepository(
      * have been holding for an hour. The only field this method takes from the caller
      * is the date they chose.
      *
+     * ## Why "today" arrives as [asOf] rather than from a clock here
+     *
+     * AD-8: this class keeps no clock. A `LocalDate.now()` inside the repository would be
+     * a second source of "today" that a test cannot pin, and the refusal it drives names
+     * that day — so the day has to be the caller's, exactly as `KontrakViewModel` already
+     * passes `LocalDate.now(clock)` for a settlement. [asOf] is therefore a parameter, not
+     * a constructor argument: the class stays three-argument and every existing
+     * construction site is untouched.
+     *
+     * @param asOf the caller's "today". An [endDate] strictly after it is refused, because
+     *   `isOpen` is `endDate == null` and any written date ends the contract immediately —
+     *   so a future date would free the car and stop the charges today, for a rental still
+     *   running. A past date is accepted: a contract that ended before this app existed is
+     *   real.
+     *
      * @throws ContractNotOpenException when the contract has already ended, or when
      *   nobody holds that id. Nothing is written.
      * @throws ContractEndBeforeStartException when [endDate] precedes the contract's
      *   own stored start date. Nothing is written.
+     * @throws ContractEndInFutureException when [endDate] is after [asOf]. Nothing is
+     *   written.
+     *
+     *   **These two overlap, and the start-date one wins.** An [endDate] can be both
+     *   before `startDate` and after `asOf` — reachable whenever a contract's own start
+     *   date is in the future, which `open` permits. The two `if`s below are ordered, not
+     *   independent: the before-start check runs first and wins, so the refusal names the
+     *   figure the owner cannot choose again rather than adding a second complaint about
+     *   one field. Swapping the two would change the answer with **no compiler signal**,
+     *   so the order is part of the contract and `ContractRepositoryTest`'s `ORDER` row
+     *   pins it.
      */
-    suspend fun endContract(contractId: String, endDate: LocalDate) {
+    suspend fun endContract(contractId: String, endDate: LocalDate, asOf: LocalDate) {
         inTransaction {
             // 1. The same read-only guard the exception writes use, so "this contract
             // has ended" is one question asked in one place.
@@ -247,7 +276,35 @@ class ContractRepository(
                 )
             }
 
-            // 3. Build the domain model so `Contract`'s own `require` is the second
+            // 3. And a future date is refused for the same reason, from the other side.
+            // `isOpen` is `endDate == null`, so *any* written date ends the contract
+            // immediately: a date six weeks out would free the car today and stop the
+            // charges today, for a rental that is still running. Ordered after the
+            // start-date check so that when both apply the owner gets the message naming
+            // a figure they can act on, rather than a second complaint about the same
+            // figure.
+            //
+            // Note what this makes impossible: a contract whose *start* date is in the
+            // future — which `open()` permits, since it guards only the rate — has no end
+            // date that satisfies both checks. Anything before its start is refused by
+            // check 2; anything from its start onward is still in the future and refused
+            // here. So such a contract cannot be ended until its start date arrives, and
+            // whichever of the two messages the owner sees names the constraint that
+            // actually blocks them.
+            //
+            // That is the correct outcome under `isOpen = endDate == null`: an open
+            // contract occupies its car from the moment it is written, so the car is held
+            // for a rental that has not begun — the state the owner chose when they saved
+            // a future start date. Cancelling a booking is a different action, and this
+            // method is not it.
+            if (endDate.isAfter(asOf)) {
+                throw ContractEndInFutureException(
+                    contractId = contractId,
+                    asOf = asOf,
+                )
+            }
+
+            // 4. Build the domain model so `Contract`'s own `require` is the second
             // guard rather than a copy of it, then project it. `toEntity()` nulls both
             // active columns here, which is what frees the vehicle and the renter.
             dao.update(

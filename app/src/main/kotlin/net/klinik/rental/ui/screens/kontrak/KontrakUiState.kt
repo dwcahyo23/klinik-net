@@ -663,7 +663,10 @@ fun ExceptionFormState.toServiceException(id: String): ServiceException? {
  *
  * @param endDate the day the rental ended, or `null` untouched. A **past** date is
  *   accepted and is the common case — a contract that ended before this app existed is
- *   real, and refusing a past date would make the owner's own history unrecordable.
+ *   real, and refusing a past date would make the owner's own history unrecordable. A
+ *   date **after today** is refused by the repository, not here: `isOpen` is
+ *   `endDate == null`, so any stored date ends the contract on the spot and a future one
+ *   would free the car today for a rental still running.
  * @param dateError the last refusal that landed on this field, or `null`.
  *   `null` means "validation has not run", which is what `KnField` renders as *no*
  *   error row rather than an empty one.
@@ -696,6 +699,12 @@ fun EndContractFormState.selectEndDate(date: LocalDate): EndContractFormState = 
  * the message names the start date, which is the figure the owner needs in order to fix
  * it. Filtering it at the button would leave the owner with a permanently disabled
  * control and no explanation.
+ *
+ * A **future** date is not filtered here either, for the same reason and with the same
+ * division of labour: the sheet does not hold "today" — the ViewModel does, in its clock —
+ * and the refusal names the day it compared against, which is the one figure the owner
+ * cannot otherwise see. A button that silently greyed out on a future date would tell them
+ * nothing about why.
  */
 val EndContractFormState.canEndContract: Boolean
     get() = endDate != null

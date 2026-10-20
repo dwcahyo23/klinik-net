@@ -33,3 +33,28 @@
   - `createdAt` in `data.js` is `"2026-03-22 08:45:10"`; `Instant.parse` needs `"2026-03-22T08:45:10Z"`.
   - The single `canceled` row (`data.js:117-129`) must have its allocations **dropped** — keeping both double-counts arrears (`PaymentEntity.kt:120-122`).
   - Drop entirely: `ktp`, `address`, `avatar`, `joinDate`, `currentRenterId` — no columns. String ids `car-1`/`cont-1` are fine; `@PrimaryKey val id: String` has no UUID guard.
+- source_spec: `_bmad-output/implementation-artifacts/spec-kontrak-tanggal-akhir-di-masa-depan.md`
+  summary: `settleThrough(contractId, date)` accepts a settlement date after today — it refuses only `date < startDate`, so marking a contract settled through a future day closes days that have not happened and hides the arrears that would be owed.
+  evidence: |
+    The same failure class this spec closed for `endContract`, on the sibling path. Not caused by
+    that change: `settleThrough` and `ContractDateField` are untouched by its diff, and
+    `SettleContractTest.kt:101` and `:349` already pass 24 Oct against a suite `asOf` of 17 Oct,
+    so a future settlement is a pinned, working behaviour today rather than a regression.
+    `spec-3-6` recorded this as unreachable because "the picker only offers past dates" — that is
+    no longer true in the code: all three sheets share `ContractDateField`
+    (`ExceptionFormSheet.kt:491`), which binds no `selectableDates` at all. Adding
+    `selectableDates = ...max(today)` there is NOT the fix, because the contract START date field
+    uses the same component and `open()` accepts a future start date. The guard belongs in
+    `settleThrough`, mirroring `endContract`'s `asOf` parameter.
+
+- source_spec: `_bmad-output/implementation-artifacts/spec-kontrak-tanggal-akhir-di-masa-depan.md`
+  summary: The backup restore path writes `endDate` verbatim, so a backup carrying a future end date restores the exact state the new guard refuses — the car reads available today for a rental still running.
+  evidence: |
+    `BackupJsonReader.kt:220` builds a `ContractEntity` straight from JSON
+    (`endDate = row.nullableString("endDate")?.let(LocalDate::parse)`). `ContractEntity.init` pins
+    the two active columns to `endDate` and refuses `endDate < startDate`, but carries no
+    comparison to today, so restore is a second writer that bypasses the new invariant entirely.
+    Reachable from a backup written on a device whose clock was ahead, or from a hand-edited file.
+    Pre-existing and outside this spec's scope, which governs `endContract` only; the guard's own
+    KDoc calls the refusal "the whole fix", which overstates it until restore is bounded too. No
+    matrix row covers restore.

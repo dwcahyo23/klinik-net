@@ -164,7 +164,7 @@ class TunggakanArrearsTest {
     @Test
     fun `an ended contract with a balance is still listed`() = runBlocking {
         seedContract(CONTRACT_ID, "v1", "r1", "B 1235 TF", "Budi Santoso")
-        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 17))
+        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 17), asOf = LocalDate.of(2026, 10, 17))
 
         val entry = payments.observeArrearsForAllContracts(CLOCK).first().single()
 

@@ -26,6 +26,7 @@ import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
 import net.klinik.rental.domain.validation.ContractEndBeforeStartException
+import net.klinik.rental.domain.validation.ContractEndInFutureException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.InvalidAmountException
@@ -912,6 +913,26 @@ class KontrakViewModel(
      * point, the owner keeps interacting across it, and a sheet they dismissed and
      * reopened while it was in flight is a different instance, left alone.
      *
+     * ## The two date-level refusals
+     *
+     * `ContractEndBeforeStartException` and `ContractEndInFutureException` are both about
+     * the *date*, so both land on the date field — the only thing the owner can change —
+     * and both leave the sheet up, unlike `ContractNotOpenException` which closes it
+     * because there is no field left to blame. Each names the figure the owner cannot
+     * otherwise see: the start date for the first, today for the second.
+     *
+     * **When both apply, the start date wins.** The repository checks it first, so an end
+     * date that is both before the start and after today reports the start date: that is
+     * the constraint the owner cannot work around by typing again, and "too far ahead"
+     * would be a second complaint about one field.
+     *
+     * Each catch lands on the field only when the sheet that asked is **still the live
+     * one**, and falls to the sheet's own banner otherwise. `closeEndContract` and
+     * `openEndContract` are not behind [savingException] — a second end must not be able
+     * to block a close, and locking them would let the owner be trapped in a sheet they
+     * cannot dismiss — so the sheet under the suspended write can be gone or replaced,
+     * and a refusal about one contract must not appear on another's field.
+     *
      * Closing after a success is what makes the vehicle read `tersedia` with **no sync
      * action**: `endDate` nulls both active columns, and `VehicleDao.observeRented` asks
      * only `endDate IS NULL`. There is nothing to push anywhere.
@@ -936,7 +957,7 @@ class KontrakViewModel(
 
         viewModelScope.launch {
             try {
-                contracts.endContract(contractId, endDate)
+                contracts.endContract(contractId, endDate, asOf = LocalDate.now(clock))
                 val live = endSheet.value
                 if (live != null && live === current) endSheet.value = null
                 endError.value = null
@@ -946,14 +967,33 @@ class KontrakViewModel(
             } catch (e: ContractEndBeforeStartException) {
                 // Re-read rather than writing `current` back: the owner may have kept
                 // interacting while Room was doing the write, and a stale `copy` would
-                // discard that.
+                // discard that. And the identity check is the success path's own:
+                // `closeEndContract` and `openEndContract` are not behind
+                // `savingException`, so the sheet that asked can be dismissed and a
+                // *different* one opened while this write was suspended — and a
+                // before-start refusal about contract A must not land on contract B's
+                // field.
                 val live = endSheet.value
-                if (live != null) {
+                if (live != null && live === current) {
                     endSheet.value = live.copy(
                         dateError = strings.kontrakErrorContractEndBeforeStart(e.startDate),
                     )
                 } else {
                     endError.value = strings.kontrakErrorContractEndBeforeStart(e.startDate)
+                }
+            } catch (e: ContractEndInFutureException) {
+                // The date is the only thing the owner can change, so the refusal lands on
+                // it — and it names the day the repository compared against, because a
+                // message that only said "not in the future" would leave them to work out
+                // which day this app thinks it is. The same identity guard as above, for
+                // the same reason.
+                val live = endSheet.value
+                if (live != null && live === current) {
+                    endSheet.value = live.copy(
+                        dateError = strings.kontrakErrorContractEndInFuture(e.asOf),
+                    )
+                } else {
+                    endError.value = strings.kontrakErrorContractEndInFuture(e.asOf)
                 }
             } catch (e: ContractNotOpenException) {
                 // No field of its own: the contract ended, so this whole sheet is about

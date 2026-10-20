@@ -13,32 +13,6 @@ warnings:
   - oversized
 deferred:
   - summary: >-
-      A future end date ends the contract immediately, because `Contract.isOpen`
-      is `endDate == null` — so the car reads available today for a rental that
-      continues for weeks.
-    evidence: |-
-      Found by this story's own review pass, and initially waved off as
-      legitimate pre-marking before being re-checked against `Contract.isOpen`.
-      Writing a date six weeks out flips the contract to ended today: the
-      derived `VehicleDao.hasOpenContract` answers no and the charge days stop,
-      for a rental still running. Same failure class as clamping a date the
-      owner chose, which `Contract.init` refuses on exactly that reasoning
-      ("a date typed into the wrong field").
-
-      Pinned by `a future end date ends the contract immediately, which is the
-      known consequence` in `ContractRepositoryTest`, so the consequence stays
-      executable rather than being a sentence in a log someone reads once.
-
-      Not patched here because the fix is not local. Either reject a future end
-      date with a sentence naming today, or make "scheduled return" a distinct
-      concept with its own representation — and choosing between those is a UX
-      decision this story's intent does not settle. Guessing at it inside this
-      story is the exact failure mode `Contract.init`'s guard exists to prevent.
-      Goes to the Epic 2 retrospective with the other manual checks.
-    location: >-
-      app/src/main/kotlin/net/klinik/rental/data/repository/ContractRepository.kt:341
-    severity: high (unverified)
-  - summary: >-
       Whether the end sheet's confirm button is reachable on a Redmi Pad 2 with
       the keyboard up, and whether the three sheets never stack in either
       orientation.
@@ -582,9 +556,20 @@ together.
     field"). Rejected as a *patch* because the fix is not local: the honest fix is either
     to reject a future end date with a sentence, or to make "scheduled return" a distinct
     concept — and choosing between those is a UX decision this story's intent does not
-    settle, so it is **deferred to the Epic 2 retrospective** and pinned by
-    `a future end date ends the contract immediately, which is the known consequence`
-    so it cannot be forgotten.
+    settle, so it was **deferred to the Epic 2 retrospective**.
+
+    **Closed afterwards, in `spec-kontrak-tanggal-akhir-di-masa-depan.md`.** That decision was
+    made (reject, do not schedule) and shipped: `endContract` now takes an `asOf: LocalDate`
+    and refuses `endDate.isAfter(asOf)` with `ContractEndInFutureException`, ordered after the
+    before-start check so the start date wins when both apply. The test this entry pointed at,
+    `a future end date ends the contract immediately, which is the known consequence`, was
+    **deleted** — it pinned the bug by asserting it, so keeping it would assert the very
+    behaviour the fix removes. It is replaced by three tests in `ContractRepositoryTest`:
+    `an end date after today is refused and the row stays open` (tomorrow),
+    `an end date six weeks out is refused the same way`, and
+    `a future date before the start reports the start-date refusal first` (the ordering),
+    plus `a future end date is refused on the date field naming today` in
+    `KontrakViewModelTest`.
 
 ## Design Notes
 

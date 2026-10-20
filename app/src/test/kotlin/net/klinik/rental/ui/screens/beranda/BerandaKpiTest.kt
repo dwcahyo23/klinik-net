@@ -171,7 +171,7 @@ class BerandaKpiTest {
     @Test
     fun `an ended contract that still owes counts in the arrears total`() = runBlocking {
         seedContract(CONTRACT_ID)
-        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 17))
+        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 17), asOf = LocalDate.of(2026, 10, 17))
 
         val entries = payments.observeArrearsForAllContracts(CLOCK).first()
         assertEquals("the ended contract is still listed", 1, entries.size)

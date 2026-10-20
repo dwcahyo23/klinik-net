@@ -1009,7 +1009,8 @@ class KontrakViewModelTest {
         assertNotNull("the sheet must be open", viewModel.uiState.value.endSheet)
         assertEquals("and belong to the tapped row", row.contract.id, viewModel.uiState.value.endSheet!!.contractId)
 
-        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 20)) }
+        // Today, per the pinned clock — a date after it is refused by the repository.
+        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 17)) }
         viewModel.endContract()
         dispatcher.scheduler.advanceUntilIdle()
 
@@ -1017,11 +1018,11 @@ class KontrakViewModelTest {
         assertNull("a successful end closes the sheet", state.endSheet)
         assertNull("and leaves no failure behind", viewModel.endErrorMessage.value)
         val ended = state.rows.single()
-        assertEquals("the end date is stored", LocalDate.of(2026, 10, 20), ended.contract.endDate)
+        assertEquals("the end date is stored", LocalDate.of(2026, 10, 17), ended.contract.endDate)
         assertFalse("and the row offers no end verb any more", ended.canEnd)
         assertEquals(
             "showing when it ended, pre-formatted by the ViewModel",
-            "20 Okt",
+            "17 Okt",
             ended.endDateText,
         )
         assertTrue(
@@ -1053,7 +1054,7 @@ class KontrakViewModelTest {
 
         viewModel.openEndContract(viewModel.uiState.value.rows.single())
         dispatcher.scheduler.advanceUntilIdle()
-        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 20)) }
+        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 17)) }
         viewModel.endContract()
         dispatcher.scheduler.advanceUntilIdle()
 
@@ -1131,6 +1132,124 @@ class KontrakViewModelTest {
         }
 
     /**
+     * A date after today is refused on the date field, naming **today**, and the sheet
+     * stays open with the contract still running.
+     *
+     * The clock is pinned at 17 October 2026, so 18 October is one day out. Before this
+     * guard existed, that date ended the contract on the spot: `isOpen` is
+     * `endDate == null`, so the car would have read `tersedia` for a rental still running.
+     * The three assertions below are the AC's own — the contract stays open, the car still
+     * reads rented, and the field carries a message naming today.
+     *
+     * The message is asserted as `17 Okt 2026`, not `17 Okt`: the refusal names *today*,
+     * and the year is the part that says which 17 October it is. See
+     * `RStrings.kontrakErrorContractEndInFuture`.
+     */
+    @Test
+    fun `a future end date is refused on the date field naming today`() = runTest(dispatcher) {
+        seed()
+        val viewModel = observingViewModel()
+        openAndSave(viewModel)
+        dispatcher.scheduler.advanceUntilIdle()
+
+        viewModel.openEndContract(viewModel.uiState.value.rows.single())
+        dispatcher.scheduler.advanceUntilIdle()
+        // One day after the pinned clock's 17 October 2026.
+        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 18)) }
+        viewModel.endContract()
+        dispatcher.scheduler.advanceUntilIdle()
+
+        val state = viewModel.uiState.value
+        assertNotNull("the sheet stays open, because the date is the owner's to fix", state.endSheet)
+        val error = state.endSheet!!.dateError
+        assertNotNull("the refusal lands on the date field", error)
+        assertTrue(
+            "naming today, so the owner can see which day the app compared against: $error",
+            error!!.contains("17 Okt 2026"),
+        )
+        assertNull("nothing was written", state.rows.single().contract.endDate)
+        assertTrue(
+            "and the car still reads rented — the whole point of the refusal",
+            database.vehicleDao().hasOpenContract("vehicle-1"),
+        )
+        assertNull("with no sheet banner, since the field carries it", viewModel.endErrorMessage.value)
+    }
+
+    /**
+     * A future date refused **after the owner has dismissed the sheet** goes to the
+     * sheet's own banner instead of a field.
+     *
+     * ## Why this is the only way to reach that arm
+     *
+     * Both date refusals land on the date field *when the sheet that asked is still the
+     * live one* — an identity check, not a null check. `closeEndContract` and
+     * `openEndContract` are deliberately **not** behind `savingException`: a second end
+     * must not be able to block a close, and locking them would leave the owner stuck in a
+     * sheet they cannot dismiss. So while the write is suspended on Room, the sheet can
+     * be gone — and a refusal about a contract must not then appear on whatever sheet
+     * replaced it. The `else` arm is where it goes instead.
+     *
+     * The gate is the existing `GatedUpdateDao`, parking the real `update()` — the same
+     * shape `a second end while one is in flight is ignored` uses, and it matters that the
+     * write is real: the refusal comes from the repository's own check, not from a fake.
+     *
+     * The **before-start** arm is covered here too rather than in a second test, because
+     * the two share one branch: same condition, same `else`, only the string differs.
+     *
+     * ## Why the gate is on `findById` and not on `update`
+     *
+     * Because the refusal **is** the throw: a future date never reaches `dao.update`, so a
+     * gate parked there would never engage and the close would happen after the write had
+     * already finished. `findById` is the first suspension point on the end path and it is
+     * reached on every one of these refusals, so parking it parks the whole read-check-throw
+     * sequence. It also gates `open`'s pre-checks, which is why [openAndSave] runs *before*
+     * the ViewModel under test is built — this DAO is only ever installed for the end.
+     */
+    @Test
+    fun `a future date refused after the sheet is dismissed goes to the sheet banner`() =
+        runTest(dispatcher) {
+            seed()
+            openAndSave(observingViewModel())
+            dispatcher.scheduler.advanceUntilIdle()
+
+            // Built after the fixture contract exists, so the gate's counter is spent on
+            // the end read rather than on a write from `open`.
+            val gate = CompletableDeferred<Unit>()
+            val viewModel = observingViewModel(
+                dao = GatedFindByIdDao(database.contractDao(), gate),
+            )
+            // The helper subscribes; the rows arrive on the next dispatch, and the sheet
+            // needs one to be opened on.
+            dispatcher.scheduler.advanceUntilIdle()
+            viewModel.openEndContract(viewModel.uiState.value.rows.single())
+            dispatcher.scheduler.advanceUntilIdle()
+            // One day after the pinned clock's 17 October 2026.
+            viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 18)) }
+            viewModel.endContract()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            // Dismissed while the read is still parked inside the gate: the refusal has
+            // no field left to land on.
+            viewModel.closeEndContract()
+            dispatcher.scheduler.advanceUntilIdle()
+
+            gate.complete(Unit)
+            dispatcher.scheduler.advanceUntilIdle()
+
+            val banner = viewModel.endErrorMessage.value
+            assertNotNull(
+                "the refusal falls to the sheet's own banner once the field is gone",
+                banner,
+            )
+            assertTrue("naming today, with its year: $banner", banner!!.contains("17 Okt 2026"))
+            assertNull("nothing was written", viewModel.uiState.value.rows.single().contract.endDate)
+            assertTrue(
+                "and the car is still held",
+                database.vehicleDao().hasOpenContract("vehicle-1"),
+            )
+        }
+
+    /**
      * An already-ended contract refuses, on the sheet's **own banner** rather than a
      * field — because there is no field to blame: the whole form is about to be wrong.
      */
@@ -1188,7 +1307,7 @@ class KontrakViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
         viewModel.openEndContract(viewModel.uiState.value.rows.single())
         dispatcher.scheduler.advanceUntilIdle()
-        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 20)) }
+        viewModel.onEndChange { it.selectEndDate(LocalDate.of(2026, 10, 17)) }
 
         viewModel.endContract()
         dispatcher.scheduler.advanceUntilIdle()
@@ -1201,7 +1320,7 @@ class KontrakViewModelTest {
         dispatcher.scheduler.advanceUntilIdle()
 
         val state = viewModel.uiState.value
-        assertEquals("the end date is the one the owner chose", LocalDate.of(2026, 10, 20), state.rows.single().contract.endDate)
+        assertEquals("the end date is the one the owner chose", LocalDate.of(2026, 10, 17), state.rows.single().contract.endDate)
         assertNull("and the second produced no refusal banner", viewModel.endErrorMessage.value)
         assertNull("no field refusal either", state.endSheet)
     }
@@ -1252,6 +1371,32 @@ class KontrakViewModelTest {
         override suspend fun update(contract: ContractEntity) {
             if (firstWrite.compareAndSet(true, false)) gate.await()
             delegate.update(contract)
+        }
+    }
+
+    /**
+     * A [ContractDao] that parks the **first read** of a contract until [gate] completes.
+     *
+     * The counterpart to [GatedUpdateDao], for the path that never writes: a refusal
+     * (`ContractEndInFutureException`, `ContractEndBeforeStartException`) is thrown
+     * *before* `update` is ever reached, so a gate on the write would never engage and
+     * there would be no window in which the owner could dismiss the sheet. `findById` is
+     * the first suspension point on the end path — the repository reads the stored row
+     * before it checks anything — so parking it parks the whole read-check-throw sequence.
+     *
+     * The same delegating-wrapper shape as its sibling, for the same reason: the schema,
+     * the indexes and the constraint translations must behave exactly as they do in
+     * production, and only the *timing* is controlled.
+     */
+    private class GatedFindByIdDao(
+        private val delegate: ContractDao,
+        private val gate: CompletableDeferred<Unit>,
+    ) : ContractDao by delegate {
+        private val firstRead = java.util.concurrent.atomic.AtomicBoolean(true)
+
+        override suspend fun findById(id: String): ContractEntity? {
+            if (firstRead.compareAndSet(true, false)) gate.await()
+            return delegate.findById(id)
         }
     }
 

@@ -16,6 +16,7 @@ import net.klinik.rental.domain.model.Contract
 import net.klinik.rental.domain.model.ServiceException
 import net.klinik.rental.domain.validation.ContractAlreadyActiveException
 import net.klinik.rental.domain.validation.ContractEndBeforeStartException
+import net.klinik.rental.domain.validation.ContractEndInFutureException
 import net.klinik.rental.domain.validation.ContractNotOpenException
 import net.klinik.rental.domain.validation.DuplicateServiceExceptionDateException
 import net.klinik.rental.domain.validation.InvalidAmountException
@@ -1016,7 +1017,7 @@ class ContractRepositoryTest {
         seed()
         repository.open(contract(id = CONTRACT_ID))
 
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         // ONE read, three assertions. This is the whole claim.
         val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
@@ -1050,7 +1051,7 @@ class ContractRepositoryTest {
             database.vehicleDao().hasOpenContract(VEHICLE_ID),
         )
 
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         assertFalse(
             "the same derived query now answers no",
@@ -1079,7 +1080,7 @@ class ContractRepositoryTest {
         val endDate = LocalDate.of(2026, 9, 30)
 
         val error = assertThrows(ContractEndBeforeStartException::class.java) {
-            runBlocking { repository.endContract(CONTRACT_ID, endDate) }
+            runBlocking { repository.endContract(CONTRACT_ID, endDate, asOf = END_DAY) }
         }
 
         assertEquals("names the contract's own start date", LocalDate.of(2026, 10, 1), error.startDate)
@@ -1098,10 +1099,10 @@ class ContractRepositoryTest {
     fun `an already-ended contract refuses a second end and keeps its first date`() = runBlocking {
         seed()
         repository.open(contract(id = CONTRACT_ID))
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         assertThrows(ContractNotOpenException::class.java) {
-            runBlocking { repository.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 25)) }
+            runBlocking { repository.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 25), asOf = END_DAY) }
         }
 
         assertEquals(
@@ -1125,7 +1126,7 @@ class ContractRepositoryTest {
         seed()
         repository.open(contract(id = CONTRACT_ID, startDate = start))
 
-        repository.endContract(CONTRACT_ID, start)
+        repository.endContract(CONTRACT_ID, start, asOf = END_DAY)
 
         assertEquals(start, database.contractDao().findById(CONTRACT_ID)!!.endDate)
     }
@@ -1143,7 +1144,7 @@ class ContractRepositoryTest {
         seed()
         repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2025, 3, 1)))
 
-        repository.endContract(CONTRACT_ID, past)
+        repository.endContract(CONTRACT_ID, past, asOf = END_DAY)
 
         assertEquals(past, database.contractDao().findById(CONTRACT_ID)!!.endDate)
     }
@@ -1160,7 +1161,7 @@ class ContractRepositoryTest {
     fun `ending frees both the vehicle and the renter for a new contract`() = runBlocking {
         seed()
         repository.open(contract(id = CONTRACT_ID))
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         // Same vehicle, same renter, both formerly held. Neither index may refuse.
         repository.open(contract(id = CONTRACT_ID_2, startDate = LocalDate.of(2026, 11, 1)))
@@ -1186,7 +1187,7 @@ class ContractRepositoryTest {
         repository.addServiceException(exception(id = EXCEPTION_ID, date = EXCEPTION_DAY))
         repository.addServiceException(exception(id = "e2", date = LocalDate.of(2026, 10, 16)))
 
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         val stored = repository.observeServiceExceptions().first()
         assertEquals("every exception row survives", 2, stored.size)
@@ -1220,7 +1221,7 @@ class ContractRepositoryTest {
     fun `an ended contract stays in the observed list`() = runBlocking {
         seed()
         repository.open(contract(id = CONTRACT_ID, startDate = LocalDate.of(2026, 9, 1)))
-        repository.endContract(CONTRACT_ID, LocalDate.of(2026, 9, 20))
+        repository.endContract(CONTRACT_ID, LocalDate.of(2026, 9, 20), asOf = END_DAY)
         repository.open(contract(id = CONTRACT_ID_2, startDate = LocalDate.of(2026, 10, 1)))
 
         val observed = repository.observeContracts().first()
@@ -1261,7 +1262,7 @@ class ContractRepositoryTest {
         seed()
         repository.open(contract(id = CONTRACT_ID))
 
-        repository.endContract(CONTRACT_ID, END_DAY)
+        repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY)
 
         // Every other table this story could plausibly have written to.
         assertEquals("the vehicle is untouched", 1, database.vehicleDao().observeAll().first().size)
@@ -1294,44 +1295,134 @@ class ContractRepositoryTest {
     }
 
     /**
-     * A future end date ends the contract **immediately** — recorded as the known
-     * consequence, not endorsed.
+     * `FUTURE` — an end date one day after today is refused, and **the row is untouched**.
      *
-     * `Contract.isOpen` is `endDate == null`, so writing a date six weeks out flips the
-     * contract to ended today: the vehicle reads `tersedia` and the charge days stop,
-     * for a rental that continues. It is asserted here rather than left as a prose note
-     * because it is invisible to every other test in this file, and because the fix is a
-     * UX decision (reject a future date with a sentence, or make the intent explicit)
-     * rather than a local correction.
+     * This is the row that closes the Story 2.7 deferral. `Contract.isOpen` is
+     * `endDate == null`, so writing *any* date ends the contract on the spot: a date one
+     * day out would free the car today and stop the charges today, for a rental that is
+     * still running. The refusal is the whole fix — storing the date and keeping the car
+     * occupied until it arrives would need `isOpen` to take a date.
      *
-     * Story 2.7's own KDoc argues that clamping or normalising a date the owner chose is
-     * worse than refusing — and this is that same failure reached by a different road,
-     * which is why it belongs next to `END_BEFORE_START` in the matrix rather than in a
-     * review log someone reads once.
+     * The three assertions are the AC's own: the contract stays open, the car still reads
+     * rented, and the message names the day it compared against.
      */
     @Test
-    fun `a future end date ends the contract immediately, which is the known consequence`() =
-        runBlocking {
-            seed()
-            repository.open(contract(id = CONTRACT_ID))
-            val future = LocalDate.of(2027, 6, 1)
+    fun `an end date after today is refused and the row stays open`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        val tomorrow = END_DAY.plusDays(1)
 
-            repository.endContract(CONTRACT_ID, future)
-
-            val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
-            assertEquals("the future date is stored verbatim", future, row.endDate)
-            assertFalse(
-                "and the contract reads ended TODAY — the car is free while it is still rented",
-                row.endDate == null,
-            )
-            assertFalse(
-                "so the derived vehicle query already answers available",
-                database.vehicleDao().hasOpenContract(VEHICLE_ID),
-            )
+        val error = assertThrows(ContractEndInFutureException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, tomorrow, asOf = END_DAY) }
         }
 
-    // ------------------------------------------------------------------ helpers
+        assertEquals("names the day it compared against", END_DAY, error.asOf)
+        assertEquals("and the contract it refused", CONTRACT_ID, error.contractId)
+        val row = requireNotNull(database.contractDao().findById(CONTRACT_ID))
+        assertNull("nothing was written", row.endDate)
+        assertEquals("and the vehicle is still held", VEHICLE_ID, row.activeVehicleId)
+        assertEquals("and the renter's slot too", RENTER_ID, row.activeRenterId)
+        assertTrue(
+            "so the derived query still answers rented",
+            database.vehicleDao().hasOpenContract(VEHICLE_ID),
+        )
+    }
 
+    /**
+     * `FUTURE_FAR` — six weeks out is refused by the same guard, not a range check.
+     *
+     * One day and six weeks must produce the same refusal: a rule that only caught "the
+     * near future" would still free a car for a rental with weeks to run.
+     */
+    @Test
+    fun `an end date six weeks out is refused the same way`() = runBlocking {
+        seed()
+        repository.open(contract(id = CONTRACT_ID))
+        val farFuture = END_DAY.plusWeeks(6)
+
+        val error = assertThrows(ContractEndInFutureException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, farFuture, asOf = END_DAY) }
+        }
+
+        assertEquals(END_DAY, error.asOf)
+        assertNull(
+            "and the row is still open",
+            database.contractDao().findById(CONTRACT_ID)!!.endDate,
+        )
+        assertTrue(database.vehicleDao().hasOpenContract(VEHICLE_ID))
+    }
+
+    /**
+     * `ORDER` — a date that is **both** in the future and before the start reports the
+     * start-date refusal first.
+     *
+     * The start-date message names a figure the owner can act on; "too far ahead" would be
+     * a second complaint about the same field, and one of the two has to win. The start
+     * date wins because it is the constraint the owner cannot change — the end date simply
+     * has to be on or after it — while "not after today" is the softer of the two.
+     *
+     * Reachable only when a contract's start date is itself in the future, which the app
+     * allows: a start date in the past is accepted, and nothing forbids a future one.
+     */
+    @Test
+    fun `a future date before the start reports the start-date refusal first`() = runBlocking {
+        seed()
+        val start = END_DAY.plusDays(10)
+        repository.open(contract(id = CONTRACT_ID, startDate = start))
+
+        val error = assertThrows(ContractEndBeforeStartException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, END_DAY.plusDays(5), asOf = END_DAY) }
+        }
+
+        assertEquals("the start date, not today", start, error.startDate)
+        assertNull(
+            "and nothing was written",
+            database.contractDao().findById(CONTRACT_ID)!!.endDate,
+        )
+    }
+
+    /**
+     * A contract that has not started yet has **no** end date it can accept.
+     *
+     * `open()` permits a future start date, so this is reachable through the form. Under
+     * `isOpen = endDate == null` such a contract already holds its car from the moment it
+     * is written, so "end it before it begins" has no date satisfying both
+     * `endDate >= startDate` and `endDate <= asOf`. Both sides of that impossibility are
+     * asserted here, because each produces a different — and each a truthful — message.
+     *
+     * Pinned rather than left as a comment: if a later change makes `open()` refuse a
+     * future start date, this test is where that decision becomes visible.
+     */
+    @Test
+    fun `a contract that has not started refuses every end date`() = runBlocking {
+        seed()
+        val start = END_DAY.plusDays(10)
+        repository.open(contract(id = CONTRACT_ID, startDate = start))
+
+        // Below the start: the start-date message names the day to wait for.
+        val before = assertThrows(ContractEndBeforeStartException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, END_DAY, asOf = END_DAY) }
+        }
+        assertEquals("the start date it cannot reach", start, before.startDate)
+
+        // On the start or later: still ahead of today, so the future guard answers — and
+        // it names today, which is the other half of why no date works.
+        val onStart = assertThrows(ContractEndInFutureException::class.java) {
+            runBlocking { repository.endContract(CONTRACT_ID, start, asOf = END_DAY) }
+        }
+        assertEquals("today, the day it is measured against", END_DAY, onStart.asOf)
+
+        assertNull(
+            "and nothing was written either time",
+            database.contractDao().findById(CONTRACT_ID)!!.endDate,
+        )
+        assertTrue(
+            "so the car stays held for the rental that has not begun",
+            database.vehicleDao().hasOpenContract(VEHICLE_ID),
+        )
+    }
+
+    // ------------------------------------------------------------------ helpers
     /** The vehicle and the renter every fixture contract names. */
     private suspend fun seed() {
         database.vehicleDao().insert(vehicleEntity())
@@ -1541,7 +1632,15 @@ class ContractRepositoryTest {
         /** A Wednesday inside the fixture contract's October period. */
         val EXCEPTION_DAY: LocalDate = LocalDate.of(2026, 10, 14)
 
-        /** Inside the fixture contract's period, and a Wednesday. */
+        /**
+         * An arbitrary pivot inside the fixture contract's period, and a Wednesday.
+         *
+         * **Not "today."** Nothing in this file has a clock — the repository takes `asOf` as
+         * a parameter precisely so it has none — so this constant plays the role of whatever
+         * day a case needs and is passed as `asOf` wherever a case needs one. Its own value
+         * (20 Oct 2026) carries no meaning; moving it would not change what any of these
+         * tests proves.
+         */
         val END_DAY: LocalDate = LocalDate.of(2026, 10, 20)
 
         /** A canonical UUID string — 8-4-4-4-12 hex digits. */

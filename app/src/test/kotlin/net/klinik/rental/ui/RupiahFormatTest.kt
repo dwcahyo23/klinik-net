@@ -4,6 +4,7 @@ import net.klinik.rental.ui.format.formatHariTanggal
 import net.klinik.rental.ui.format.formatRupiah
 import net.klinik.rental.ui.format.formatRupiahDigits
 import net.klinik.rental.ui.format.formatTanggalBulan
+import net.klinik.rental.ui.format.formatTanggalBulanTahun
 import net.klinik.rental.ui.format.formatTanggalHari
 import net.klinik.rental.ui.format.shortLabel
 import org.junit.Assert.assertEquals
@@ -323,7 +324,47 @@ class RupiahFormatTest {
         }
     }
 
-    /** No `LocalDate` can produce an out-of-range index, so neither entry point throws. */
+    /**
+     * The year-qualified month form, which exists because the end-date refusal names the
+     * day the app compares against while the field above it renders `date.toString()`.
+     *
+     * ## Why the year is the thing under test
+     *
+     * The refusal is only actionable if its figure matches the year-qualified date
+     * sitting directly above it in the same sheet. `23 Okt` beside `2027-10-23` tells
+     * the owner nothing about *which* October the app means — which is the whole reason
+     * the refusal carries the day. So the year is asserted, and asserted on two dates
+     * seven months apart, so a formatter that dropped it cannot pass on one.
+     *
+     * And it composes rather than re-derives: the `day + month` half must be exactly
+     * what [formatTanggalBulan] produces, so a date can never be spelled two ways.
+     */
+    @Test
+    fun `the year qualified form carries the year the day plus month form omits`() {
+        assertEquals("17 Okt 2026", formatTanggalBulanTahun(LocalDate.of(2026, 10, 17)))
+        assertEquals("23 Okt 2027", formatTanggalBulanTahun(LocalDate.of(2027, 10, 23)))
+        assertEquals("1 Jan 2026", formatTanggalBulanTahun(LocalDate.of(2026, 1, 1)))
+    }
+
+    /**
+     * The year is the only difference from its sibling, so the two must agree on
+     * everything else — otherwise a caller could not tell which of the two a string
+     * came from.
+     */
+    @Test
+    fun `the year qualified form and the day plus month form agree except on the year`() {
+        val date = LocalDate.of(2027, 10, 23)
+
+        assertEquals(
+            "the day and month half must be the sibling's output, not a second derivation",
+            formatTanggalBulan(date),
+            formatTanggalBulanTahun(date).removeSuffix(" ${date.year}"),
+        )
+    }
+
+    /**
+     * No `LocalDate` can produce an out-of-range index, so neither entry point throws.
+     */
     @Test
     fun `every day of a year renders without throwing`() {
         var date = LocalDate.of(2026, 1, 1)

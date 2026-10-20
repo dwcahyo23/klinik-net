@@ -405,7 +405,7 @@ class SettleContractTest {
      */
     @Test
     fun `an ended contract can still be settled`() = runBlocking {
-        contracts.endContract(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 10))
+        contracts.endContract(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 10), asOf = asOf)
 
         contracts.settleThrough(OTHER_CONTRACT_ID, LocalDate.of(2026, 10, 5))
 
@@ -429,7 +429,15 @@ class SettleContractTest {
     fun `ending a settled contract preserves the settlement`() = runBlocking {
         contracts.settleThrough(CONTRACT_ID, LocalDate.of(2026, 10, 5))
 
-        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 20))
+        // This test **deliberately** passes the end date as its own `asOf`, rather than
+        // the suite's `asOf` (17 Oct) that the sibling test above uses. The two differ on
+        // purpose: 20 Oct is after the suite's `asOf`, so using that one here would make
+        // the end refused as a future date and the test would fail for a reason it is not
+        // about. Passing the end date as its own `asOf` says "this day is as far as this
+        // test's end is concerned" and keeps the subject the settlement, not the guard.
+        // The future-date guard itself is exercised in `ContractRepositoryTest` — that is
+        // the file to look in for it, not this one.
+        contracts.endContract(CONTRACT_ID, LocalDate.of(2026, 10, 20), asOf = LocalDate.of(2026, 10, 20))
 
         val stored = database.contractDao().findById(CONTRACT_ID)!!
         assertEquals(

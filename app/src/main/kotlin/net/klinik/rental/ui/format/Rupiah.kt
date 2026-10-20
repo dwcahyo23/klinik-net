@@ -149,6 +149,28 @@ fun formatTanggalBulan(date: LocalDate): String =
     formatTanggalHari(date.dayOfMonth, date.monthValue - 1)
 
 /**
+ * Indonesian short date from a [LocalDate], month form **with the year**: `17 Okt 2026`.
+ *
+ * ## Why this exists rather than every caller appending `.year`
+ *
+ * Because the year is the part that decides whether two dates are the *same* day, so a
+ * message that names a day across a year boundary cannot drop it: `18 Okt` means 2026 in
+ * October and 2027 seven months later, and the owner reading it has no way to tell which
+ * one the app meant.
+ *
+ * It is a **sibling**, not a third convention competing with the other two, and it composes
+ * the two functions already here rather than re-deriving them: the `day + month` half is
+ * [formatTanggalBulan] and the year is [LocalDate.getYear]. So a date cannot be spelled two
+ * ways by accident, which is the exact failure the KDoc above on `formatTanggalHari` records
+ * — one name, two formats, with no way to tell which a call site would get.
+ *
+ * @throws IllegalArgumentException never, for the same reason [formatTanggalBulan] cannot
+ *   throw: a real `LocalDate` is always in range for the table it indexes.
+ */
+fun formatTanggalBulanTahun(date: LocalDate): String =
+    "${formatTanggalBulan(date)} ${date.year}"
+
+/**
  * Indonesian short date from a [LocalDate], **weekday form**: `23 Sen`, `24 Sel`.
  *
  * ## Why this is a `formatHariTanggal` overload and not a `formatTanggalHari` one
