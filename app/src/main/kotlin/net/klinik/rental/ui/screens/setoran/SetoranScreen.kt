@@ -236,9 +236,10 @@ private fun HistoryTab(
             .fillMaxWidth()
             .testTag(TAG_SETORAN_HISTORY),
         contentPadding = PaddingValues(
-            start = spacing.lg,
-            end = spacing.lg,
-            top = spacing.lg,
+            // `--sp-6`, the prototype's page gutter (`shared.css:285-289`).
+            start = spacing.xxl,
+            end = spacing.xxl,
+            top = spacing.xxl,
             bottom = spacing.colossal,
         ),
         verticalArrangement = Arrangement.spacedBy(spacing.md),

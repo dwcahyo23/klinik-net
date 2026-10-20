@@ -1,6 +1,9 @@
 package net.klinik.rental.ui.screens.beranda
 
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
 import androidx.compose.ui.test.assertHeightIsAtLeast
@@ -173,6 +176,45 @@ class BerandaScreenTest {
 
         compose.onAllNodesWithTag(TAG_KPI_SKELETON).assertCountEquals(4)
         compose.onNodeWithText("Rp 750.000").assertDoesNotExist()
+    }
+
+    /**
+     * The skeleton reserves the height the loaded tile actually takes.
+     *
+     * One composition, switched from loaded to loading, because the screen draws either the
+     * tiles or the skeletons and never both — and because measuring them in two separate
+     * compositions would compare two different layouts.
+     *
+     * This is the claim a constant cannot keep. `Beranda` and `Laporan` both carried
+     * `height(116.dp)` beside a tile that measures something else, so the row reflowed the
+     * moment the figures landed. The skeleton now composes the tile's own line heights, and
+     * this assertion is what stops the two from parting again.
+     */
+    @Test
+    fun `a skeleton reserves the height the loaded tile takes`() {
+        var loading by mutableStateOf(false)
+        compose.setContent {
+            theme {
+                Screen(state = if (loading) BerandaUiState(isLoading = true) else berandaState())
+            }
+        }
+
+        val tileHeight = compose.onNodeWithTag(TAG_KPI_INCOME).fetchSemanticsNode().size.height
+
+        loading = true
+        compose.waitForIdle()
+
+        val skeletonHeight = compose.onAllNodesWithTag(TAG_KPI_SKELETON)
+            .fetchSemanticsNodes()
+            .first()
+            .size
+            .height
+
+        assertEquals(
+            "the skeleton must reserve the tile's own height, not a stale constant",
+            tileHeight,
+            skeletonHeight,
+        )
     }
 
     // ----------------------------------------------------- Story 5.5's reminder

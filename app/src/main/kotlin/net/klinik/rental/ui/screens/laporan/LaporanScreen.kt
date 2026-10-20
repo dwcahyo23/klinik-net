@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -36,7 +37,10 @@ import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
+import net.klinik.rental.ui.components.KnContentMaxWidth
+import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnKpiTile
+import net.klinik.rental.ui.components.KnKpiTileSkeleton
 import net.klinik.rental.ui.components.KnTableCell
 import net.klinik.rental.ui.components.KnTableHeaderRow
 import net.klinik.rental.ui.components.KnTableRow
@@ -132,9 +136,12 @@ fun LaporanScreen(
 
             Column(
                 modifier = Modifier
+                    .widthIn(max = KnContentMaxWidth)
                     .fillMaxWidth()
                     .verticalScroll(rememberScrollState())
-                    .padding(spacing.lg),
+                    // `--sp-6`, the prototype's page gutter (`shared.css:285-289`).
+                    .padding(spacing.xxl)
+                    .align(Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(spacing.lg),
             ) {
                 PeriodPicker(
@@ -545,15 +552,19 @@ private fun RiskNumber(row: RiskRow, modifier: Modifier = Modifier) {
     }
 }
 
-/** One tile's placeholder. */
+/**
+ * One tile's placeholder.
+ *
+ * [KnKpiTileSkeleton] rather than a local box: this screen's tiles use the **stacked** glyph,
+ * so the skeleton has to reserve that shape — and it reads the tile's own line heights, so the
+ * row cannot reflow when the figures land.
+ */
 @Composable
 private fun MetricSkeleton(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier
-            .height(116.dp)
-            .testTag(TAG_METRIC_SKELETON),
-        color = MaterialTheme.knColors.bgSunken,
-    ) {}
+    KnKpiTileSkeleton(
+        iconLayout = KnKpiIconLayout.Stacked,
+        modifier = modifier.testTag(TAG_METRIC_SKELETON),
+    )
 }
 
 /**

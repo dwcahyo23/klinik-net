@@ -2,13 +2,11 @@ package net.klinik.rental.ui.screens.beranda
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
-import androidx.compose.foundation.layout.ExperimentalLayoutApi
-import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -21,6 +19,7 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.layout.onGloballyPositioned
 import androidx.compose.ui.layout.positionInParent
@@ -41,7 +40,11 @@ import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnCard
+import net.klinik.rental.ui.components.KnContentMaxWidth
+import net.klinik.rental.ui.components.KnKpiGrid
+import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnKpiTile
+import net.klinik.rental.ui.components.KnKpiTileSkeleton
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
@@ -127,9 +130,11 @@ fun BerandaScreen(
 
             Column(
                 modifier = Modifier
+                    .widthIn(max = KnContentMaxWidth)
                     .fillMaxWidth()
                     .verticalScroll(scrollState)
-                    .padding(spacing.lg),
+                    .padding(spacing.xxl)
+                    .align(Alignment.CenterHorizontally),
                 verticalArrangement = Arrangement.spacedBy(spacing.lg),
             ) {
                 // Story 5.5's reminder, **above** the tiles: the screen opens every day and a
@@ -208,98 +213,90 @@ fun BerandaScreen(
 }
 
 /**
- * The four KPI tiles, in a row that wraps rather than scrolling.
+ * The four KPI tiles, arranged via [KnKpiGrid] to match the prototype's `.kpi-grid`.
  *
- * ## Why `FlowRow` and not a `Row`
+ * Each tile uses [KnKpiIconLayout.Corner] so the 40dp icon floats top-right per
+ * `shared.css:421-426`. That is the prototype's `.kpi`, and it is also the layout Kendaraan
+ * and Tunggakan already use — a stacked glyph is what made this screen's tiles taller than
+ * the other two screens' for no reason the owner could see.
  *
- * Because the criterion is that all four are visible **without scrolling**, and a fixed
- * `Row` of four wide tiles cannot be on a phone-width screen — it would either clip or push
- * the grid below the fold. A `FlowRow` lays out as many tiles per line as fit and wraps the
- * rest, so all four are present without a horizontal scroll.
- *
- * ## Why every tile gets the same weight
- *
- * Because a weighted tile is a *wider* tile, and a wider tile is a bigger tile. Equal weights
- * are what make the four the same size, and they are the reason a test can measure them and
- * find them equal.
+ * [KnKpiGrid] rather than a bare `FlowRow`: it is the component the other two screens use,
+ * and it divides a line into equal shares rather than trusting `weight` inside a wrapping
+ * flow, which is how a longer figure used to widen its own tile.
  */
-@OptIn(ExperimentalLayoutApi::class)
 @Composable
 private fun KpiRow(state: BerandaUiState) {
-    val spacing = MaterialTheme.knSpacing
-
-    FlowRow(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(TAG_KPI_ROW),
-        horizontalArrangement = Arrangement.spacedBy(spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.md),
-    ) {
-        if (state.isLoading) {
-            // A skeleton **per tile**, not a single one. Four placeholder tiles say "the
-            // figures are on their way"; one says "this screen has a loading state", which
-            // is not what the owner is waiting for.
-            repeat(4) {
-                KpiSkeleton(modifier = Modifier.weight(1f))
-            }
-        } else {
-            KnKpiTile(
-                label = stringResource(R.string.beranda_kpi_income),
-                value = state.incomeText,
-                icon = Lucide.Wallet,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(TAG_KPI_INCOME),
-                // `accent = false` on all four: the accented tile is the one the
-                // acceptance criterion forbids.
-                accent = false,
-            )
-            KnKpiTile(
-                label = stringResource(R.string.beranda_kpi_arrears),
-                value = state.arrearsText,
-                icon = Lucide.CircleAlert,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(TAG_KPI_ARREARS),
-                accent = false,
-            )
-            KnKpiTile(
-                label = stringResource(R.string.beranda_kpi_fleet),
-                value = state.fleetText,
-                icon = Lucide.CarFront,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(TAG_KPI_FLEET),
-                accent = false,
-            )
-            KnKpiTile(
-                label = stringResource(R.string.beranda_kpi_rate),
-                value = state.rateText,
-                icon = Lucide.Percent,
-                modifier = Modifier
-                    .weight(1f)
-                    .testTag(TAG_KPI_RATE),
-                accent = false,
-            )
-        }
+    if (state.isLoading) {
+        KnKpiGrid(
+            modifier = Modifier.testTag(TAG_KPI_ROW),
+            tiles = listOf(
+                { KpiPlaceholder() },
+                { KpiPlaceholder() },
+                { KpiPlaceholder() },
+                { KpiPlaceholder() },
+            ),
+        )
+    } else {
+        KnKpiGrid(
+            modifier = Modifier.testTag(TAG_KPI_ROW),
+            tiles = listOf(
+                {
+                    KnKpiTile(
+                        label = stringResource(R.string.beranda_kpi_income),
+                        value = state.incomeText,
+                        icon = Lucide.Wallet,
+                        iconLayout = KnKpiIconLayout.Corner,
+                        modifier = Modifier.testTag(TAG_KPI_INCOME),
+                        accent = false,
+                    )
+                },
+                {
+                    KnKpiTile(
+                        label = stringResource(R.string.beranda_kpi_arrears),
+                        value = state.arrearsText,
+                        icon = Lucide.CircleAlert,
+                        iconLayout = KnKpiIconLayout.Corner,
+                        modifier = Modifier.testTag(TAG_KPI_ARREARS),
+                        accent = false,
+                    )
+                },
+                {
+                    KnKpiTile(
+                        label = stringResource(R.string.beranda_kpi_fleet),
+                        value = state.fleetText,
+                        icon = Lucide.CarFront,
+                        iconLayout = KnKpiIconLayout.Corner,
+                        modifier = Modifier.testTag(TAG_KPI_FLEET),
+                        accent = false,
+                    )
+                },
+                {
+                    KnKpiTile(
+                        label = stringResource(R.string.beranda_kpi_rate),
+                        value = state.rateText,
+                        icon = Lucide.Percent,
+                        iconLayout = KnKpiIconLayout.Corner,
+                        modifier = Modifier.testTag(TAG_KPI_RATE),
+                        accent = false,
+                    )
+                },
+            ),
+        )
     }
 }
 
 /**
- * One tile's placeholder.
+ * One tile's placeholder, in the same corner shape the real tiles use.
  *
- * A tile-shaped box rather than a bare box, so the row keeps its shape while the figures
- * arrive — a row that reflows when the data lands is a row the owner watches move.
+ * A thin wrapper so the tag and the layout choice live together: [KnKpiTileSkeleton] owns the
+ * geometry, and this screen only says which of the two shapes it draws.
  */
 @Composable
-private fun KpiSkeleton(modifier: Modifier = Modifier) {
-    Surface(
-        modifier = modifier
-            .height(116.dp)
-            .testTag(TAG_KPI_SKELETON),
-        color = MaterialTheme.knColors.bgSunken,
-        contentColor = MaterialTheme.knColors.textPrimary,
-    ) {}
+private fun KpiPlaceholder() {
+    KnKpiTileSkeleton(
+        iconLayout = KnKpiIconLayout.Corner,
+        modifier = Modifier.testTag(TAG_KPI_SKELETON),
+    )
 }
 
 /**

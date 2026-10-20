@@ -364,7 +364,7 @@ fun KnBottomNav(
                     onClick = { onSelect(index) },
                     modifier = Modifier
                         // `width`, not `weight`: the floor is the floor, and a weighted
-                        // share on seven items is below it.
+                        // share on eight items is below it.
                         .width(BOTTOM_NAV_ITEM_WIDTH)
                         .minTouchTarget()
                         .focusRing(focused, MaterialTheme.knRadii.md),

@@ -1,6 +1,7 @@
 package net.klinik.rental.ui.components
 
 import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.background
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
@@ -11,6 +12,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
@@ -26,6 +28,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -273,6 +276,88 @@ fun KnKpiTile(
 
 /** Where a KPI tile draws its glyph. See [KnKpiTile.iconLayout]. */
 enum class KnKpiIconLayout { Stacked, Corner }
+
+/**
+ * A [KnKpiTile]'s placeholder, drawn at the size the loaded tile will take.
+ *
+ * ## Why this mirrors the tile rather than carrying a height
+ *
+ * Because a tile's height **is** its content's: `spacing.xl` of inset, then the label, the
+ * value and the optional meta at their own line heights — and, in [KnKpiIconLayout.Stacked],
+ * a 40dp glyph above them. A skeleton with a fixed dp is a number that was right once and
+ * then drifted: `Beranda` and `Laporan` both shipped `height(116.dp)` beside a tile that no
+ * longer measures 116dp, so the row reflowed the moment the figures landed.
+ *
+ * So this composes the same inset and the same line heights. Change the tile's typography and
+ * the skeleton follows without an edit; the paired test measures both and fails if they part.
+ *
+ * The bars are decorative, so they carry no content description — the enclosing state is what
+ * a screen reader announces, and `KnSkeletonList` follows the same rule.
+ *
+ * @param iconLayout which of [KnKpiTile]'s two shapes to reserve. A stacked tile is taller by
+ *   the glyph and its gap; a corner tile's glyph is pinned over the content and adds nothing.
+ */
+@Composable
+fun KnKpiTileSkeleton(
+    modifier: Modifier = Modifier,
+    iconLayout: KnKpiIconLayout = KnKpiIconLayout.Stacked,
+) {
+    val spacing = MaterialTheme.knSpacing
+    val typography = MaterialTheme.knTypography
+    val kn = MaterialTheme.knColors
+    val barShape = RoundedCornerShape(MaterialTheme.knRadii.sm)
+    val corner = iconLayout == KnKpiIconLayout.Corner
+
+    // A `Text` of one space in the tile's own style, rather than a `Box` of the style's
+    // `lineHeight`: a real `Text` carries the same font padding the real label does, and
+    // computing a height from `lineHeight` alone is short by exactly that padding (measured:
+    // 10dp, which is how this was caught). The space is transparent; only its background bar
+    // is visible, so nothing is read out.
+    @Composable
+    fun bar(widthFraction: Float, style: TextStyle, topPadding: Dp = 0.dp) {
+        Text(
+            text = " ",
+            style = style,
+            color = Color.Transparent,
+            modifier = Modifier
+                .padding(top = topPadding)
+                .fillMaxWidth(widthFraction)
+                .background(kn.bgSunken, barShape),
+        )
+    }
+
+    Surface(
+        modifier = modifier,
+        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
+        color = kn.bgCard,
+    ) {
+        Box(
+            modifier = if (corner) {
+                Modifier.fillMaxWidth().padding(spacing.xl)
+            } else {
+                Modifier.padding(spacing.xl)
+            },
+        ) {
+            Column(modifier = if (corner) Modifier.padding(end = 48.dp) else Modifier) {
+                if (!corner) {
+                    // `.kpi-icon`: 40dp, with no gap of its own — the label's line box is
+                    // what separates it from the text below, exactly as in the tile.
+                    Box(
+                        Modifier
+                            .size(40.dp)
+                            .background(kn.bgSunken, RoundedCornerShape(MaterialTheme.knRadii.md)),
+                    )
+                }
+                bar(widthFraction = 0.55f, style = typography.overline)
+                bar(
+                    widthFraction = 0.8f,
+                    style = typography.displayMedium,
+                    topPadding = spacing.sm,
+                )
+            }
+        }
+    }
+}
 
 /** `.kpi-icon` — a 40dp rounded square, 20dp glyph, the tint at 12% behind it. */
 @Composable
