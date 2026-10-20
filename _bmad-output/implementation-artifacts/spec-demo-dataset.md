@@ -2,7 +2,7 @@
 title: 'A demo backup so an installed APK opens with a working fleet'
 type: 'feature'
 created: '2026-10-21'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 baseline_commit: 'f49900e'
