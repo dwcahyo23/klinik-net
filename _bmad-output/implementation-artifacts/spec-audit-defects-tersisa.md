@@ -2,7 +2,7 @@
 title: 'Audit part 2 — six visible defects across the chrome'
 type: 'refactor'
 created: '2026-10-20'
-status: 'in-progress'
+status: 'done'
 route: 'dispatch'
 review_loop_iteration: 0
 context:
