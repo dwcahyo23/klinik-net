@@ -8,6 +8,7 @@ import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
 import net.klinik.rental.data.db.SCHEMA_VERSION
+import java.io.File
 import java.time.LocalDate
 
 /**
@@ -171,28 +172,108 @@ class BackupJsonReaderTest {
         assertEquals(BackupJsonReader.REASON_NO_VERSION, rejected(json).reason)
     }
 
-    /** A file from a **newer** app is refused, naming its version. */
+    /**
+     * A file from a **newer** app is refused, and the refusal says which direction it went.
+     *
+     * The direction is the whole point: a newer file means the owner should update the app,
+     * and an older one means they should take a fresh backup. One message for both would
+     * leave the owner with a number and no next step.
+     */
     @Test
-    fun `a newer file is refused and carries its version`() {
+    fun `a newer file is refused and names its version`() {
         val thrown = rejected(validJson().replace("\"schemaVersion\": $version", "\"schemaVersion\": 99"))
 
-        assertEquals(BackupJsonReader.REASON_VERSION, thrown.reason)
+        assertEquals(BackupJsonReader.REASON_VERSION_TOO_NEW, thrown.reason)
         assertEquals(99, thrown.fileVersion)
     }
 
     /**
-     * An **older** file is refused too.
+     * A file from an app **older than the export** is refused, and says so.
      *
-     * Story 5.6 is what teaches the reader to accept one. Until then refusing in both directions
-     * is the honest answer, and the test says so explicitly because "older files are fine" is
-     * the assumption someone would otherwise carry into the next change.
+     * A v7 file cannot exist — the export shipped at v8 — so this is a file from somewhere
+     * else entirely, and the only true thing the reader can say about it is that it cannot
+     * read it. A floor set below the export's would have to invent rows for columns that
+     * never existed.
      */
     @Test
-    fun `an older file is refused until a later story teaches the reader to migrate`() {
+    fun `a file older than the export is refused and says so`() {
         val thrown = rejected(validJson().replace("\"schemaVersion\": $version", "\"schemaVersion\": 7"))
 
-        assertEquals(BackupJsonReader.REASON_VERSION, thrown.reason)
+        assertEquals(BackupJsonReader.REASON_VERSION_TOO_OLD, thrown.reason)
         assertEquals(7, thrown.fileVersion)
+    }
+
+    /**
+     * A file from the **previous** version restores, and its missing column takes the value
+     * the schema would have given it.
+     *
+     * The one real older file this app has ever written, so it is the one that has to work.
+     * The fixture is a genuine v8 backup — taken from the repository's history, not written
+     * by hand — because a hand-written "v8" file would only prove that the reader accepts
+     * a file the test built to suit it.
+     *
+     * So it is read out of git: `git show <commit>:demo-backup.json`, where that commit is
+     * the one that added the file, before the avatar column existed. If the file is not
+     * there the test fails loudly rather than skipping — a skipped test is not a proof.
+     */
+    @Test
+    fun `a previous version file restores and its new column takes the schema's value`() {
+        val v8 = previousVersionDemoFile()
+
+        val restore = BackupJsonReader.read(v8, SCHEMA_VERSION, AS_OF)
+
+        assertEquals("the file's own version is kept", 8, restore.schemaVersion)
+        assertEquals("every renter is there", 8, restore.renters.size)
+        assertEquals(
+            "and every one of them has no avatar, which is the schema's value for it",
+            null,
+            restore.renters.first().avatar,
+        )
+        assertTrue(
+            "the file really is the older shape — it carries no avatar key at all",
+            !v8.contains("\"avatar\""),
+        )
+    }
+
+    /**
+     * A **current** file that omits a column it must carry is still refused.
+     *
+     * The version only decides which columns *may* be absent, never which *tables* must be
+     * there, and never that a current file may be incomplete. A v9 file with no `avatar` key
+     * is a corrupt file, and reading it as "no avatar" would turn corruption into data.
+     */
+    @Test
+    fun `a current file missing a column it must carry is refused`() {
+        val json = validJson().replace(
+            ""","avatar":"avatar_07"""",
+            "",
+        )
+
+        assertEquals(BackupJsonReader.REASON_BAD_ROW, rejected(json).reason)
+    }
+
+    /**
+     * The genuine v8 backup, read out of the repository's history.
+     *
+     * `git show` rather than a checked-in copy, so the fixture cannot drift from the file the
+     * app actually wrote — and so the test keeps working when the demo is regenerated.
+     */
+    private fun previousVersionDemoFile(): String {
+        val commit = "4299bba" // the commit that added demo-backup.json, before the avatar column
+        // The unit test's working directory is the `app` module, so the repository root is one
+        // level up — not two.
+        val process = ProcessBuilder(
+            "git", "show", "$commit:demo-backup.json",
+        ).directory(File("..")).redirectErrorStream(true).start()
+        val output = process.inputStream.bufferedReader().readText()
+        process.waitFor()
+        assertTrue(
+            "the previous-version demo file must be readable from git history — " +
+                "run this test from the app module, or check that $commit is reachable: " +
+                output.take(200),
+            output.contains("\"schemaVersion\": 8"),
+        )
+        return output
     }
 
     /**

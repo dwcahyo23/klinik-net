@@ -370,7 +370,13 @@ class BackupLockInterplayTest {
 
     // ---------------------------------------------------------------- versions
 
-    /** `VERIFY_OLD_FILE` / `VERIFY_NEW_FILE` — a mismatched version is refused, both ways. */
+    /**
+     * A file from a **newer** schema version is refused, naming both versions.
+     *
+     * A newer file may carry columns this build has no column for, so reading it would
+     * silently drop data. The refusal names the direction, because the owner's next step is
+     * to update the app.
+     */
     @Test
     fun `a file from another schema version is refused naming both versions`() = runBlocking {
         val restorer = restorerOver(database)
@@ -380,18 +386,17 @@ class BackupLockInterplayTest {
         val thrown = runCatching { restorer.parse(file, AS_OF) }.exceptionOrNull()
 
         assertTrue("it must be refused", thrown is RestoreRejected)
-        assertEquals(BackupJsonReader.REASON_VERSION, (thrown as RestoreRejected).reason)
+        assertEquals(BackupJsonReader.REASON_VERSION_TOO_NEW, (thrown as RestoreRejected).reason)
         assertEquals("and the file's own version is carried for the message", 99, thrown.fileVersion)
     }
 
     /**
-     * The older direction is refused too, and — unlike the newer one — **the lock's own state
-     * survives the refusal untouched**.
+     * A file from an app **older than the export** is refused, and — unlike the newer one —
+     * **the lock's own state survives the refusal untouched**.
      *
-     * The AC says an older file is restored "dengan migrasi bila perlu". No older file exists,
-     * because Story 5.1 is the first thing in this app that ever wrote one. So what this pins is
-     * the *interim* answer and, more importantly, that a refusal is **inert**: the owner's database
-     * is exactly as it was, because the version is checked before any row is read. A reader that
+     * A v7 file cannot exist, because Story 5.1 wrote the first one, at v8. So this pins the
+     * refusal and, more importantly, that a refusal is **inert**: the owner's database is
+     * exactly as it was, because the version is checked before any row is read. A reader that
      * parsed first and compared second would have cleared the database before discovering the
      * file was unusable — which is the one failure NFR-3 names.
      */
@@ -408,10 +413,15 @@ class BackupLockInterplayTest {
         val thrown = runCatching { restorer.parse(file, AS_OF) }.exceptionOrNull()
 
         assertTrue(
-            "refused, because no older file exists yet — Story 5.1 wrote the first one, at v8",
+            "refused, because no file older than the export exists — Story 5.1 wrote the " +
+                "first one, at v8",
             thrown is RestoreRejected,
         )
-        assertEquals(7, (thrown as RestoreRejected).fileVersion)
+        assertEquals(
+            BackupJsonReader.REASON_VERSION_TOO_OLD,
+            (thrown as RestoreRejected).reason,
+        )
+        assertEquals(7, thrown.fileVersion)
         assertEquals(
             "and the refusal changed nothing",
             vehiclesBefore,

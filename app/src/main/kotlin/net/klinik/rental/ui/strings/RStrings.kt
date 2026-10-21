@@ -678,10 +678,17 @@ class RStrings(private val context: Context) {
      */
     fun pengaturanRestoreRefused(reason: String, fileVersion: Int?, appVersion: Int): String =
         when (reason) {
-            // The version message is the only one that names figures, because it is the only
-            // refusal whose cause the owner can see for themselves.
-            BackupJsonReader.REASON_VERSION -> context.getString(
-                R.string.pengaturan_restore_error_version,
+            // The two version messages are the only ones that name figures, because they are
+            // the only refusals whose cause the owner can see for themselves — and they name
+            // the **direction**, because the owner's next step is the opposite in each case:
+            // a newer file means update the app, an older one means re-take the backup.
+            BackupJsonReader.REASON_VERSION_TOO_NEW -> context.getString(
+                R.string.pengaturan_restore_error_version_too_new,
+                fileVersion ?: 0,
+                appVersion,
+            )
+            BackupJsonReader.REASON_VERSION_TOO_OLD -> context.getString(
+                R.string.pengaturan_restore_error_version_too_old,
                 fileVersion ?: 0,
                 appVersion,
             )

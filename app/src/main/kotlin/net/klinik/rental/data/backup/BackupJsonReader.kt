@@ -66,7 +66,8 @@ object BackupJsonReader {
      */
     const val REASON_NOT_JSON = "not-json"
     const val REASON_NO_VERSION = "no-version"
-    const val REASON_VERSION = "version"
+    const val REASON_VERSION_TOO_NEW = "version-too-new"
+    const val REASON_VERSION_TOO_OLD = "version-too-old"
     const val REASON_MISSING_TABLE = "missing-table"
     const val REASON_BAD_ROW = "bad-row"
 
@@ -136,6 +137,45 @@ object BackupJsonReader {
     }
 
     /**
+     * The oldest file version this reader can restore.
+     *
+     * ## Why this is the version the **export** shipped at
+     *
+     * Because a backup file only exists if the app wrote one, and the app's write path is
+     * the export. The export shipped at `SCHEMA_VERSION = 8` — commit `201c9ed`, which
+     * introduced the whole format — and nothing before it could produce a file at all.
+     *
+     * So the floor is 8, and not some earlier version of the *database*. The two are
+     * different things and confusing them costs real work: the database went 1 → 9, and a
+     * v6 database had no `payment.status` — but no v6 **file** was ever written, because
+     * the export did not exist. `git log -S "appendField"` on the writer returns exactly
+     * one commit, the one that introduced it.
+     *
+     * ## Why it is a constant and not derived from the migrations
+     *
+     * Because the migrations describe how the *database* changed, and the file format
+     * describes what the *export* wrote. Deriving one from the other would have to know
+     * which columns a version's file carried, which is the writer's business — and the
+     * writer, [BackupJson], is the one place that states the file's shape.
+     *
+     * When the next column is added, this moves up by one and [renter]'s reader stops
+     * requiring the new key. That is the whole change a version bump costs from now on.
+     */
+    const val OLDEST_READABLE_VERSION = 8
+
+    /**
+     * The file version that first carried `renter.avatar`.
+     *
+     * A column's own version, separate from [OLDEST_READABLE_VERSION], because the two
+     * answer different questions: the floor asks "can this file be read at all?", and this
+     * asks "which columns does it have?".
+     *
+     * It moves up with the column, and the next one will too — which is the whole point of
+     * the version being in the file rather than guessed at.
+     */
+    private const val AVATAR_COLUMN_VERSION = 9
+
+    /**
      * Reads one backup file's text.
      *
      * @param asOf the caller's "today", the day [REASON_FUTURE_DATE] compares against. A parameter
@@ -161,17 +201,25 @@ object BackupJsonReader {
             throw RestoreRejected(REASON_NO_VERSION)
         }
 
-        if (version != expectedVersion) {
-            // Refused in **both** directions. Story 5.6 is what teaches the reader to accept an
-            // older file, and until then a file from the future is refused because guessing at
-            // its shape would write columns this build has no column for.
-            throw RestoreRejected(REASON_VERSION, fileVersion = version)
+        if (version > expectedVersion) {
+            // A file from a **newer** build. Refused, because that build may have written
+            // columns this one has no column for, and reading it would silently drop data.
+            // A separate reason from the too-old case, because the owner's next step is the
+            // opposite: update the app, rather than re-take the backup.
+            throw RestoreRejected(REASON_VERSION_TOO_NEW, fileVersion = version)
+        }
+
+        if (version < OLDEST_READABLE_VERSION) {
+            // A file older than the export itself. This app never wrote one, so the file
+            // came from somewhere else — and the only thing the reader can say about it is
+            // that it cannot read it.
+            throw RestoreRejected(REASON_VERSION_TOO_OLD, fileVersion = version)
         }
 
         return Restore(
             schemaVersion = version,
             vehicles = array(root, FIELD_VEHICLES, ::vehicle),
-            renters = array(root, FIELD_RENTERS, ::renter),
+            renters = array(root, FIELD_RENTERS) { renter(it, version) },
             contracts = array(root, FIELD_CONTRACTS) { contract(it, asOf) },
             serviceExceptions = array(root, FIELD_SERVICE_EXCEPTIONS, ::serviceException),
             businessAccounts = array(root, FIELD_BUSINESS_ACCOUNTS, ::businessAccount),
@@ -226,16 +274,35 @@ object BackupJsonReader {
         isServis = row.optBoolean("isServis", false),
     )
 
-    private fun renter(row: JSONObject) = RenterEntity(
+    /**
+     * One renter row.
+     *
+     * `avatar` is the one column a **later** version added, so it is the one column a
+     * *current* file may be missing — and only when the file says it is an older version.
+     *
+     * The check is on the file's own version, not on whether the key happens to be there:
+     * a v9 file with no `avatar` key is a **corrupt** file, and refusing it is the same
+     * rule the rest of the reader applies. A v8 file has no `avatar` key at all, and every
+     * renter in it restores with `avatar = null` — the same value a v9 renter who never
+     * picked a face has.
+     */
+    private fun renter(row: JSONObject, fileVersion: Int) = RenterEntity(
         id = row.getString("id"),
         name = row.getString("name"),
         phone = row.getString("phone"),
         bankAccount = row.nullableString("bankAccount"),
         emergencyContact = row.getString("emergencyContact"),
-        // `nullableString`, so a file written before v9 restores its renters with no emoji and
-        // `KnAvatar` falls back to initials — rather than being refused for a field it could
-        // not have carried.
-        avatar = row.nullableString("avatar"),
+        avatar = if (fileVersion >= AVATAR_COLUMN_VERSION) {
+            // A current file must carry the column. `requiredNullableString` throws for an
+            // absent key — and the throw is caught by `array` and reported as a bad row,
+            // which is exactly right for a file that claims to be current and is not.
+            // A JSON `null` is a *value* the column may hold, and restores as `null`.
+            row.requiredNullableString("avatar")
+        } else {
+            // An older file has no such column, and the value the schema would have
+            // given it is null.
+            null
+        },
     )
 
     /**
@@ -330,6 +397,30 @@ object BackupJsonReader {
 
     private fun JSONObject.nullableInt(key: String): Int? =
         if (isNull(key)) null else getInt(key)
+
+    /**
+     * The string at [key], which must be **present** — and `null` is a value it may hold.
+     *
+     * ## Why this is not [nullableString]
+     *
+     * Because `nullableString` cannot tell an absent key from a JSON `null`:
+     * `isNull` is false for an absent key, and `getString` on an absent key returns `""` rather
+     * than throwing. So a file that claims to be current but omits a column it must carry would
+     * read as "the column is empty" and restore — turning a corrupt file into data.
+     *
+     * This one checks the key is present *first*, and then reads it with the same
+     * `JSONObject.NULL` handling. So the two states stay distinct: a column that was `null` when
+     * the file was written restores as `null`, and a column that is **missing** from a file
+     * that must carry it is a bad row.
+     */
+    private fun JSONObject.requiredNullableString(key: String): String? {
+        if (!has(key)) {
+            // Thrown rather than returned, so `array` catches it as a bad row — the same
+            // treatment every other unreadable row gets.
+            throw JSONException("no value for '$key'")
+        }
+        return if (isNull(key)) null else getString(key)
+    }
 
     /** The eight table keys, as [BackupJson] writes them. One list, two directions. */
     internal const val FIELD_SCHEMA_VERSION = "schemaVersion"

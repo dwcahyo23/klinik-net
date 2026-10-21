@@ -386,7 +386,7 @@ class BackupRestorerTest {
               ],
               "renters": [
                 {"id":"r1","name":"Budi Santoso","phone":"08123456789","bankAccount":null,
-                 "emergencyContact":"08129876543"}
+                 "emergencyContact":"08129876543","avatar":null}
               ],
               "contracts": [
                 {"id":"c1","renterId":"r1","vehicleId":"v1","startDate":"2026-10-01",

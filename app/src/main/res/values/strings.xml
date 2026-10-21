@@ -1000,12 +1000,16 @@
 
     <!--
       The refusals, one per reason the reader raises. Each names what the owner can do next rather
-      than what went wrong inside the app — the rule NFR-6 sets for every error here. The version
-      message names both numbers because "this file is from a newer app" without saying which is
-      a message the owner cannot act on.
+      than what went wrong inside the app — the rule NFR-6 sets for every error here.
+
+      The two version messages name both numbers **and the direction**, because the owner's
+      next step is the opposite in each case: a file from a newer app means update the app, and
+      a file from an older one means take a fresh backup. One sentence for both would be a
+      message the owner cannot act on.
     -->
     <string name="pengaturan_restore_error_not_json">Berkas ini bukan cadangan Klinik Net. Pilih berkas JSON yang dibuat lewat menu Ekspor data.</string>
-    <string name="pengaturan_restore_error_version">Cadangan ini dibuat oleh versi aplikasi yang berbeda (versi berkas %1$d, aplikasi ini %2$d). Data yang ada tidak diubah.</string>
+    <string name="pengaturan_restore_error_version_too_new">Cadangan ini dibuat oleh aplikasi yang lebih baru (versi berkas %1$d, aplikasi ini %2$d). Perbarui aplikasi dulu, lalu coba lagi. Data yang ada tidak diubah.</string>
+    <string name="pengaturan_restore_error_version_too_old">Cadangan ini dibuat oleh aplikasi yang lebih lama dari yang bisa dibaca (versi berkas %1$d, aplikasi ini %2$d). Ambil cadangan baru lewat menu Ekspor data. Data yang ada tidak diubah.</string>
     <string name="pengaturan_restore_error_missing_table">Berkas cadangan tidak lengkap — ada bagian yang hilang. Data yang ada tidak diubah.</string>
     <string name="pengaturan_restore_error_bad_row">Berkas cadangan berisi data yang tidak bisa dibaca. Data yang ada tidak diubah.</string>
     <!--
