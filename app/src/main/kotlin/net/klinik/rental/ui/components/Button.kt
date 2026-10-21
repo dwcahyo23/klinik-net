@@ -36,6 +36,7 @@ import net.klinik.rental.ui.theme.knBrandShadow
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knElevation
 import net.klinik.rental.ui.theme.knRadii
+import net.klinik.rental.ui.theme.knShadow
 import net.klinik.rental.ui.theme.knTypography
 import net.klinik.rental.ui.theme.minTouchTarget
 
@@ -53,8 +54,15 @@ enum class KnButtonSize(
     internal val gap: Dp,
     internal val iconSize: Dp,
 ) {
-    /** `.btn-lg` — 58dp. */
-    Large(58.dp, 0.dp, 32.dp, 8.dp, 24.dp),
+    /**
+     * `.btn-lg` — 58dp.
+     *
+     * The icon stays 18dp, the size `.btn svg` sets for **every** button size. The CSS's
+     * `.btn-lg` changes only the label's font-size, so a large button with a larger glyph
+     * was a shape the prototype does not have — and a screen with one large button and
+     * three defaults read as if two different button styles were in play.
+     */
+    Large(58.dp, 0.dp, 32.dp, 8.dp, 18.dp),
 
     /** The default `.btn` — 48dp, the `--tap-min` floor. */
     Default(48.dp, 0.dp, 20.dp, 8.dp, 18.dp),
@@ -108,10 +116,15 @@ fun KnButton(
     // The brand shadow is drawn by `knShadow`, not by `Surface(shadowElevation
     // = …)`: that parameter takes no colour, so passing the height alone would
     // render Material's default black and quietly drop `--el-brand`.
-    val shadowModifier = if (variant == KnButtonVariant.Primary) {
-        Modifier.knBrandShadow(shape)
-    } else {
-        Modifier
+    //
+    // The secondary variant carries `--el-1`, the same elevation a card carries:
+    // the prototype's `.btn-secondary` is a filled card-coloured surface, and
+    // without a shadow it was indistinguishable from a ghost button — the two
+    // variants the prototype separates by a shadow, read as the same control.
+    val shadowModifier = when (variant) {
+        KnButtonVariant.Primary -> Modifier.knBrandShadow(shape)
+        KnButtonVariant.Secondary -> Modifier.knShadow(MaterialTheme.knElevation.level1, shape)
+        else -> Modifier
     }
 
     // An icon-size button draws no label, so the icon is its only content. With

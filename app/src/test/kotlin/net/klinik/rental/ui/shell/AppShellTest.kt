@@ -323,7 +323,13 @@ class AppShellTest {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
         // The summary's own figure label, which no other screen draws.
-        compose.onNodeWithText("Pendapatan hari ini").assertExists()
+        //
+        // Uppercase, because the KPI label is: the prototype's `.kpi-label` carries
+        // `text-transform: uppercase`, and the tile now applies it the way
+        // `KnTableHeaderRow` does. `ignoreCase` so the assertion is about *which*
+        // label this is, not about the casing convention — the casing has its own
+        // test, in `KnKpiTile`'s.
+        compose.onNodeWithText("Pendapatan hari ini", ignoreCase = true).assertExists()
     }
 
     @Test

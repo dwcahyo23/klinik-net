@@ -36,6 +36,7 @@ import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.TriangleAlert
 import net.klinik.rental.R
+import net.klinik.rental.ui.theme.focusGlow
 import net.klinik.rental.ui.theme.focusRing
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knRadii
@@ -186,6 +187,18 @@ fun KnField(
             .focusRing(
                 focused = focused,
                 cornerRadius = MaterialTheme.knRadii.md,
+            )
+            // The brand halo, from the prototype's `.input:focus`. The focus ring
+            // above already changes the border's colour; this is the part that
+            // makes the field *lift* — and the field is the one control where the
+            // difference between "the colour changed" and "this is where you are"
+            // is the whole story.
+            .then(
+                if (focused) {
+                    Modifier.focusGlow(MaterialTheme.knRadii.md)
+                } else {
+                    Modifier
+                },
             )
             .padding(horizontal = spacing.lg, vertical = spacing.md)
 

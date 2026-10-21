@@ -25,6 +25,7 @@ import androidx.compose.ui.semantics.selected
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.focusRing
+import net.klinik.rental.ui.theme.knBrandShadow
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knRadii
 import net.klinik.rental.ui.theme.knSpacing
@@ -153,7 +154,11 @@ fun KnChip(
     // unfocused card surface.
     val content = if (selected) Color.White else kn.textSecondary
     val countContent = if (selected) kn.surfaceInverse else kn.textTertiary
-    val border = if (selected) null else BorderStroke(1.5.dp, kn.border)
+    // The selected chip keeps its edge. The prototype's `.chip.active` draws a
+    // `1.5px` brand border *under* the brand fill, so the chip has a defined
+    // boundary against a warm page; dropping it left the selection legible only
+    // by its fill, and a filled pill on a filled page reads as a smudge.
+    val border = BorderStroke(1.5.dp, if (selected) kn.primaryFill else kn.border)
     val interaction = interactionSource ?: remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
 
@@ -167,6 +172,16 @@ fun KnChip(
         modifier = modifier
             .minTouchTarget()
             .focusRing(focused, MaterialTheme.knRadii.full)
+            // `--el-brand` on the active chip: every other brand-filled surface in the
+            // app lifts with a brand glow, and the chip was the one that did not —
+            // so the most deliberate-looking control on a screen read as the flattest.
+            .then(
+                if (selected) {
+                    Modifier.knBrandShadow(RoundedCornerShape(MaterialTheme.knRadii.full))
+                } else {
+                    Modifier
+                },
+            )
             // A chip is a filter toggle, not a plain button: the selection is
             // carried in the semantics tree so a screen reader can say which
             // filter is active rather than announcing a row of identical

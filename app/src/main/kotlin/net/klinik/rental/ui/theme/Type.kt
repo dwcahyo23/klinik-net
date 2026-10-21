@@ -78,6 +78,18 @@ data class KnTypography(
     val overline: TextStyle,
     /** Money and other figures that must align in a column. */
     val figure: TextStyle,
+    /**
+     * A figure at display scale — the donut's centre value.
+     *
+     * A separate slot rather than a `title.copy(...)` at the call site, because the
+     * whole point is that the figure face and the display face are **different faces**:
+     * [displaySmall] and [title] are Fraunces, and Fraunces has no `tnum` (verified
+     * against `res/font/fraunces_*.ttf`'s GSUB table — `case, liga, rvrn, ss01` only).
+     * So a number rendered in the display face silently loses its tabular figures, and
+     * a money figure rendered in the body face keeps them. That distinction is the
+     * token's reason to exist.
+     */
+    val figureLarge: TextStyle,
     val moneyLarge: TextStyle,
     val numpadKey: TextStyle,
     val pinKey: TextStyle,
@@ -166,6 +178,17 @@ data class KnTypography(
                 lineHeight = 20.sp,
                 fontFeatureSettings = TABULAR_FIGURES,
             ),
+            // `.donut-center .dc-val` — fs-lg, weight 800, tracking -.8, tabular.
+            // The body face, because a donut's centre is a number and numbers take
+            // tabular figures from the body face only.
+            figureLarge = TextStyle(
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.ExtraBold,
+                fontSize = 20.sp,
+                lineHeight = 24.sp,
+                letterSpacing = (-0.8).sp,
+                fontFeatureSettings = TABULAR_FIGURES,
+            ),
             moneyLarge = TextStyle(
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.ExtraBold,
@@ -210,21 +233,47 @@ val MaterialTheme.knTypography: KnTypography
  * Material 3 slots, mapped onto the CSS scale. Components should prefer
  * [KnTypography]; these exist so anything Material 3 renders internally (text
  * fields, dialogs) still gets Klinik.Net typefaces.
+ *
+ * ## Why this is `by lazy`
+ *
+ * Because this file has a **static initialisation cycle**, and a lazy delegate is
+ * what breaks it.
+ *
+ * `KnTypography.Clinic` lives in a companion object, and its styles name
+ * [Fraunces] and [PlusJakartaSans] — top-level properties of *this* file. So
+ * initialising the companion initialises this file. But this property reads
+ * `KnTypography.Clinic`, so initialising this file initialises the companion. The
+ * two call each other, and which one is entered first decides whether the second
+ * one sees a finished value or `null`.
+ *
+ * Entered from this file first, it works: [Fraunces] is already assigned by the
+ * time this line runs, and the companion initialises cleanly. Entered from the
+ * companion first, it does not: the companion is still initialising, so
+ * `KnTypography.Clinic` is `null` here, and the `Typography` constructor throws
+ * `NullPointerException` — `ExceptionInInitializerError` for every test that
+ * touches the type afterwards, in a file that has nothing wrong with it.
+ *
+ * A lazy delegate removes the cycle: nothing in this file's initialisation reads
+ * the companion any more, so the two no longer depend on the order they happen to
+ * be entered in. The value is built on first use, which is when the theme is
+ * actually installed and the companion is long since ready.
  */
-val ClinicTypography = Typography(
-    displayLarge = KnTypography.Clinic.displayLarge.copy(fontFamily = Fraunces),
-    displayMedium = KnTypography.Clinic.displayMedium.copy(fontFamily = Fraunces),
-    displaySmall = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
-    headlineLarge = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
-    headlineMedium = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-    headlineSmall = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-    titleLarge = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-    titleMedium = KnTypography.Clinic.bodyLarge.copy(fontFamily = PlusJakartaSans),
-    titleSmall = KnTypography.Clinic.label.copy(fontFamily = PlusJakartaSans),
-    bodyLarge = KnTypography.Clinic.bodyLarge,
-    bodyMedium = KnTypography.Clinic.body,
-    bodySmall = KnTypography.Clinic.body,
-    labelLarge = KnTypography.Clinic.label,
-    labelMedium = KnTypography.Clinic.overline.copy(fontSize = 14.sp, lineHeight = 18.sp),
-    labelSmall = KnTypography.Clinic.overline.copy(fontSize = 14.sp, lineHeight = 18.sp),
-)
+val ClinicTypography: Typography by lazy {
+    Typography(
+        displayLarge = KnTypography.Clinic.displayLarge.copy(fontFamily = Fraunces),
+        displayMedium = KnTypography.Clinic.displayMedium.copy(fontFamily = Fraunces),
+        displaySmall = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
+        headlineLarge = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
+        headlineMedium = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
+        headlineSmall = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
+        titleLarge = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
+        titleMedium = KnTypography.Clinic.bodyLarge.copy(fontFamily = PlusJakartaSans),
+        titleSmall = KnTypography.Clinic.label.copy(fontFamily = PlusJakartaSans),
+        bodyLarge = KnTypography.Clinic.bodyLarge,
+        bodyMedium = KnTypography.Clinic.body,
+        bodySmall = KnTypography.Clinic.body,
+        labelLarge = KnTypography.Clinic.label,
+        labelMedium = KnTypography.Clinic.overline.copy(fontSize = 14.sp, lineHeight = 18.sp),
+        labelSmall = KnTypography.Clinic.overline.copy(fontSize = 14.sp, lineHeight = 18.sp),
+    )
+}

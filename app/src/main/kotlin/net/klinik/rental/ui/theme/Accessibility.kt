@@ -1,12 +1,14 @@
 package net.klinik.rental.ui.theme
 
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.ReadOnlyComposable
 import androidx.compose.runtime.staticCompositionLocalOf
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawWithContent
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.geometry.CornerRadius
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.geometry.Size
@@ -33,6 +35,22 @@ data class KnAccessibility(
     val focusRingColor: Color,
     /** `outline-offset: 2px`. */
     val focusRingOffset: Dp,
+    /**
+     * The brand glow around a focused field — `0 0 0 4px var(--brand-50)`.
+     *
+     * The prototype's `.input:focus` carries two things: a `border-color` change *and*
+     * a 4px brand halo. The border change is what this library already drew; the halo
+     * was the part that made a focused field lift off the page rather than merely
+     * change colour, and it is the one thing a screen reads as "polished" before it
+     * reads as "correct".
+     *
+     * So the field draws the halo itself, from a token, rather than the focus ring
+     * growing — the ring is a 3dp outline on *every* focusable element, and widening
+     * it to a 4dp glow on fields alone would make the ring's width mean two things.
+     */
+    val focusGlowWidth: Dp,
+    /** The halo's colour: `--brand-50` in light, the dark block's `--brand-50` in dark. */
+    val focusGlowColor: Color,
 ) {
     companion object {
         val Clinic = KnAccessibility(
@@ -40,6 +58,8 @@ data class KnAccessibility(
             focusRingWidth = 3.dp,
             focusRingColor = Brand500,
             focusRingOffset = 2.dp,
+            focusGlowWidth = 4.dp,
+            focusGlowColor = Brand50Light,
         )
     }
 }
@@ -167,4 +187,37 @@ fun Modifier.focusRing(
             style = Stroke(width = stroke),
         )
     }
+}
+
+/**
+ * The brand halo a focused field wears.
+ *
+ * The prototype's `.input:focus { box-shadow: 0 0 0 4px var(--brand-50) }` is a **spread**
+ * shadow: it extends past the field's edge, in a flat colour, with no blur and no offset.
+ *
+ * A `drawWithContent` cannot draw that. It paints the node's content *first*, so a halo
+ * drawn in its lambda lands on top of the field, and a shape drawn beyond the node's own
+ * bounds is clipped away. So the halo is a real `shadow` instead: a small elevation with a
+ * brand-tinted ambient and spot colour. Compose blurs and offsets it rather than spreading
+ * it flat, which is not the same picture — but it is the same *idea*, it survives being
+ * drawn inside the node's own bounds, and it costs no layout shift. A focus that pushed the
+ * field's neighbours by four pixels would be worse than the missing halo.
+ *
+ * The colour is the token's, so a field in the dark scheme glows in the dark scheme's
+ * brand step rather than in light-theme pink.
+ */
+@Composable
+fun Modifier.focusGlow(
+    cornerRadius: Dp = MaterialTheme.knRadii.md,
+    color: Color? = null,
+): Modifier {
+    val a11y = MaterialTheme.knAccessibility
+    val glowColor = color ?: a11y.focusGlowColor
+    return this.shadow(
+        elevation = a11y.focusGlowWidth,
+        shape = RoundedCornerShape(cornerRadius),
+        clip = false,
+        ambientColor = glowColor,
+        spotColor = glowColor,
+    )
 }

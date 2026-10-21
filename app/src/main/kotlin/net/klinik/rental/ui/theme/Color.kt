@@ -171,6 +171,31 @@ data class KnColors(
      * ink — it exists only so a component never has to spell the hex itself.
      */
     val neutralMarker: Color,
+    /**
+     * `--brand-300` — the chart's "on target" colour.
+     *
+     * Theme-invariant, like the semantic foregrounds: `shared.css`'s dark block
+     * redefines `--brand-50` and leaves `--brand-300` alone, so a bar that met
+     * its target is the same pink on a light card and on a dark one.
+     */
+    val brand300: Color,
+    /**
+     * `--warm-300` — the chart's "below target" colour.
+     *
+     * Theme-invariant for the same reason as [brand300]: `shared.css` does not
+     * redefine `--warm-300` for dark, and a muted grey that reads as "behind" on a
+     * white card reads the same way on a near-black one.
+     */
+    val warm300: Color,
+    /**
+     * `--brand-100` — the avatar disc's edge.
+     *
+     * The prototype's `.avatar` strokes its ring in `--brand-100`, which is what
+     * makes a disc read as brand-tinted rather than as a neutral grey chip. The
+     * dark scheme needs its own step: `--brand-100` is a pale pink, and a pale
+     * pink edge on a near-black disc is a halo, not an edge.
+     */
+    val brand100: Color,
     val semantic: SemanticColors,
     val semanticBg: SemanticBackgrounds,
     val primaryFill: Color,
@@ -200,6 +225,9 @@ internal val LightColors = KnColors(
     brandSurface = Brand50Light,
     onBrand = OnBrandLight,
     neutralMarker = Warm400,
+    brand300 = Brand300,
+    warm300 = Warm300,
+    brand100 = Brand100,
     semantic = SemanticColors.Shared,
     semanticBg = SemanticBgLight,
     primaryFill = PrimaryFill,
@@ -230,6 +258,12 @@ internal val DarkColors = KnColors(
     brandSurface = Brand50Dark,
     onBrand = OnBrandDark,
     neutralMarker = Warm400,
+    brand300 = Brand300,
+    warm300 = Warm300,
+    // `--brand-100` is a pale pink, and a pale pink ring on a near-black disc is a
+    // halo rather than an edge. The dark step is the same hue two steps down, which
+    // separates the disc from the card without drawing attention to itself.
+    brand100 = Brand700,
     // The same instance the light scheme uses. No recomputation here — that
     // omission is the structural proof of the "semantic foreground never
     // changes" rule.

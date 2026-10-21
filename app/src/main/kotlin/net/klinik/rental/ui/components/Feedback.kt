@@ -44,6 +44,7 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import androidx.compose.ui.window.Dialog
 import androidx.compose.ui.window.DialogProperties
 import com.composables.icons.lucide.Check
@@ -149,7 +150,13 @@ fun KnSnackbar(
             )
             Text(
                 text = message,
-                style = MaterialTheme.knTypography.body,
+                // The prototype's `.snackbar { font-size: var(--fs-sm); font-weight: 600 }`
+                // — SemiBold, not Medium. A snackbar is this app's primary confirmation
+                // channel, and at Medium weight on a dark bar it read as less assertive
+                // than the rest of the interface.
+                style = MaterialTheme.knTypography.body.copy(
+                    fontWeight = FontWeight.SemiBold,
+                ),
                 color = kn.onSurfaceInverse,
                 modifier = Modifier.weight(1f),
             )
@@ -309,7 +316,12 @@ fun KnEmptyState(
         )
         Text(
             text = body,
-            style = MaterialTheme.knTypography.body,
+            // `.empty-state p { font-size: var(--fs-sm); line-height: 1.6 }` — 14px on a
+            // 22.4px line. The token's 21px line was about 3px tighter across two lines,
+            // which made the copy block look cramped inside its 340dp cap.
+            style = MaterialTheme.knTypography.body.copy(
+                lineHeight = 22.sp,
+            ),
             color = kn.textTertiary,
             // `.empty-state p { max-width: 340px }` — the cap is what keeps a
             // two-line explanation from stretching the full width of a 1280px
@@ -558,8 +570,13 @@ fun KnModal(
                             modifier = Modifier
                                 .fillMaxWidth()
                                 .padding(
+                                    // The prototype's `.modal-header { padding: var(--sp-5) var(--sp-6) }`
+                                    // — 20dp top and bottom, 24dp at the sides. The end
+                                    // inset was `spacing.sm`, which pulled the title 16dp
+                                    // from the edge while its body sat 20dp away, so the
+                                    // two blocks did not line up.
                                     start = spacing.xl,
-                                    end = spacing.sm,
+                                    end = spacing.xxl,
                                     top = spacing.lg,
                                     bottom = spacing.lg,
                                 ),
@@ -592,7 +609,11 @@ fun KnModal(
                         modifier = Modifier
                             .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState())
-                            .padding(spacing.xl),
+                            // The prototype's `.modal-body { padding: var(--sp-6) }` —
+                            // 24dp on every side. At 20dp the copy sat tight against
+                            // the card's 26dp corners, which made the dialog read as
+                            // cramped rather than as generous.
+                            .padding(spacing.xxl),
                     ) {
                         content()
                     }
@@ -795,11 +816,15 @@ private fun KnPinDeleteKey(label: String, onClick: () -> Unit) {
         modifier = Modifier
             .size(PinKeySize)
             .minTouchTarget()
-            .focusRing(focused, MaterialTheme.knRadii.full),
+            .focusRing(focused, MaterialTheme.knRadii.full)
+            // `--el-1` through `knShadow`, like its ten siblings in the pad. This key
+            // was the one that passed `shadowElevation` instead, which takes no
+            // colour — so it was the only key in the grid casting a grey ring
+            // rather than the token's warm one.
+            .knShadow(MaterialTheme.knElevation.level1, CircleShapeToken),
         shape = CircleShapeToken,
         color = kn.bgCard,
         contentColor = kn.textSecondary,
-        shadowElevation = MaterialTheme.knElevation.level1,
         interactionSource = interaction,
     ) {
         Box(

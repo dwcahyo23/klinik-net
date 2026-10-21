@@ -118,7 +118,10 @@ fun KnLineChart(
                 end = Offset(size.width, y),
                 strokeWidth = 1f,
                 pathEffect = PathEffect.dashPathEffect(
-                    floatArrayOf(6f, 8f),
+                    // `stroke-dasharray: 3 5` — the prototype's own gridline dash. The
+                    // previous 6/8 read as long sparse strokes, so the background
+                    // texture competed with the data line it sits behind.
+                    floatArrayOf(3f, 5f),
                 ),
             )
         }
@@ -131,7 +134,10 @@ fun KnLineChart(
                 end = Offset(size.width, y),
                 strokeWidth = 2f,
                 pathEffect = PathEffect.dashPathEffect(
-                    floatArrayOf(12f, 8f),
+                    // The prototype dashes the target line on the same 3/5 rhythm as the
+                    // gridlines, so it reads as part of the same ruled sheet rather
+                    // than as a second, heavier series.
+                    floatArrayOf(3f, 5f),
                 ),
             )
         }
@@ -242,9 +248,12 @@ fun KnBarChart(
                             .clip(BarShape)
                             .background(
                                 if (bar.value >= target) {
-                                    MaterialTheme.knColors.primaryFill
+                                    // `--brand-300`, the bar that met its target.
+                                    MaterialTheme.knColors.brand300
                                 } else {
-                                    MaterialTheme.knColors.brandSurface
+                                    // `--warm-300`, the bar that fell short. A muted grey
+                                    // beside a soft pink says "behind" without a legend.
+                                    MaterialTheme.knColors.warm300
                                 },
                             )
                             .testTag(TAG_BAR_PREFIX + bar.label),
@@ -366,13 +375,22 @@ fun KnDonutChart(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = centreText,
-                    style = MaterialTheme.knTypography.title,
+                    // The body face, not the display face. The prototype's
+                    // `.donut-center .dc-val` is `--fs-lg` weight 800 with
+                    // `tabular-nums`, and Fraunces carries no `tnum` — so the
+                    // display face would silently drop the tabular figures off
+                    // the one number in the chart that has to line up.
+                    style = MaterialTheme.knTypography.figureLarge,
                     color = MaterialTheme.knColors.textPrimary,
                     maxLines = 1,
                 )
                 Text(
                     text = centreLabel.uppercase(),
-                    style = MaterialTheme.knTypography.overline.copy(fontSize = 11.sp),
+                    style = MaterialTheme.knTypography.overline.copy(
+                        fontSize = 11.sp,
+                        // `.dc-lbl { letter-spacing: .5px }`
+                        letterSpacing = 0.5.sp,
+                    ),
                     color = MaterialTheme.knColors.textTertiary,
                     maxLines = 1,
                 )
@@ -462,15 +480,20 @@ private const val DonutLegendLimit = 6
 @Composable
 fun donutPaletteColour(index: Int): Color {
     val kn = MaterialTheme.knColors
+    // The prototype's eight-colour donut ramp, in order (`dashboard.html:292`). The two
+    // brand steps in it are the ones that carry the chart: `--brand-500` and
+    // `--brand-300`. The old second slot was `--brand-50`, a tint so close to the card
+    // that the slice measured 1.10:1 against it — invisible. `brand300` is the same
+    // ramp the bar chart's "met target" bar uses, so the two charts agree.
     val palette = listOf(
         kn.primaryFill,
-        kn.brandSurface,
-        Color(0xFFFF9FB5),
+        kn.brand300,
         kn.semantic.warning,
         kn.semantic.success,
         kn.semantic.info,
         kn.textTertiary,
         kn.border,
+        kn.warm300,
     )
     return palette[index % palette.size]
 }

@@ -206,6 +206,100 @@ class ContrastTest {
     }
 
     // ------------------------------------------------------------------
+    // The chart's own colours: a bar and a slice are **non-text**, so the
+    // 3:1 floor of WCAG 1.4.11 applies — and the numbers beside them
+    // carry the same information, so a bar is not the only channel.
+    // ------------------------------------------------------------------
+
+    /**
+     * The bar that met its target is visible against the card in both themes.
+     *
+     * The old value was `primaryFill`, which clears 3:1 easily but made the chart
+     * read as a row of alarming red bars. The prototype's own `--brand-300` is
+     * 1.93:1 on white — **below** the 3:1 floor — so the prototype's value is
+     * pinned here as a *value*, and the 3:1 claim is made about the darker
+     * dark-theme step instead, where the same colour is 8.92:1.
+     *
+     * So the assertion is deliberately two-part: the light bar is asserted to be
+     * the prototype's literal, and the dark bar is asserted to clear 3:1. A
+     * blanket 3:1 on the light bar would be a claim the prototype itself does
+     * not make, and asserting the literal is what stops the value drifting.
+     */
+    @Test
+    fun `the chart's on-target bar is the prototype's brand step in both themes`() {
+        assertEquals(
+            "the light bar is --brand-300, the prototype's own value",
+            Color(0xFFFF9FB5),
+            LightColors.brand300,
+        )
+        assertEquals(
+            "and it is the same value in dark — shared.css does not redefine --brand-300",
+            LightColors.brand300,
+            DarkColors.brand300,
+        )
+        assertTrue(
+            "the dark bar clears the 3:1 non-text floor on a dark card: " +
+                "${contrastRatio(DarkColors.brand300, DarkColors.bgCard)}:1",
+            contrastRatio(DarkColors.brand300, DarkColors.bgCard) >= 3.0,
+        )
+    }
+
+    /**
+     * The below-target bar is `--warm-300`, and it is muted rather than absent.
+     *
+     * The old value was `brandSurface` — a tint so close to the card that the
+     * slice measured 1.10:1 against it and was effectively invisible, so a bar
+     * that missed its target looked like no bar at all. `--warm-300` at 1.55:1
+     * is still low for a non-text element, and the assertion says so rather than
+     * pretending otherwise: the bar is a *secondary* channel, and the value
+     * printed above it is the primary one.
+     */
+    @Test
+    fun `the below-target bar is the prototype's warm step and not the card tint`() {
+        assertEquals(
+            "the below-target bar is --warm-300",
+            Color(0xFFD6CFC4),
+            LightColors.warm300,
+        )
+        assertEquals(
+            "and the same value in dark",
+            LightColors.warm300,
+            DarkColors.warm300,
+        )
+        assertTrue(
+            "it must be visible against the card — the old brandSurface measured 1.10:1 " +
+                "and the bar disappeared entirely: " +
+                "${contrastRatio(LightColors.warm300, LightColors.bgCard)}:1",
+            contrastRatio(LightColors.warm300, LightColors.bgCard) > 1.3,
+        )
+    }
+
+    /**
+     * The avatar's ring is the prototype's `--brand-100`, and the dark scheme
+     * supplies its own step.
+     *
+     * Measured, because the claim is easy to overstate: `--brand-100` on
+     * `--brand-50` is **1.11:1** — a tint around the disc, not a visible edge.
+     * The previous token, `borderStrong`, was 1.41:1 — also not an edge, and grey
+     * where the prototype's is pink. So this pins the prototype's value, and the
+     * dark step is pinned to a value that *is* visible.
+     */
+    @Test
+    fun `the avatar ring is the prototype's brand-100 and the dark scheme has its own step`() {
+        assertEquals(
+            "the light ring is --brand-100",
+            Color(0xFFFFE1E8),
+            LightColors.brand100,
+        )
+        assertTrue(
+            "the dark ring must be visible against a near-black disc — a pale pink " +
+                "would be a halo, not an edge: " +
+                "${contrastRatio(DarkColors.brand100, DarkColors.brandSurface)}:1",
+            contrastRatio(DarkColors.brand100, DarkColors.brandSurface) >= 2.5,
+        )
+    }
+
+    // ------------------------------------------------------------------
     // The focus ring is a non-text indicator: the 3:1 floor applies, and it
     // is the reason brand500 was not darkened like the other brand values.
     // ------------------------------------------------------------------

@@ -30,6 +30,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
+import androidx.compose.ui.text.intl.Locale as ComposeLocale
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.focusRing
@@ -183,7 +184,22 @@ fun KnCardHeader(
  * money formatter: rupiah comes from `formatRupiah` at the call site and a count
  * comes as a count, which keeps one formatter in the app instead of one per
  * tile. The tile applies [net.klinik.rental.ui.theme.TABULAR_FIGURES] via
- * [MaterialTheme.knTypography].displayMedium so columns of figures align.
+ * [MaterialTheme.knTypography.moneyLarge so columns of figures align.
+ *
+ * ## Why the figure is `moneyLarge` and not `displayMedium`
+ *
+ * Because a number is a number, and the two faces disagree about what a number is.
+ * `displayMedium` is Fraunces at the same 36sp, and Fraunces carries no `tnum` —
+ * verified against the GSUB feature table of `res/font/fraunces_600.ttf` and
+ * `fraunces_700.ttf`, which list `case, liga, rvrn, ss01` and nothing else. Every
+ * one of the five `plus_jakarta_sans_*.ttf` files does carry `tnum`. So a KPI
+ * figure drawn in the display face loses the tabular figures, and the rupiah column
+ * jitters as amounts change — which is the one thing the token exists to prevent.
+ *
+ * `moneyLarge` is the prototype's own `.kpi-value` numbers, read off: `--fs-2xl`
+ * 36, `font-weight: 800`, `letter-spacing: -1.2px`, `font-variant-numeric:
+ * tabular-nums`. The size, the weight and the tracking already match; only the
+ * family was wrong.
  */
 @Composable
 fun KnKpiTile(
@@ -210,6 +226,11 @@ fun KnKpiTile(
     val spacing = MaterialTheme.knSpacing
     val shape = RoundedCornerShape(MaterialTheme.knRadii.lg)
     val corner = iconLayout == KnKpiIconLayout.Corner
+    // `String.uppercase()` takes a `java.util.Locale`; Compose exposes its own locale
+    // type, so it is bridged rather than silently defaulting to ROOT — the same
+    // bridge `KnTableHeaderRow` uses.
+    val locale = ComposeLocale.current.toLanguageTag()
+        .let { java.util.Locale.forLanguageTag(it) }
 
     Surface(
         modifier = modifier.knShadow(MaterialTheme.knElevation.level1, shape),
@@ -243,13 +264,13 @@ fun KnKpiTile(
                         KpiIcon(icon = icon, tint = iconTint)
                     }
                     Text(
-                        text = label,
+                        text = label.uppercase(locale),
                         style = MaterialTheme.knTypography.overline,
                         color = kn.textTertiary,
                     )
                     Text(
                         text = value,
-                        style = MaterialTheme.knTypography.displayMedium,
+                        style = MaterialTheme.knTypography.moneyLarge,
                         color = kn.textPrimary,
                         modifier = Modifier.padding(top = spacing.sm),
                     )

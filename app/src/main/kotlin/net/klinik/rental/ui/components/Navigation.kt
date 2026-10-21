@@ -52,7 +52,9 @@ import net.klinik.rental.ui.theme.LocalThemeControl
 import net.klinik.rental.ui.theme.ThemeControl
 import net.klinik.rental.ui.theme.focusRing
 import net.klinik.rental.ui.theme.knColors
+import net.klinik.rental.ui.theme.knElevation
 import net.klinik.rental.ui.theme.knRadii
+import net.klinik.rental.ui.theme.knShadow
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
 import net.klinik.rental.ui.theme.minTouchTarget
@@ -229,11 +231,17 @@ private fun KnNavRailItem(
         if (selected) {
             // 4dp x 26dp, offset -8dp from the item edge. The parent rail's
             // horizontal padding is what this overdraws into.
+            //
+            // The prototype's `.rail-item.active::before` is
+            // `border-radius: 0 4px 4px 0` — square against the rail's own edge,
+            // rounded only where it meets the item. A full pill curved both ends, so
+            // the indicator read as a floating lozenge instead of as the edge of
+            // the rail.
             Box(
                 Modifier
                     .offset(x = (-8).dp)
                     .size(width = 4.dp, height = 26.dp)
-                    .clip(RoundedCornerShape(topEnd = MaterialTheme.knRadii.full, bottomEnd = MaterialTheme.knRadii.full))
+                    .clip(RoundedCornerShape(topEnd = 4.dp, bottomEnd = 4.dp))
                     .background(kn.primaryFill),
             )
         }
@@ -579,11 +587,15 @@ private fun ThemeToggleButton(control: ThemeControl) {
         onClick = control.onToggle,
         modifier = Modifier
             .minTouchTarget()
-            .focusRing(focused, MaterialTheme.knRadii.md),
+            .focusRing(focused, MaterialTheme.knRadii.md)
+            // `--el-1` through `knShadow`, so the shadow carries the token's warm
+            // tint. `Surface(shadowElevation = …)` takes no colour and rendered
+            // Material's default black, which on a warm page reads greyer than
+            // the shadow every other card-level surface casts.
+            .knShadow(MaterialTheme.knElevation.level1, shape),
         shape = shape,
         color = kn.bgCard,
         contentColor = kn.textSecondary,
-        shadowElevation = 1.dp,
         interactionSource = interaction,
     ) {
         Box(contentAlignment = Alignment.Center) {

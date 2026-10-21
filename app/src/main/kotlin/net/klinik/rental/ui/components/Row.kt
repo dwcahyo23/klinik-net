@@ -123,7 +123,12 @@ fun KnListRow(
             Column(Modifier.weight(1f)) {
                 Text(
                     text = title,
-                    style = MaterialTheme.knTypography.label,
+                    // `.list-row .lr-title { letter-spacing: -.2px }` — the token carries
+                    // -.1sp, which left a renter's name very slightly looser than the
+                    // prototype's tight-set names.
+                    style = MaterialTheme.knTypography.label.copy(
+                        letterSpacing = (-0.2).sp,
+                    ),
                     color = if (enabled) kn.textPrimary else kn.textTertiary,
                     maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
@@ -457,13 +462,20 @@ fun KnAvatar(
         modifier = modifier
             .size(size.diameter)
             .background(kn.brandSurface, CircleShape)
-            // `--brand-100` in the CSS against a `--brand-50` fill, so the disc
-            // keeps an edge against a card that is itself close to `--brand-50`.
-            // `borderStrong` is the nearest token this library carries with real
-            // separation from `brandSurface`; the earlier version stroked the
-            // disc in its own fill colour, which is what made the comment above
-            // it untrue and the outline invisible.
-            .border(width = 1.5.dp, color = kn.borderStrong, shape = CircleShape)
+            // `--brand-100` in the CSS against a `--brand-50` fill — the prototype's own
+            // pairing, read from a token rather than spelled as a hex.
+            //
+            // Measured, so the claim is honest: brand-100 on brand-50 is **1.11:1**, so
+            // this is a *tint* around the disc, not a visible edge. The previous token,
+            // borderStrong, was 1.41:1 — also not a visible edge, and grey where the
+            // prototype's is pink. The KDoc here used to claim "real separation", which
+            // was never true of either; the fix is the prototype's value, and the claim
+            // is now what the value actually does. The disc separates from the card by
+            // its *fill*, which is what makes it legible.
+            //
+            // The dark scheme supplies its own step — brand-700, at 2.78:1 — because a
+            // pale pink ring on a near-black disc is a halo, not an edge.
+            .border(width = 1.5.dp, color = kn.brand100, shape = CircleShape)
             // The disc is a visual abbreviation, not the person's identity.
             // Announced as `name`, the disc reads as the person's name; announced
             // as its own content it reads "A R" or a face with no label, which
