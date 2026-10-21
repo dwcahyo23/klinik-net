@@ -1,5 +1,6 @@
 package net.klinik.rental.ui.components
 
+import androidx.compose.foundation.Image
 import androidx.compose.foundation.background
 import androidx.compose.foundation.border
 import androidx.compose.foundation.interaction.MutableInteractionSource
@@ -9,6 +10,7 @@ import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -22,9 +24,12 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.RectangleShape
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontWeight
@@ -34,6 +39,7 @@ import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import net.klinik.rental.R
 import net.klinik.rental.ui.theme.focusRing
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knRadii
@@ -407,27 +413,45 @@ enum class KnAvatarSize(val diameter: Dp) {
 }
 
 /**
- * `.avatar` — initials on a brand-tinted disc.
+ * `.avatar` — a picked face from the app's icon pack, or initials when none was chosen.
  *
- * Initials are derived here rather than passed in, because the derivation is the
- * part that is easy to get subtly wrong: the first letters of up to two words,
- * uppercased. A name is the one identifier the owner already has, and a screen
- * that also asked the caller for initials would produce a second, disagreeing
- * spelling of the same person.
+ * ## Why the initials are derived rather than passed in
+ *
+ * Because the derivation is the part that is easy to get subtly wrong: the first letters of up
+ * to two words, uppercased. A name is the one identifier the owner already has, and a screen
+ * that also asked the caller for initials would produce a second, disagreeing spelling of the
+ * same person.
+ *
+ * ## Why the avatar is a key and not a glyph
+ *
+ * The first version of this took a typed emoji and drew it as text, which made the disc whatever
+ * the system font decides a face looks like — and let a stray character reach a value nothing
+ * could validate. A key (`avatar_07`) names an entry in [AVATAR_KEYS] instead: it survives a font
+ * change, it cannot be half-typed, and an unknown one is *recognisably* unknown rather than
+ * rendering as somebody else's face.
+ *
+ * ## Why an unknown key falls back to initials rather than throwing
+ *
+ * Because two real paths produce one: a backup written by a build carrying a different pack, and
+ * a row restored from before the pack existed. Neither is a programming error, and a list that
+ * crashed on either would be an app that cannot open. Initials are a true statement about the
+ * person; an empty disc is not.
  *
  * Not interactive — see [KnAvatarSize] on why Small is allowed below the floor.
  *
- * @param name the display name. A blank name renders an empty disc rather than
- *   a placeholder glyph: a row with no name yet should read as empty, not as a
- *   broken image.
+ * @param name the display name. A blank name renders an empty disc rather than a placeholder
+ *   glyph: a row with no name yet should read as empty, not as a broken image.
+ * @param avatar a key from [AVATAR_KEYS], or `null`/blank/unknown to fall back to initials.
  */
 @Composable
 fun KnAvatar(
     name: String,
     modifier: Modifier = Modifier,
     size: KnAvatarSize = KnAvatarSize.Medium,
+    avatar: String? = null,
 ) {
     val kn = MaterialTheme.knColors
+    val face = avatarDrawable(avatar)
 
     Box(
         modifier = modifier
@@ -440,30 +464,86 @@ fun KnAvatar(
             // disc in its own fill colour, which is what made the comment above
             // it untrue and the outline invisible.
             .border(width = 1.5.dp, color = kn.borderStrong, shape = CircleShape)
-            // The initials are a visual abbreviation, not the person's identity.
+            // The disc is a visual abbreviation, not the person's identity.
             // Announced as `name`, the disc reads as the person's name; announced
-            // as its own text it reads "A R", which tells a screen-reader user
-            // nothing and hides the name from them entirely.
+            // as its own content it reads "A R" or a face with no label, which
+            // tells a screen-reader user nothing and hides the name from them.
             .semantics { contentDescription = name },
         contentAlignment = Alignment.Center,
     ) {
-        Text(
-            text = avatarInitials(name),
-            // `.avatar { font-size: 21px }` scaled off the diameter, so Small and
-            // Large stay proportionate instead of sharing one fixed size. 21/44 is
-            // the CSS's own ratio.
-            style = MaterialTheme.knTypography.title.copy(
-                fontSize = (size.diameter.value * AVATAR_INITIALS_RATIO).sp,
-            ),
-            color = kn.onBrand,
-            maxLines = 1,
-            textAlign = TextAlign.Center,
-        )
+        if (face != null) {
+            // The pack's faces are square with a transparent background, so clipping to the
+            // disc is what makes them sit inside it rather than over its corners. `Crop` rather
+            // than `Fit`: the source is already square, and a fit would leave a hairline of
+            // brand surface showing at the rim.
+            Image(
+                painter = painterResource(face),
+                contentDescription = null,
+                contentScale = ContentScale.Crop,
+                modifier = Modifier.fillMaxSize().clip(CircleShape),
+            )
+        } else {
+            Text(
+                text = avatarInitials(name),
+                // `.avatar { font-size: 21px }` scaled off the diameter, so Small and
+                // Large stay proportionate instead of sharing one fixed size. 21/44 is
+                // the CSS's own ratio.
+                style = MaterialTheme.knTypography.title.copy(
+                    fontSize = (size.diameter.value * AVATAR_INITIALS_RATIO).sp,
+                ),
+                color = kn.onBrand,
+                maxLines = 1,
+                textAlign = TextAlign.Center,
+            )
+        }
     }
 }
 
 /** `21px / 44px`, the CSS avatar's own initials-to-diameter ratio. */
 private const val AVATAR_INITIALS_RATIO = 0.477f
+
+/**
+ * The drawable for each key in [AVATAR_KEYS], in the same order.
+ *
+ * Declared **before** [AVATAR_KEYS] because a top-level `val` is initialised in source order,
+ * and the keys list is sized from this one.
+ */
+private val AVATAR_FACES: List<Int> = listOf(
+    R.drawable.avatar_01, R.drawable.avatar_02, R.drawable.avatar_03, R.drawable.avatar_04,
+    R.drawable.avatar_05, R.drawable.avatar_06, R.drawable.avatar_07, R.drawable.avatar_08,
+    R.drawable.avatar_09, R.drawable.avatar_10, R.drawable.avatar_11, R.drawable.avatar_12,
+    R.drawable.avatar_13, R.drawable.avatar_14, R.drawable.avatar_15, R.drawable.avatar_16,
+    R.drawable.avatar_17, R.drawable.avatar_18, R.drawable.avatar_19, R.drawable.avatar_20,
+    R.drawable.avatar_21, R.drawable.avatar_22, R.drawable.avatar_23, R.drawable.avatar_24,
+    R.drawable.avatar_25, R.drawable.avatar_26, R.drawable.avatar_27, R.drawable.avatar_28,
+    R.drawable.avatar_29, R.drawable.avatar_30, R.drawable.avatar_31, R.drawable.avatar_32,
+    R.drawable.avatar_33, R.drawable.avatar_34, R.drawable.avatar_35, R.drawable.avatar_36,
+    R.drawable.avatar_37, R.drawable.avatar_38, R.drawable.avatar_39, R.drawable.avatar_40,
+    R.drawable.avatar_41, R.drawable.avatar_42, R.drawable.avatar_43, R.drawable.avatar_44,
+    R.drawable.avatar_45,
+)
+
+/**
+ * The icon pack's keys, in sheet order — `avatar_01` is the top-left face.
+ *
+ * A list rather than a `Map<String, Int>` because the key *is* the position: `avatar_07` means
+ * the seventh entry, and storing both a name and an index would be two spellings of one fact
+ * that can disagree. The drawable ids are here rather than looked up by name, because
+ * `getIdentifier` is stripped by R8 and would return 0 in a release build.
+ */
+internal val AVATAR_KEYS: List<String> = List(AVATAR_FACES.size) { "avatar_%02d".format(it + 1) }
+
+/**
+ * The drawable for [key], or `null` when it names nothing this build carries.
+ *
+ * `null` is the answer for every one of: no avatar, a blank string, a key from a future pack, and
+ * a key that is not one of ours at all. All four mean the same thing to a caller — draw the
+ * initials — so they are one return value rather than four branches at each call site.
+ */
+internal fun avatarDrawable(key: String?): Int? {
+    val index = AVATAR_KEYS.indexOf(key?.trim())
+    return if (index >= 0) AVATAR_FACES[index] else null
+}
 
 /**
  * First letters of up to two words, uppercased.

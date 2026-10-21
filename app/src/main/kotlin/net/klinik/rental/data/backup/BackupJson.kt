@@ -252,6 +252,7 @@ object BackupJson {
         appendField(false, "phone") { it.appendJsonString(r.phone) }
         appendField(false, "bankAccount") { it.appendNullable(r.bankAccount) }
         appendField(false, "emergencyContact") { it.appendJsonString(r.emergencyContact) }
+        appendField(false, "avatar") { it.appendNullable(r.avatar) }
     }
 
     private fun StringBuilder.contract(c: ContractEntity) {

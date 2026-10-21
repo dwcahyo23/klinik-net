@@ -159,6 +159,11 @@ fun RenterFormSheet(
                 modifier = Modifier.testTag(TAG_FIELD_BANK_ACCOUNT),
             )
 
+            AvatarPicker(
+                selected = state.avatar,
+                onSelect = { key -> onChange { it.copy(avatar = key) } },
+            )
+
             FlowRow(
                 modifier = Modifier.fillMaxWidth(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
@@ -195,5 +200,7 @@ internal const val TAG_FIELD_NAME = "renter-field-name"
 internal const val TAG_FIELD_PHONE = "renter-field-phone"
 internal const val TAG_FIELD_EMERGENCY = "renter-field-emergency"
 internal const val TAG_FIELD_BANK_ACCOUNT = "renter-field-bank-account"
+internal const val TAG_FIELD_AVATAR = "renter-field-avatar"
+internal const val TAG_AVATAR_GRID = "renter-avatar-grid"
 internal const val TAG_SAVE = "renter-save"
 internal const val TAG_CANCEL = "renter-cancel"

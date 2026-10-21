@@ -59,6 +59,17 @@ data class ArrearsRow(
      * about money. `Renter.phone` is required by the domain model, so it is never absent.
      */
     val renterPhone: String,
+    /**
+     * The renter's avatar key, or `null` when they have none.
+     *
+     * Carried on the row for the same reason the phone is: the disc beside the name draws it,
+     * and a second read at that point would be a second snapshot of a person whose details
+     * decide who gets chased for money.
+     *
+     * Defaulted to `null` so a row built for a preview or a test needs one fewer argument —
+     * and `null` is the honest value there, since neither has an avatar.
+     */
+    val renterAvatar: String? = null,
     /** `Rp 750.000 · 3 hari` — the AC's format, built once. */
     val figureText: String,
     /** `3 hari`, for the badge and the detail's own labelled row. */
@@ -269,6 +280,7 @@ data class TunggakanUiState(
 internal fun List<ContractArrears>.toRows(
     renterNames: Map<String, String>,
     renterPhones: Map<String, String>,
+    renterAvatars: Map<String, String?>,
     vehiclePlates: Map<String, String>,
     strings: RStrings,
 ): List<ArrearsRow> {
@@ -299,6 +311,11 @@ internal fun List<ContractArrears>.toRows(
                 // makes that unreachable, and an empty phone refuses the link instead of
                 // addressing a stranger. See `ReminderMessage.international`.
                 renterPhone = renterPhones[contract.renterId].orEmpty(),
+                // The avatar, from the **same** lookup the name and phone come from. `null`
+                // when the renter has none, and `null` when the lookup misses — the disc
+                // falls back to initials either way, so a miss is a blank face rather than
+                // a crash.
+                renterAvatar = renterAvatars[contract.renterId],
                 amount = entry.amount,
                 figureText = strings.tunggakanRowFigure(
                     amount = formatRupiah(entry.amount),

@@ -7,6 +7,7 @@ import org.junit.Test
 import org.junit.runner.RunWith
 import org.robolectric.RobolectricTestRunner
 import org.robolectric.annotation.Config
+import net.klinik.rental.data.db.SCHEMA_VERSION
 import java.time.LocalDate
 
 /**
@@ -36,7 +37,7 @@ import java.time.LocalDate
 @Config(sdk = [34])
 class BackupJsonReaderTest {
 
-    private val version = 8
+    private val version = SCHEMA_VERSION
 
     /**
      * The day the reader compares a contract's dates against.
@@ -56,7 +57,7 @@ class BackupJsonReaderTest {
           ],
           "renters": [
             {"id":"r1","name":"Budi Santoso","phone":"08123456789","bankAccount":null,
-             "emergencyContact":"08129876543"}
+             "emergencyContact":"08129876543","avatar":"avatar_07"}
           ],
           "contracts": [
             {"id":"c1","renterId":"r1","vehicleId":"v1","startDate":"2026-10-01",

@@ -426,9 +426,19 @@
     <string name="penyewa_field_phone">Nomor telepon</string>
     <string name="penyewa_field_emergency">Kontak darurat</string>
     <string name="penyewa_field_bank_account">Nomor rekening (opsional)</string>
+    <string name="penyewa_field_avatar">Avatar</string>
     <!-- Hints, hidden by `KnField` until an error replaces them. -->
     <string name="penyewa_name_hint">Nama yang dipakai di m-banking</string>
     <string name="penyewa_bank_account_hint">Kosongkan jika dibayar tunai</string>
+    <string name="penyewa_avatar_hint">Ketuk wajah untuk memilih. Ketuk lagi untuk menghapus dan memakai inisial.</string>
+    <!--
+      One grid option's accessibility label. The face itself is decoration, so what a screen
+      reader announces is its position in the pack — the only handle it has that is not the
+      person's name, which the disc beside it already announces. The number is the face's
+      number in the pack, not an index into a grid: "Wajah 7" rather than "Wajah avatar_07",
+      because the key is a storage detail.
+    -->
+    <string name="penyewa_avatar_option">Wajah %1$d</string>
     <string name="penyewa_save">Simpan Penyewa</string>
     <string name="penyewa_cancel">Batal</string>
 

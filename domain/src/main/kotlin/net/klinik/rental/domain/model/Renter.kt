@@ -59,6 +59,17 @@ data class Renter(
     val phone: String,
     val bankAccount: String? = null,
     val emergencyContact: String,
+    /**
+     * The avatar pack key drawn on this renter's disc, or `null` for "none chosen".
+     *
+     * A key (`avatar_07`), not an emoji: the app's pack is a fixed set, and a key names an
+     * entry in it. An emoji would be a glyph the system font decides the shape of.
+     *
+     * Not validated beyond being trimmed at the write. A key the app does not carry is a
+     * legitimate value — a backup from a build with a different pack — and the domain has no
+     * business knowing which keys exist.
+     */
+    val avatar: String? = null,
 ) {
     init {
         // Each refusal is a typed exception carrying *which* field was empty, so

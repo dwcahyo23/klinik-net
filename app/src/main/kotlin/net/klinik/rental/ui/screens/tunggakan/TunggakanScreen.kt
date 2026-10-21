@@ -491,7 +491,7 @@ private fun ArrearsRowItem(
         modifier = Modifier
             .testTag(TAG_ROW_PREFIX + row.contractId)
             .semantics { contentDescription = description },
-        leading = { KnAvatar(name = row.renterName) },
+        leading = { KnAvatar(name = row.renterName, avatar = row.renterAvatar) },
         trailing = {
             Column(
                 horizontalAlignment = Alignment.End,

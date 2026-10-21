@@ -37,7 +37,7 @@ import net.klinik.rental.data.db.entity.VehicleEntity
  * because a reader who needs the number should find it by grepping the version rather than by
  * opening this file and hoping.
  */
-const val SCHEMA_VERSION = 8
+const val SCHEMA_VERSION = 9
 
 /**
  * The app's Room database.
@@ -606,6 +606,39 @@ abstract class KlinikDatabase : RoomDatabase() {
         }
 
         /**
+         * v8 -> v9: adds `renter.avatar` — the emoji the prototype shows on a renter's disc.
+         *
+         * ## Why `DEFAULT NULL` and no back-fill
+         *
+         * `null` means "no emoji chosen", which is the truth about every renter already stored:
+         * they were recorded before the field existed, and inventing an emoji for them would be
+         * this migration deciding something about a person. `KnAvatar` falls back to initials,
+         * which is what every renter disc shows today — so an upgraded install looks unchanged
+         * until the owner picks one.
+         *
+         * The explicit `DEFAULT NULL` is written out for the reason `MIGRATION_7_8` records:
+         * `RenterEntity` declares `@ColumnInfo(defaultValue = "NULL")`, Room records that default
+         * and compares it when validating, and a bare `TEXT` is refused wholesale.
+         *
+         * ## The cost this bump accepts
+         *
+         * `BackupJsonReader` refuses a `schemaVersion` that is not the app's, in both directions,
+         * so every **v8 backup** becomes unrestorable. That was a deliberate trade: the app has
+         * never shipped, so the only v8 file in existence is the generated demo, and teaching the
+         * reader to accept older files is a much larger change than one nullable column — a v6
+         * file has no `payment.status` at all, so it needs per-version field defaults rather than
+         * a range check. Recorded in `deferred-work.md` as the prerequisite for the next bump.
+         */
+        val MIGRATION_8_9 = object : Migration(8, 9) {
+            override fun migrate(db: SupportSQLiteDatabase) {
+                db.execSQL(
+                    "ALTER TABLE `renter` " +
+                        "ADD COLUMN `avatar` TEXT DEFAULT NULL"
+                )
+            }
+        }
+
+        /**
          * The single application-wide instance.
          *
          * `@Volatile` because `onCreate` and the first screen's first read are
@@ -632,6 +665,7 @@ abstract class KlinikDatabase : RoomDatabase() {
                     MIGRATION_5_6,
                 MIGRATION_6_7,
                 MIGRATION_7_8,
+                MIGRATION_8_9,
             )
                 .build()
     }

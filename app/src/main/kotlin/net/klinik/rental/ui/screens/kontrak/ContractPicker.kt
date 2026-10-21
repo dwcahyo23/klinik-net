@@ -119,6 +119,15 @@ fun <T> ContractPicker(
     onSelect: (T) -> Unit,
     modifier: Modifier = Modifier,
     error: String? = null,
+    /**
+     * The avatar key for a row, or `null` when the row has none.
+     *
+     * A **per-row** function rather than one value, because this picker lists two different
+     * things: renters, who have a face, and vehicles, which do not. Defaulted to `null` so the
+     * vehicle call site says nothing and the renter one supplies the key — the disc then
+     * falls back to initials, which is what a vehicle's plate-derived disc always shows.
+     */
+    rowAvatar: (T) -> String? = { null },
 ) {
     val spacing = MaterialTheme.knSpacing
     var open by remember { mutableStateOf(false) }
@@ -179,8 +188,10 @@ fun <T> ContractPicker(
                                 // is hard-boxed to 44dp, so a larger element would
                                 // overflow it rather than fill it. The title is
                                 // exactly the input an avatar's initials come from —
-                                // a name for a renter, a plate for a vehicle.
-                                KnAvatar(name = rowTitle(option))
+                                // a name for a renter, a plate for a vehicle. A
+                                // renter's own face, when they have one, replaces
+                                // the initials.
+                                KnAvatar(name = rowTitle(option), avatar = rowAvatar(option))
                             },
                             modifier = Modifier.testTag("$tag-row-${rowKey(option)}"),
                             onClick = {

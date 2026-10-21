@@ -10,6 +10,7 @@ import kotlinx.coroutines.flow.Flow
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
+import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.db.entity.BusinessAccountEntity
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
@@ -378,7 +379,7 @@ class BackupRestorerTest {
         /** One row in every table, with every foreign key satisfied. */
         val FULL_FILE = """
             {
-              "schemaVersion": 8,
+              "schemaVersion": $SCHEMA_VERSION,
               "vehicles": [
                 {"id":"v1","plate":"B 1235 TF","brand":"Toyota","model":"Avanza","year":2023,
                  "color":null,"dailyRate":250000,"notes":null,"isServis":false}
@@ -413,7 +414,7 @@ class BackupRestorerTest {
 
         val EMPTY_FILE = """
             {
-              "schemaVersion": 8,
+              "schemaVersion": $SCHEMA_VERSION,
               "vehicles": [], "renters": [], "contracts": [], "serviceExceptions": [],
               "businessAccounts": [], "payments": [], "allocations": [], "settings": []
             }

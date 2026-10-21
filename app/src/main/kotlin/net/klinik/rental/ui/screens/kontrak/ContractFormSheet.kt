@@ -157,6 +157,10 @@ fun ContractFormSheet(
                 // screen. `Renter` guarantees it is non-blank.
                 rowSubtitle = { it.phone },
                 rowKey = { it.id },
+                // The renter's own face, when they have one. This is the only call site
+                // that supplies one — the picker below lists vehicles, which have no
+                // avatar, and the parameter's default is `null`.
+                rowAvatar = { it.avatar },
                 // The whole renter, not just the id: the selection writes the
                 // renter's *name* beside their id so the field can show it without
                 // a second lookup. `selectRenter` is the pure helper that does it.

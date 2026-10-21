@@ -3,6 +3,7 @@ package net.klinik.rental.data.backup
 import java.time.DayOfWeek
 import java.time.Instant
 import java.time.LocalDate
+import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.db.entity.AllocationEntity
 import net.klinik.rental.data.db.entity.BusinessAccountEntity
 import net.klinik.rental.data.db.entity.ContractEntity
@@ -38,11 +39,11 @@ class BackupJsonTest {
     /** `schemaVersion` at the root: NFR-3's basis, and Story 5.2 reads it before anything else. */
     @Test
     fun `the root carries the schema version`() {
-        val json = build(schemaVersion = 8)
+        val json = build(schemaVersion = SCHEMA_VERSION)
 
         assertTrue(
             "Story 5.2 must be able to read the version before it reads anything else",
-            json.contains("\"schemaVersion\": 8"),
+            json.contains("\"schemaVersion\": $SCHEMA_VERSION"),
         )
     }
 
@@ -100,7 +101,7 @@ class BackupJsonTest {
             payments = emptyList(),
             allocations = emptyList(),
             settings = emptyList(),
-            schemaVersion = 8,
+            schemaVersion = SCHEMA_VERSION,
         )
 
         assertTrue(
@@ -127,7 +128,7 @@ class BackupJsonTest {
             payments = emptyList(),
             allocations = emptyList(),
             settings = listOf(SettingEntity(key = "note", value = "baris satu\nbaris dua")),
-            schemaVersion = 8,
+            schemaVersion = SCHEMA_VERSION,
         )
 
         assertTrue(json.contains(""""baris satu\nbaris dua""""))
@@ -338,7 +339,7 @@ class BackupJsonTest {
         payments: List<PaymentEntity> = emptyList(),
         allocations: List<AllocationEntity> = emptyList(),
         settings: List<SettingEntity> = emptyList(),
-        schemaVersion: Int = 8,
+        schemaVersion: Int = SCHEMA_VERSION,
     ) = BackupJson.build(
         vehicles = vehicles,
         renters = renters,

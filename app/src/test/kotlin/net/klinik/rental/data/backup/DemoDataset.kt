@@ -71,6 +71,8 @@ object DemoDataset {
         val name: String,
         val phone: String,
         val emergencyContact: String,
+        /** A key into the app's avatar pack — see `AVATAR_KEYS`. */
+        val avatar: String,
     )
 
     private data class Lease(
@@ -98,14 +100,14 @@ object DemoDataset {
     )
 
     private val RENTERS = listOf(
-        Person("renter-1", "Budi Santoso", "0812-9844-3211", "0813-8811-2200 (Istri)"),
-        Person("renter-2", "Ahmad Maulana", "0813-1122-8799", "0857-1234-9988 (Kakak)"),
-        Person("renter-3", "Rian Hidayat", "0857-7612-4401", "0812-9988-1122 (Paman)"),
-        Person("renter-4", "Dedi Supriadi", "0818-0922-3118", "0819-4455-6677 (Teman)"),
-        Person("renter-5", "Hendra Gunawan", "0812-3344-9081", "0813-7766-5544 (Adik)"),
-        Person("renter-6", "Fajar Nugraha", "0878-8812-6523", "0856-9900-1122 (Orang Tua)"),
-        Person("renter-7", "Wahyu Setiawan", "0813-8877-4433", "0812-4455-2211 (Istri)"),
-        Person("renter-8", "Teguh Prasetyo", "0815-9922-1178", "0818-2233-4455 (Saudara)"),
+        Person("renter-1", "Budi Santoso", "0812-9844-3211", "0813-8811-2200 (Istri)", "avatar_01"),
+        Person("renter-2", "Ahmad Maulana", "0813-1122-8799", "0857-1234-9988 (Kakak)", "avatar_08"),
+        Person("renter-3", "Rian Hidayat", "0857-7612-4401", "0812-9988-1122 (Paman)", "avatar_14"),
+        Person("renter-4", "Dedi Supriadi", "0818-0922-3118", "0819-4455-6677 (Teman)", "avatar_22"),
+        Person("renter-5", "Hendra Gunawan", "0812-3344-9081", "0813-7766-5544 (Adik)", "avatar_29"),
+        Person("renter-6", "Fajar Nugraha", "0878-8812-6523", "0856-9900-1122 (Orang Tua)", "avatar_35"),
+        Person("renter-7", "Wahyu Setiawan", "0813-8877-4433", "0812-4455-2211 (Istri)", "avatar_41"),
+        Person("renter-8", "Teguh Prasetyo", "0815-9922-1178", "0818-2233-4455 (Saudara)", "avatar_45"),
     )
 
     private val LEASES = listOf(
@@ -200,6 +202,7 @@ object DemoDataset {
                     phone = person.phone,
                     bankAccount = null,
                     emergencyContact = person.emergencyContact,
+                    avatar = person.avatar,
                 ),
             )
         }

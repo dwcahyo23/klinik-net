@@ -136,6 +136,18 @@ data class RenterFormState(
     val phone: String = "",
     val bankAccount: String = "",
     val emergencyContact: String = "",
+    /**
+     * The avatar pack key for this renter's disc, or blank for "none chosen".
+     *
+     * A key (`avatar_07`), not an emoji and not a drawable id — see `AVATAR_KEYS`. A key
+     * survives a font change, cannot be half-typed, and an unrecognised one is recognisably
+     * unrecognised rather than rendering as somebody else's face.
+     *
+     * A `String` rather than a `String?` for the same reason [bankAccount] is: the form's
+     * representation of "not set" is an empty field the owner can pick into, and a nullable
+     * would put an `?: ""` at every edit site.
+     */
+    val avatar: String = "",
     val nameError: String? = null,
     /**
      * Per-field messages, one slot per required field.

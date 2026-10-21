@@ -232,6 +232,10 @@ object BackupJsonReader {
         phone = row.getString("phone"),
         bankAccount = row.nullableString("bankAccount"),
         emergencyContact = row.getString("emergencyContact"),
+        // `nullableString`, so a file written before v9 restores its renters with no emoji and
+        // `KnAvatar` falls back to initials — rather than being refused for a field it could
+        // not have carried.
+        avatar = row.nullableString("avatar"),
     )
 
     /**

@@ -261,7 +261,7 @@ private fun PenyewaRow(
             // slot is hard-boxed to 44dp by `KnListRow`, so a larger element
             // would overflow it rather than fill it. The name is exactly the
             // input an avatar's initials are derived from.
-            KnAvatar(name = row.renter.name)
+            KnAvatar(name = row.renter.name, avatar = row.renter.avatar)
         },
         trailing = {
             // Only when the owner recorded one. A badge reading "-" for a renter
@@ -304,7 +304,7 @@ private fun PenyewaDetail(
                 horizontalArrangement = Arrangement.spacedBy(spacing.lg),
                 verticalAlignment = Alignment.Top,
             ) {
-                KnAvatar(name = renter.name, size = KnAvatarSize.Large)
+                KnAvatar(name = renter.name, size = KnAvatarSize.Large, avatar = renter.avatar)
                 Column(Modifier.weight(1f)) {
                     Text(
                         text = renter.name,

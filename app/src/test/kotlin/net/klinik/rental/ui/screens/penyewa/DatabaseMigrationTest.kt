@@ -7,6 +7,7 @@ import androidx.test.core.app.ApplicationProvider
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 import net.klinik.rental.data.db.KlinikDatabase
+import net.klinik.rental.data.db.SCHEMA_VERSION
 import net.klinik.rental.data.db.entity.ContractEntity
 import net.klinik.rental.data.db.entity.RenterEntity
 import org.junit.After
@@ -110,7 +111,7 @@ class DatabaseMigrationTest {
      * direct `migrate` call and fail here.
      */
     @Test
-    fun `a v1 database migrates to v8 with every table and index`() {
+    fun `a v1 database migrates to v9 with every table and index`() {
         createV1Database(withVehicle = true)
 
         val migrated = openMigrated()
@@ -119,7 +120,7 @@ class DatabaseMigrationTest {
         // --- the renter table exists, with the columns RenterEntity declares ---
         assertEquals(
             // Property names verbatim — no `@ColumnInfo` rename anywhere.
-            listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
+            listOf("id", "name", "phone", "bankAccount", "emergencyContact", "avatar"),
             columnsOf(sql, "renter"),
         )
 
@@ -200,7 +201,7 @@ class DatabaseMigrationTest {
      * was ever needed, is the failure.
      */
     @Test
-    fun `a fresh install opens at v8 without a migration`() {
+    fun `a fresh install opens at v9 without a migration`() {
         val fresh = Room.databaseBuilder(context, KlinikDatabase::class.java, dbFile.name)
             .addMigrations(
                 KlinikDatabase.MIGRATION_1_2,
@@ -210,15 +211,16 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
                 KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_8_9,
             )
             .build()
         database = fresh
 
         // Touch the database so it is actually created rather than only built.
         val sql = fresh.openHelper.readableDatabase
-        assertEquals(8, sql.version)
+        assertEquals(9, sql.version)
         assertEquals(
-            listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
+            listOf("id", "name", "phone", "bankAccount", "emergencyContact", "avatar"),
             columnsOf(sql, "renter"),
         )
         // And Story 2.6's table is present from the start, not only after a step —
@@ -245,8 +247,18 @@ class DatabaseMigrationTest {
      * after upgrading — and Room's own schema validation would catch it on every
      * open, which is exactly why this assertion exists rather than a comment.
      */
+    /**
+     * The migration's SQL and the compiled schema must agree on nullability.
+     *
+     * `bankAccount` and `avatar` are the nullable columns on `RenterEntity`. The first is
+     * nullable *because* plenty of renters are paid in cash; the second because a renter
+     * recorded before v9 has no emoji, and back-filling one would invent a fact about a
+     * person. If either migration had written its column `NOT NULL`, an upgraded row would be
+     * unrepresentable — and Room's own schema validation would catch it on every open, which
+     * is exactly why this assertion exists rather than a comment.
+     */
     @Test
-    fun `only the bank account is nullable after the migration`() {
+    fun `only the bank account and the avatar are nullable after the migration`() {
         createV1Database(withVehicle = false)
 
         val migrated = openMigrated()
@@ -259,6 +271,11 @@ class DatabaseMigrationTest {
         assertTrue(
             "the primary key is not the nullable one",
             "id" in notNullColumnsOf(sql, "renter"),
+        )
+        assertEquals(
+            "the two nullable columns, and no others",
+            listOf("avatar", "bankAccount"),
+            nullableColumnsOf(sql, "renter").sorted(),
         )
     }
 
@@ -291,7 +308,7 @@ class DatabaseMigrationTest {
      * read as coverage of the data-loss question while providing none.
      */
     @Test
-    fun `a v2 database migrates to v8 with the widened contract table`() {
+    fun `a v2 database migrates to v9 with the widened contract table`() {
         createV2Database(withVehicleAndRenter = true)
 
         val migrated = openMigrated()
@@ -390,6 +407,7 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
                 KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_8_9,
             )
                 .build()
                 .openHelper
@@ -529,7 +547,7 @@ class DatabaseMigrationTest {
      * through its own DAO afterwards.
      */
     @Test
-    fun `a v3 database migrates to v8 with the service_exception table`() {
+    fun `a v3 database migrates to v9 with the service_exception table`() {
         createV3Database()
 
         val migrated = openMigrated()
@@ -750,7 +768,7 @@ class DatabaseMigrationTest {
      * migration is reached at all, which is why the version is asserted first.
      */
     @Test
-    fun `a v4 database migrates to v8 with the business_account table`() {
+    fun `a v4 database migrates to v9 with the business_account table`() {
         createV4Database()
 
         val migrated = openMigrated()
@@ -1053,7 +1071,7 @@ class DatabaseMigrationTest {
      * does not mention, and an `ADD COLUMN` that rewrote rows would show up here first.
      */
     @Test
-    fun `a v6 database migrates to v8 with every deposit back-filled as confirmed`() {
+    fun `a v6 database migrates to v9 with every deposit back-filled as confirmed`() {
         createV6Database()
 
         val migrated = openMigrated()
@@ -1713,14 +1731,15 @@ class DatabaseMigrationTest {
                 KlinikDatabase.MIGRATION_5_6,
                 KlinikDatabase.MIGRATION_6_7,
                 KlinikDatabase.MIGRATION_7_8,
+                KlinikDatabase.MIGRATION_8_9,
             )
             .build()
         database = opened
 
         // Touch it so the migrations actually run before the assertions below.
         assertEquals(
-            "the file must have been migrated to v8",
-            8,
+            "the file must have been migrated to the current version",
+            SCHEMA_VERSION,
             opened.openHelper.readableDatabase.version,
         )
         return opened

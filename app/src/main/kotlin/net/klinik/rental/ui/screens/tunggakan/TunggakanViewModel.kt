@@ -255,6 +255,9 @@ class TunggakanViewModel(
                     // arrives with the figures rather than from a second read — the rule the
                     // reminder's own KDoc gives.
                     renterPhones = snapshot.renters.associate { it.id to it.phone },
+                    // The avatar joins the **same** lookup the name and phone do, for the
+                    // same reason: one snapshot of a person, not three.
+                    renterAvatars = snapshot.renters.associate { it.id to it.avatar },
                     vehiclePlates = snapshot.vehicles.associate { it.id to it.plate },
                     strings = strings,
                 )

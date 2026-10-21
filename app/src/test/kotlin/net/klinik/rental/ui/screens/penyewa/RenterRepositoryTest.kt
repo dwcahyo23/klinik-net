@@ -420,9 +420,9 @@ class RenterRepositoryTest {
         assertFalse("the app must not collect a national ID", "nik" in columns)
         assertFalse("the app must not collect an address", "address" in columns)
         assertFalse("the app must not collect an address", "alamat" in columns)
-        // And the five it should carry, named verbatim as the Kotlin properties.
+        // And the six it should carry, named verbatim as the Kotlin properties.
         assertEquals(
-            listOf("id", "name", "phone", "bankAccount", "emergencyContact"),
+            listOf("id", "name", "phone", "bankAccount", "emergencyContact", "avatar"),
             columns,
         )
     }

@@ -224,6 +224,7 @@ class RenterRepository(
         phone = phone,
         bankAccount = bankAccount,
         emergencyContact = emergencyContact,
+        avatar = avatar,
     )
 
     /** Domain -> entity. */
@@ -233,5 +234,6 @@ class RenterRepository(
         phone = phone,
         bankAccount = bankAccount,
         emergencyContact = emergencyContact,
+        avatar = avatar,
     )
 }

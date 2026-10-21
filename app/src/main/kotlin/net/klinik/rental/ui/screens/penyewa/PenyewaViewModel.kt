@@ -239,6 +239,7 @@ class PenyewaViewModel(
             phone = renter.phone,
             bankAccount = renter.bankAccount.orEmpty(),
             emergencyContact = renter.emergencyContact,
+            avatar = renter.avatar.orEmpty(),
         )
     }
 
@@ -298,6 +299,11 @@ class PenyewaViewModel(
                 phone = current.phone.trim(),
                 bankAccount = current.bankAccount.trim().ifBlank { null },
                 emergencyContact = current.emergencyContact.trim(),
+                // Blank means "no emoji", so `KnAvatar` falls back to initials rather than
+                // drawing an empty disc. Not trimmed to a single character: an emoji can be a
+                // sequence (skin tone, zero-width joiner), and cutting it would leave a broken
+                // glyph on every screen.
+                avatar = current.avatar.trim().ifBlank { null },
             )
         } catch (e: BlankRenterFieldException) {
             // Routed by the field the exception names, rather than one catch per

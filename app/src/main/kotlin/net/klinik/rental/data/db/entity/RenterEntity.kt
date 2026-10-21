@@ -67,6 +67,19 @@ data class RenterEntity(
     @ColumnInfo(defaultValue = "NULL")
     val bankAccount: String?,
     val emergencyContact: String,
+    /**
+     * The avatar pack key drawn on this renter's disc, or `null` for "none chosen".
+     *
+     * A key (`avatar_07`) rather than an emoji or a drawable id: it survives a font change, and
+     * an unrecognised one is *recognisably* unrecognised rather than rendering as somebody
+     * else's face. The column is `TEXT` rather than an enum so a future pack's keys are storable
+     * without another migration; the app writes only keys it carries.
+     *
+     * Nullable because every renter recorded before v9 has none, and because `KnAvatar` already
+     * has an answer for "no avatar": initials. Back-filling would invent a fact about a person.
+     */
+    @ColumnInfo(defaultValue = "NULL")
+    val avatar: String? = null,
 ) {
     init {
         // The `UNIQUE` index only refuses a duplicate; it cannot refuse a blank
