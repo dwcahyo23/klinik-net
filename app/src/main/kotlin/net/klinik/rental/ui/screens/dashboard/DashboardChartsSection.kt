@@ -4,6 +4,8 @@ import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
+import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
@@ -68,10 +70,26 @@ internal fun DashboardChartsSection(
         modifier = modifier.fillMaxWidth(),
         verticalArrangement = Arrangement.spacedBy(spacing.lg),
     ) {
-        TrendCard(charts)
-        WeeklyCard(charts)
-        DonutCard(charts)
-        ComparisonCard(charts)
+        // The prototype's two rows of two (`dashboard.html:61-105`): the trend beside the
+        // weekly bars, then the donut beside the period comparison. The app drew all five
+        // one per line, which is a page four screens long where the prototype's is two.
+        //
+        // The floors are the prototype's own (`min-width: 420px` and `340px` for the first
+        // row, `330px` and `380px` for the second), so a window narrower than the sum of
+        // the pair's floors stacks them instead of squeezing them.
+        @OptIn(ExperimentalLayoutApi::class)
+        FlowRow(
+            modifier = Modifier.fillMaxWidth(),
+            horizontalArrangement = Arrangement.spacedBy(spacing.lg),
+            verticalArrangement = Arrangement.spacedBy(spacing.lg),
+            maxItemsInEachRow = 2,
+        ) {
+            TrendCard(charts, Modifier.weight(1f))
+            WeeklyCard(charts, Modifier.weight(1f))
+            DonutCard(charts, Modifier.weight(1f))
+            ComparisonCard(charts, Modifier.weight(1f))
+        }
+
         RecentTable(rows = charts.recent, onSeeAll = onSeeAllTransactions)
     }
 }
@@ -88,9 +106,9 @@ internal fun DashboardChartsSection(
  * a second layout rule to keep in step with the rail's, for a row that only ever has two states.
  */
 @Composable
-private fun TrendCard(charts: DashboardCharts) {
+private fun TrendCard(charts: DashboardCharts, modifier: Modifier = Modifier) {
     val spacing = MaterialTheme.knSpacing
-    KnCard(modifier = Modifier.testTag(TAG_TREND_CARD), padding = spacing.xl) {
+    KnCard(modifier = modifier.testTag(TAG_TREND_CARD), padding = spacing.xl) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
             KnCardHeader(
                 title = stringResource(R.string.beranda_chart_trend_title),
@@ -167,9 +185,9 @@ private fun LegendSwatch(colour: Color, label: String) {
 
 /** `#weekly-bars` — four bars, and the weekly target they are measured against. */
 @Composable
-private fun WeeklyCard(charts: DashboardCharts) {
+private fun WeeklyCard(charts: DashboardCharts, modifier: Modifier = Modifier) {
     val spacing = MaterialTheme.knSpacing
-    KnCard(modifier = Modifier.testTag(TAG_WEEKLY_CARD), padding = spacing.xl) {
+    KnCard(modifier = modifier.testTag(TAG_WEEKLY_CARD), padding = spacing.xl) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
             KnCardHeader(
                 title = stringResource(R.string.beranda_chart_weekly_title),
@@ -200,10 +218,10 @@ private fun weekLabel(index: Int, count: Int): String = "M-" + (count - 1 - inde
 
 /** `#donut` — the per-vehicle shares with their legend. */
 @Composable
-private fun DonutCard(charts: DashboardCharts) {
+private fun DonutCard(charts: DashboardCharts, modifier: Modifier = Modifier) {
     val spacing = MaterialTheme.knSpacing
     val total = charts.slices.sum()
-    KnCard(modifier = Modifier.testTag(TAG_DONUT_CARD), padding = spacing.xl) {
+    KnCard(modifier = modifier.testTag(TAG_DONUT_CARD), padding = spacing.xl) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
             KnCardHeader(
                 title = stringResource(R.string.beranda_chart_donut_title),
@@ -237,9 +255,9 @@ private fun DonutCard(charts: DashboardCharts) {
  * fraction, and four bars that all need the same ceiling would repeat the chart above it.
  */
 @Composable
-private fun ComparisonCard(charts: DashboardCharts) {
+private fun ComparisonCard(charts: DashboardCharts, modifier: Modifier = Modifier) {
     val spacing = MaterialTheme.knSpacing
-    KnCard(modifier = Modifier.testTag(TAG_COMPARE_CARD), padding = spacing.xl) {
+    KnCard(modifier = modifier.testTag(TAG_COMPARE_CARD), padding = spacing.xl) {
         Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
             KnCardHeader(
                 title = stringResource(R.string.beranda_chart_compare_title),

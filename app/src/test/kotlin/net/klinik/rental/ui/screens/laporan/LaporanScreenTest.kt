@@ -134,13 +134,15 @@ class LaporanScreenTest {
     }
 
     /**
-     * A quiet period says what to do, rather than showing four zeros.
+     * A quiet period shows the four figures **and** the note.
      *
-     * Four zeros read as a month with no money in it — a claim. The criterion is that the
-     * empty state is an instruction, as it is on every other screen.
+     * The prototype does exactly that (`reports.html:77` — the KPI grid is unconditional, and
+     * a month with no money shows four zeroes plus a note beneath them). Replacing the tiles
+     * with the note meant the owner of a quiet month saw no figures at all, which reads as a
+     * broken screen rather than as a quiet month.
      */
     @Test
-    fun `a quiet period draws an invitation rather than zeroes`() {
+    fun `a quiet period draws its figures and the note`() {
         val quiet = populated().copy(
             incomeRupiah = 0L,
             arrearsRupiah = 0L,
@@ -148,8 +150,13 @@ class LaporanScreenTest {
         )
         compose.setContent { theme { Screen(state = quiet) } }
 
+        // The note is there…
         compose.onNodeWithTag(TAG_QUIET).assertExists()
-        compose.onNodeWithTag(TAG_KPI_INCOME).assertDoesNotExist()
+        // …and so are the four figures it sits under.
+        compose.onNodeWithTag(TAG_KPI_INCOME).assertExists()
+        compose.onNodeWithTag(TAG_KPI_ARREARS).assertExists()
+        compose.onNodeWithTag(TAG_KPI_SETTLED).assertExists()
+        compose.onNodeWithTag(TAG_KPI_TREND).assertExists()
     }
 
     /** Loading draws a skeleton per tile, and no figures. */

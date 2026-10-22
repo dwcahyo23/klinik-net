@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -130,14 +131,22 @@ fun ContractFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_SHEET),
+        modifier = modifier
+            .testTag(TAG_SHEET)
+            // The ceiling belongs on the **sheet**, not on the scrolling content. Applied to
+            // the content it became the scroll viewport instead of a bound — the fields
+            // below it were laid out past the cap and the Save row could not be reached,
+            // so the form was a dead end. See `KnModal`'s body for the same fix in the dialog.
+            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
+                // The sheet's only scroll container, so the action row below is pinned.
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+                .weight(1f),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             ContractPicker(
@@ -248,9 +257,19 @@ fun ContractFormSheet(
                         .testTag(TAG_SHEET_ERROR),
                 )
             }
+        }
 
+            // The action row, **pinned** below the scrolling form.
+            //
+            // A sheet's buttons are the decision, and a decision that scrolls away with the
+            // form is a decision the owner makes by guessing. This is also the shape the
+            // prototype's `.modal-footer` is: outside the scrolling body, always in the
+            // same place.
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.sm)
+                    .navigationBarsPadding(),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
                 maxItemsInEachRow = 2,
             ) {

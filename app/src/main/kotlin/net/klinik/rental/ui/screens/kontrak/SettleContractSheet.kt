@@ -3,6 +3,10 @@ package net.klinik.rental.ui.screens.kontrak
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.ui.Alignment
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -84,17 +88,18 @@ fun SettleContractSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_SETTLE_SHEET),
+        modifier = modifier
+            .testTag(TAG_SETTLE_SHEET)
+            // On the sheet, not the content — see `ContractFormSheet`'s sheet.
+            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                // Not load-bearing for one field and two buttons — kept for the reason
-                // `EndContractSheet` keeps its bound: so a future line cannot push the
-                // confirm off a short landscape tablet.
-                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+                .weight(1f),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -181,26 +186,36 @@ fun SettleContractSheet(
                         .testTag(TAG_SETTLE_ERROR),
                 )
             }
+        }
 
-            KnButton(
-                label = stringResource(R.string.kontrak_settle_confirm),
-                onClick = onConfirmSettle,
-                icon = Lucide.CircleCheck,
-                variant = KnButtonVariant.Primary,
-                // `canSettle`: a date **and** something to close. The second half is
-                // the one that carries the risk — FR-9b cannot be undone from inside the
-                // app — so a settlement that would change nothing is not a button the
-                // owner can press by mistake.
-                enabled = state.canSettle,
-                modifier = Modifier.testTag(TAG_SETTLE_CONFIRM),
-            )
-
-            KnButton(
-                label = stringResource(R.string.kontrak_cancel),
-                onClick = onClose,
-                variant = KnButtonVariant.Ghost,
-                modifier = Modifier.testTag(TAG_SETTLE_CLOSE),
-            )
+            // The two decisions, **pinned** below the scrolling content.
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.sm)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
+                maxItemsInEachRow = 2,
+            ) {
+                KnButton(
+                    label = stringResource(R.string.kontrak_cancel),
+                    onClick = onClose,
+                    variant = KnButtonVariant.Ghost,
+                    modifier = Modifier.testTag(TAG_SETTLE_CLOSE),
+                )
+                KnButton(
+                    label = stringResource(R.string.kontrak_settle_confirm),
+                    onClick = onConfirmSettle,
+                    icon = Lucide.CircleCheck,
+                    variant = KnButtonVariant.Primary,
+                    // `canSettle`: a date **and** something to close. The second half is
+                    // the one that carries the risk — FR-9b cannot be undone from inside the
+                    // app — so a settlement that would change nothing is not a button the
+                    // owner can press by mistake.
+                    enabled = state.canSettle,
+                    modifier = Modifier.testTag(TAG_SETTLE_CONFIRM),
+                )
+            }
         }
     }
 }

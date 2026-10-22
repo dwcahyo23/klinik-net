@@ -495,6 +495,16 @@ data class SetoranScreenState(
     /** The selected tab. Input first, which is where the screen opens. */
     val selectedTab: SetoranTab = SetoranTab.Input,
     /**
+     * Whether the Input tab is showing the deposit form **inline**, rather than behind a
+     * sheet.
+     *
+     * The prototype's `payments.html` puts the form in the tab itself — the form on the
+     * left, the numpad on the right — so on that screen the form is already on the page.
+     * The shell reads this to avoid mounting the sheet over it, which would be the same
+     * form twice.
+     */
+    val isShowingForm: Boolean = false,
+    /**
      * The cross-contract rows, newest first — already formatted, the same shape the
      * per-contract block draws.
      */

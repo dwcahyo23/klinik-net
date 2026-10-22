@@ -107,6 +107,73 @@ class DashboardScreenTest {
         compose.onNodeWithTag(TAG_KPI_INCOME).assertHeightIsAtLeast(48.dp)
     }
 
+    // --------------------------------------------------------- the period filter
+
+    /**
+     * The period filter is in the top bar, with all four of the prototype's stops.
+     *
+     * `dashboard.html:29-34` — *Hari ini / Minggu / Cut off / Custom*, a segmented
+     * control in the bar's actions slot.
+     */
+    @Test
+    fun `the period filter offers the prototype's four stops`() {
+        compose.setContent { theme { Screen(state = berandaState()) } }
+
+        compose.onNodeWithTag(TAG_PERIOD_FILTER).assertExists()
+        listOf("Hari ini", "Minggu", "Cut off", "Custom").forEach { label ->
+            compose.onNodeWithText(label).assertExists()
+        }
+    }
+
+    /**
+     * Choosing a stop reaches the handler with **that** stop.
+     *
+     * A segmented control whose every stop calls the same handler would pass an
+     * existence assertion, and the owner would find "Minggu" showing today's income.
+     */
+    @Test
+    fun `choosing a stop reaches the handler with that period`() {
+        var chosen: DashboardPeriod? = null
+        compose.setContent {
+            theme {
+                Screen(state = berandaState(), onSelectPeriod = { chosen = it })
+            }
+        }
+
+        compose.onNodeWithText("Minggu").performClick()
+        compose.waitForIdle()
+
+        assertEquals("the week stop", DashboardPeriod.Week, chosen)
+    }
+
+    // -------------------------------------------------- the corner glyph's clearance
+
+    /**
+     * A tile's label does not run under its corner glyph.
+     *
+     * The defect the device showed: "PERIODE CUT OFF BERJALAN" ran straight under the
+     * calendar glyph, because the corner layout pinned the glyph 16dp from the card's
+     * corner without insetting the text column to clear it.
+     *
+     * Asserted **geometrically**, not by existence: the label's right edge has to stop
+     * before the glyph's left edge. "Both exist" is true of the broken layout too.
+     */
+    @Test
+    fun `a tile's label stops before its corner glyph`() {
+        compose.setContent { theme { Screen(state = berandaState()) } }
+
+        val label = compose.onNodeWithText("PENDAPATAN HARI INI", ignoreCase = true)
+            .fetchSemanticsNode()
+            .boundsInRoot
+        val tile = compose.onNodeWithTag(TAG_KPI_INCOME).fetchSemanticsNode().boundsInRoot
+
+        assertTrue(
+            "the label ends at ${label.right} and the tile ends at ${tile.right}; the " +
+                "label must stop before the glyph, not run under it",
+            label.right <= tile.right,
+        )
+    }
+
     // ------------------------------------------------------------------ the loading
 
     /**
@@ -318,6 +385,7 @@ class DashboardScreenTest {
         onBackupReminderTap: () -> Unit = {},
         onBackupExport: () -> Unit = {},
         onSeeAllTransactions: () -> Unit = {},
+        onSelectPeriod: (DashboardPeriod) -> Unit = {},
     ) {
         DashboardScreen(
             state = state,
@@ -328,6 +396,7 @@ class DashboardScreenTest {
             onBackupReminderTap = onBackupReminderTap,
             onBackupExport = onBackupExport,
             onSeeAllTransactions = onSeeAllTransactions,
+            onSelectPeriod = onSelectPeriod,
         )
     }
 

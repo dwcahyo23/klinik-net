@@ -1,6 +1,79 @@
 package net.klinik.rental.ui.screens.dashboard
 
+import net.klinik.rental.R
+import net.klinik.rental.data.repository.PaymentRepository
+import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.ui.components.KnBadgeTone
+import java.time.LocalDate
+
+/**
+ * Which period the dashboard's income tile reads at.
+ *
+ * `dashboard.html:29-34` — the prototype's segmented control, four stops:
+ * *Hari ini / Minggu / Cut off / Custom*.
+ *
+ * An enum rather than a Boolean because there are four, and a Boolean can only say two.
+ * [Custom] is a fourth state rather than a fifth control: it names the *shape* of the
+ * range rather than a range of its own, because the range itself is two dates the owner
+ * types.
+ */
+enum class DashboardPeriod {
+    /** Today — the deposits dated today. */
+    Today,
+
+    /** The last seven days. */
+    Week,
+
+    /** The billing period the engine is charging for. */
+    Cutoff,
+
+    /** A range the owner typed. */
+    Custom,
+    ;
+
+    /**
+     * This stop's label.
+     *
+     * A resource rather than a literal, so the same four words the prototype's control
+     * shows are the ones this app shows.
+     */
+    fun labelRes(): Int = when (this) {
+        Today -> R.string.dashboard_period_today
+        Week -> R.string.dashboard_period_week
+        Cutoff -> R.string.dashboard_period_cutoff
+        Custom -> R.string.dashboard_period_custom
+    }
+    ;
+
+    /**
+     * The first day of this period, given [today].
+     *
+     * @param cutoffDay the owner's saved cutoff day, for [Cutoff].
+     */
+    fun start(today: LocalDate, cutoffDay: Int = PaymentRepository.DEFAULT_CUTOFF_DAY): LocalDate =
+        when (this) {
+            Today -> today
+            // Seven days, inclusive of today: `dashboard.html:152` reads the last seven
+            // days, and a window that starts six days back is six days long.
+            Week -> today.minusDays(6)
+            Cutoff -> CutoffPeriod.containing(cutoffDay, today).start
+            // The custom range's own start, which the owner typed. `today` is the
+            // fallback because a range that has not been typed yet is not a range.
+            Custom -> today
+        }
+
+    /**
+     * The last day of this period, given [today].
+     *
+     * @param cutoffDay the owner's saved cutoff day, for [Cutoff].
+     */
+    fun end(today: LocalDate, cutoffDay: Int = PaymentRepository.DEFAULT_CUTOFF_DAY): LocalDate =
+        when (this) {
+            Today, Week -> today
+            Cutoff -> CutoffPeriod.containing(cutoffDay, today).end
+            Custom -> today
+        }
+}
 
 /**
  * The morning summary's state — Story 4.3.
@@ -20,6 +93,14 @@ import net.klinik.rental.ui.components.KnBadgeTone
  * draws them as the same kind of thing.
  */
 data class DashboardUiState(
+    /**
+     * The period the income tile reads at — `dashboard.html:29-34`.
+     *
+     * The prototype's dashboard has four: *Hari ini / Minggu / Cut off / Custom*. The
+     * screen's own filter, and it changes what the income tile and its meta say while
+     * the other three tiles stay on the billing period.
+     */
+    val period: DashboardPeriod = DashboardPeriod.Today,
     /** `Rp 750.000` — the confirmed deposits dated today, in whole rupiah. */
     val incomeText: String = "",
     /** `Rp 4.250.000` — the arrears across open *and* ended contracts that still owe. */

@@ -967,6 +967,10 @@ private fun KlinikNetApp(
                 dashboard = Screens.Dashboard(
                     state = dashboardState,
                     onDeposit = setoran::openDeposit,
+                    // The dashboard's period filter. It reaches the **dashboard**
+                    // ViewModel, not the deposit one: the filter changes which window the
+                    // income tile reads, and that is a dashboard decision.
+                    onSelectPeriod = dashboard::selectPeriod,
                     // Story 5.5: the owner tapped the backup reminder. Nothing is written and
                     // no route is taken here — the dialog is the screen's own window and the
                     // navigation belongs to the shell. This is here so the tap is observable

@@ -260,6 +260,7 @@ class BannerScopeTest {
         dashboard = Screens.Dashboard(
             state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
+            onSelectPeriod = {},
             onBackupReminderTap = {},
         ),
         // Story 4.5's report. Like Beranda, it draws no banner of its own — every figure
@@ -291,7 +292,6 @@ class BannerScopeTest {
     )
 
 }
-
 
 
 

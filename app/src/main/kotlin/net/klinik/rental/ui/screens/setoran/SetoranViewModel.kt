@@ -285,12 +285,16 @@ class SetoranViewModel(
      * screen draws.
      */
     val screenState: StateFlow<SetoranScreenState> = combine(
-        selectedTab,
+        // Nested, because `combine` has a five-argument overload and this reads six
+        // sources. The inner pair keeps the sixth one typed rather than arriving as
+        // `Any?` through the vararg form.
+        combine(selectedTab, form) { tab, currentForm -> tab to currentForm },
         screenHistorySource,
         payments.observeTodaysIncome(clock),
         historyQuery,
         historyFilter,
-    ) { tab, source, receivedToday, query, filter ->
+    ) { tabAndForm, source, receivedToday, query, filter ->
+        val (tab, currentForm) = tabAndForm
         val allRows = when (source) {
             // Nothing rendered while loading or failed: an empty list here would be the
             // claim "no deposits anywhere", made without having looked.
@@ -299,6 +303,10 @@ class SetoranViewModel(
         }
         SetoranScreenState(
             selectedTab = tab,
+            // The Input tab shows the form inline — the prototype's `payments.html` has the
+            // form and the numpad in the tab, not behind a sheet. The shell reads this to
+            // avoid mounting the sheet over the form it is already drawing.
+            isShowingForm = tab == SetoranTab.Input && currentForm != null,
             rows = allRows,
             historyQuery = query,
             historyFilter = filter,

@@ -167,7 +167,7 @@ private fun CardContent(
                 tint = iconTint,
                 modifier = Modifier
                     .align(Alignment.TopEnd)
-                    .padding(16.dp),
+                    .padding(KpiCornerIconGap),
             )
         }
     }
@@ -283,7 +283,21 @@ fun KnKpiTile(
             // `weight(1f)`: the column takes the space the card gives it and the
             // text inside it may shrink. Without it a long caption is measured
             // at its natural width and the card grows instead of the text.
-            modifier = if (corner) Modifier.fillMaxWidth() else Modifier,
+            modifier = if (corner) {
+                // The trailing inset for the **corner glyph**. The label is a single line
+                // and the glyph is pinned to the card's top-right at 16dp, so without this
+                // the two overlap: "PERIODE CUT OFF BERJALAN" ran straight under the
+                // calendar. The old stacked layout had this inset and the corner layout
+                // lost it when the two became one component.
+                //
+                // The label ellipses instead, so a long label shortens rather than
+                // colliding — the same rule the value and the meta already follow.
+                Modifier
+                    .fillMaxWidth()
+                    .padding(end = KpiCornerIconSize + KpiCornerIconGap)
+            } else {
+                Modifier
+            },
             verticalArrangement = Arrangement.spacedBy(spacing.sm),
         ) {
             if (icon != null && !corner) {
@@ -398,7 +412,7 @@ fun KnKpiTileSkeleton(
 private fun KpiIcon(icon: ImageVector, tint: Color?, modifier: Modifier = Modifier) {
     val iconColour = tint ?: MaterialTheme.knColors.semantic.info
     Surface(
-        modifier = modifier.size(40.dp),
+        modifier = modifier.size(KpiCornerIconSize),
         shape = RoundedCornerShape(MaterialTheme.knRadii.md),
         color = iconColour.copy(alpha = 0.12f),
     ) {
@@ -410,6 +424,21 @@ private fun KpiIcon(icon: ImageVector, tint: Color?, modifier: Modifier = Modifi
         )
     }
 }
+
+/**
+ * The corner glyph's size — `.kpi-icon { width: 40px; height: 40px }`
+ * (`shared.css:421-426`).
+ */
+private val KpiCornerIconSize = 40.dp
+
+/**
+ * The gap between the text column and the corner glyph.
+ *
+ * The CSS puts the glyph at `right: 16px` (`shared.css:422`), and the text needs the same
+ * 16dp of clearance so the two do not touch. A long label ellipses in the space that is
+ * left.
+ */
+private val KpiCornerIconGap = 16.dp
 
 /**
  * `.kpi-grid` from `shared.css:397-401` — `repeat(auto-fit, minmax(230px, 1fr))`.

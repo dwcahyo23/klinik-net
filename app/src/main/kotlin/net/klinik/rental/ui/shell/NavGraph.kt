@@ -183,6 +183,13 @@ private fun SetoranRoute(wiring: Screens.Setoran, deposito: Screens.Deposito) {
         state = wiring.state,
         onSelectTab = wiring.onSelectTab,
         onOpenDepositInput = deposito.onOpen,
+        // The Input tab's form, in the page rather than in a sheet — the prototype's
+        // two-pane split (`payments.html`). The same `Screens.Deposito` bundle the sheet
+        // uses, so the form and the sheet cannot disagree about the state.
+        deposit = deposito.state,
+        onDepositFormChange = deposito.onFormChange,
+        onSaveDeposit = deposito.onSave,
+        onCloseDeposit = deposito.onClose,
         onRequestDepositCancel = wiring.onRequestDepositCancel,
         onRequestDepositEdit = wiring.onRequestDepositEdit,
         onDismissError = wiring.onDismissError,
@@ -252,6 +259,9 @@ private fun DashboardRoute(wiring: Screens.Dashboard, navController: NavHostCont
         // screen's history tab — the same destination its rail item names, because the table
         // and that screen are one list read at two depths.
         onSeeAllTransactions = { navController.navigateTo(Destination.Setoran.route) },
+        // The dashboard's period filter — the prototype's segmented control
+        // (`dashboard.html:29-34`). It changes what the **income** tile reads.
+        onSelectPeriod = wiring.onSelectPeriod,
     )
 }
 
@@ -722,6 +732,15 @@ internal class Screens(
     class Dashboard(
         val state: net.klinik.rental.ui.screens.dashboard.DashboardUiState,
         val onDeposit: () -> Unit,
+        /**
+         * The dashboard's period filter — the prototype's segmented control
+         * (`dashboard.html:29-34`).
+         *
+         * Required, not defaulted, for the reason every member here is: a defaulted
+         * handler produces a control that renders and ignores the tap, and the period
+         * filter is the one control that says which window the income tile means.
+         */
+        val onSelectPeriod: (net.klinik.rental.ui.screens.dashboard.DashboardPeriod) -> Unit,
         /**
          * Story 5.5: the backup reminder was tapped.
          *

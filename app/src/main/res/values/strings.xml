@@ -1347,6 +1347,15 @@
     <string name="beranda_kpi_rate">Tingkat penagihan</string>
 
     <!--
+      The dashboard's period filter — `dashboard.html:29-34`. The prototype's segmented
+      control, four stops, and the same words it uses.
+    -->
+    <string name="dashboard_period_today">Hari ini</string>
+    <string name="dashboard_period_week">Minggu</string>
+    <string name="dashboard_period_cutoff">Cut off</string>
+    <string name="dashboard_period_custom">Custom</string>
+
+    <!--
       The fleet split, as three counts in one line: "12 · 3 · 1".
 
       The separator is a middot rather than a comma because the three numbers are counts of

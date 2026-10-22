@@ -83,10 +83,51 @@ class SetoranScreenTest {
         assertEquals("the existing sheet, not a second form", 1, opened)
     }
 
+    // ------------------------------------------------------- the form on the page
+
+    /**
+     * An open form puts the **numpad on the page**, not behind a sheet.
+     *
+     * The prototype's `payments.html` is a two-pane split: the form on the left, the numpad
+     * in a fixed column on the right, both on screen at once. The app had it the other way
+     * round — an empty state with a button that opened a bottom sheet — which put the
+     * amount, the control the owner uses most, two taps and a swipe away.
+     *
+     * This is the assertion that says the split is real: the pad's own tag is in the tree
+     * while the form is open, with no sheet involved.
+     */
+    @Test
+    fun `an open form draws the numpad on the page`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    deposit = SetoranUiState(form = DepositFormState(date = java.time.LocalDate.of(2026, 10, 17))),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_NUMPAD).assertExists()
+        // And the form's own fields are there beside it.
+        compose.onNodeWithTag(TAG_DEPOSIT_TITLE).assertExists()
+    }
+
+    /**
+     * With no form open, the tab shows its invitation — the pad is **not** drawn.
+     *
+     * A numpad with nothing to enter into would be a control that renders before it means
+     * anything, and the empty state is the honest answer to "there is no deposit yet".
+     */
+    @Test
+    fun `no form means no numpad`() {
+        compose.setContent { theme { Screen() } }
+
+        compose.onNodeWithTag(TAG_SETORAN_INPUT_TAB).assertExists()
+        compose.onNodeWithTag(TAG_NUMPAD).assertDoesNotExist()
+    }
+
     /** Tapping the other chip moves the selection — the tab row is a control, not a label. */
     @Test
-    fun `selecting the Riwayat chip switches the tab`() {
-        var selected: SetoranTab? = null
+    fun `selecting the Riwayat chip switches the tab`() {        var selected: SetoranTab? = null
         compose.setContent {
             theme {
                 Screen(
@@ -531,11 +572,19 @@ class SetoranScreenTest {
         onHistoryQueryChange: (String) -> Unit = {},
         onClearHistoryQuery: () -> Unit = {},
         onSelectHistoryFilter: (HistoryFilter?) -> Unit = {},
+        deposit: SetoranUiState = SetoranUiState(),
+        onDepositFormChange: ((DepositFormState) -> DepositFormState) -> Unit = { it },
+        onSaveDeposit: (Long) -> Unit = {},
+        onCloseDeposit: () -> Unit = {},
     ) {
         SetoranScreen(
             state = state,
             onSelectTab = onSelectTab,
             onOpenDepositInput = onOpenDepositInput,
+            deposit = deposit,
+            onDepositFormChange = onDepositFormChange,
+            onSaveDeposit = onSaveDeposit,
+            onCloseDeposit = onCloseDeposit,
             onRequestDepositCancel = onRequestDepositCancel,
             onRequestDepositEdit = onRequestDepositEdit,
             onDismissError = onDismissError,

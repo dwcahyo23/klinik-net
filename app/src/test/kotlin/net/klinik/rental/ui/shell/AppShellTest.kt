@@ -784,6 +784,7 @@ class AppShellTest {
         dashboard = Screens.Dashboard(
             state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
+            onSelectPeriod = {},
             onBackupReminderTap = {},
         ),
         // The seventh, Story 4.5's. Empty but present: the parameter is required so this
@@ -814,7 +815,6 @@ class AppShellTest {
         ),
     )
 }
-
 
 
 

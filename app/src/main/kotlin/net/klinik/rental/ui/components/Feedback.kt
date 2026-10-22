@@ -16,6 +16,7 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -558,13 +559,24 @@ fun KnModal(
                 modifier = modifier
                     .fillMaxWidth()
                     .widthIn(max = ModalMaxWidth)
-                    .heightIn(max = ModalMaxHeight)
+                    // The height cap lives on the **Column inside** this Surface, not here.
+                    //
+                    // Capping the Surface capped the whole dialog, and because the footer is
+                    // a sibling of the body inside that Column, a form taller than the cap
+                    // pushed the footer off the bottom of the clipped dialog: the buttons
+                    // simply were not there. See `KnModal`'s body, which scrolls inside the
+                    // cap instead.
                     .knShadow(MaterialTheme.knElevation.level3, RoundedCornerShape(radii.xl)),
                 shape = RoundedCornerShape(radii.xl),
                 color = kn.bgCard,
                 contentColor = kn.textPrimary,
             ) {
-                Column {
+                Column(
+                    // The cap, on the **Column**, so it bounds the scrolling body rather
+                    // than clipping the dialog. The body below then measures against what is
+                    // left after the header and the footer, and scrolls inside it.
+                    modifier = Modifier.heightIn(max = ModalMaxHeight),
+                ) {
                     if (title != null) {
                         Row(
                             modifier = Modifier
@@ -607,7 +619,15 @@ fun KnModal(
 
                     Box(
                         modifier = Modifier
-                            .weight(1f, fill = false)
+                            // `weight(1f)`, **not** `weight(1f, fill = false)`.
+                            //
+                            // `fill = false` measured the body at its content height, so a
+                            // form taller than the remaining space pushed the footer out of
+                            // the capped Column — which is the defect "the confirm button is
+                            // gone" reported on every sheet. Filling the weight makes the
+                            // body take exactly what the header and footer leave, and the
+                            // `verticalScroll` below scrolls *within* that.
+                            .weight(1f)
                             .verticalScroll(rememberScrollState())
                             // The prototype's `.modal-body { padding: var(--sp-6) }` —
                             // 24dp on every side. At 20dp the copy sat tight against
@@ -636,7 +656,13 @@ fun KnModal(
                         FlowRow(
                             modifier = Modifier
                                 .fillMaxWidth()
-                                .padding(horizontal = spacing.xl, vertical = spacing.lg),
+                                .padding(horizontal = spacing.xl, vertical = spacing.lg)
+                                // The gesture bar. `AppShell` consumes `safeDrawing` for the
+                                // shell's own layout, but a `Dialog` is a **separate window** —
+                                // it does not inherit the shell's inset consumption, so without
+                                // this the footer buttons sit under the bar on a device that has
+                                // one.
+                                .navigationBarsPadding(),
                             horizontalArrangement = Arrangement.End,
                             verticalArrangement = Arrangement.spacedBy(spacing.sm),
                             maxItemsInEachRow = 2,

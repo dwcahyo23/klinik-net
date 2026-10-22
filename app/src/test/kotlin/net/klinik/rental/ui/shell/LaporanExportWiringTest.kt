@@ -264,6 +264,7 @@ class LaporanExportWiringTest {
         dashboard = Screens.Dashboard(
             state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
+            onSelectPeriod = {},
             onBackupReminderTap = {},
         ),
         // The one bundle this file is about. Note there is **no** `onExportCsv` field: the

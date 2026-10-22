@@ -183,7 +183,16 @@ internal fun AppShell(
             // It is a `ModalBottomSheet`, which must be composed **beside** the layout
             // rather than inside it — and it is a child of this same `Box`, so the shell
             // draws the graph and the sheet in the same place.
-            DepositHost(screens.deposito)
+            //
+            // **Not** mounted while the Setoran screen is showing the form inline. The
+            // prototype's Input tab *is* the form (`payments.html`), so on that screen the
+            // form is already on the page and a sheet over it would be the same form
+            // twice. The sheet is the fallback for the doors that are **not** on a screen
+            // of their own — a correction opened from a contract row, a deposit started
+            // from the dashboard.
+            if (!screens.setoran.state.isShowingForm) {
+                DepositHost(screens.deposito)
+            }
         }
     }
 }

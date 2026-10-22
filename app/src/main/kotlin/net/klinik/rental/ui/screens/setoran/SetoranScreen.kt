@@ -46,14 +46,16 @@ import net.klinik.rental.ui.theme.knTypography
  * The Setoran destination: two tabs, Input and Riwayat — the prototype's
  * `payments.html` structure.
  *
- * ## Why the Input tab opens the **existing** sheet rather than holding a form
+ * ## Why the Input tab holds the form rather than opening a sheet
  *
- * Because the sheet carries the numpad, the mandatory preview and every validation the
- * app has: a second form here would be a second derivation of everything Story 3.2
- * built, and the two would drift the first time one was fixed. The tab's one control
- * triggers [onOpenDepositInput], which the shell wires to the same
- * `screens.deposito.onOpen` the FAB and Beranda's grid use — UX-DR17's "the doors
- * contain the same actions".
+ * Because the prototype puts it there. `payments.html` is a two-pane split: the form fills
+ * the left, the numpad sits in a fixed 400px column on the right, and both are on screen at
+ * once (`shared.css:685-691`). The app had it the other way round — an empty state with a
+ * button that opened a bottom sheet — which put the amount, the control the owner uses most,
+ * two taps and a swipe away.
+ *
+ * The form's **fields** are shared with that sheet through [DepositFormFields], so the two
+ * presentations are two layouts over one implementation rather than two forms that drift.
  *
  * ## Why the Riwayat tab is a cross-contract list
  *
@@ -77,8 +79,15 @@ import net.klinik.rental.ui.theme.knTypography
  * @param onSelectTab switches tabs. Required, not defaulted: a tab wired to `{}` renders
  *   and ignores the tap, which is the same defect every required callback here exists to
  *   prevent.
- * @param onOpenDepositInput opens the existing deposit sheet. Required, for the same
+ * @param onOpenDepositInput opens the deposit form. Required, for the same
  *   reason — it is the Input tab's only reason to exist.
+ * @param deposit the deposit form's own state — the fields, the numpad's digits and the
+ *   preview. The same bundle the sheet uses, so the two cannot disagree.
+ * @param onDepositFormChange the form's reducer. Required, likewise.
+ * @param onSaveDeposit the numpad's Save, which **computes the preview** rather than
+ *   writing. Required: the preview is mandatory, and a Save that wrote directly would
+ *   skip it.
+ * @param onCloseDeposit leaves the form. Required, likewise.
  * @param onRequestDepositCancel opens Story 3.4's cancellation dialog for one deposit.
  *   Required: these two verbs are Stories 3.4's and 3.5's entry points on this surface,
  *   and both shipped unreachable once already.
@@ -96,6 +105,10 @@ fun SetoranScreen(
     state: SetoranScreenState,
     onSelectTab: (SetoranTab) -> Unit,
     onOpenDepositInput: () -> Unit,
+    deposit: SetoranUiState,
+    onDepositFormChange: ((DepositFormState) -> DepositFormState) -> Unit,
+    onSaveDeposit: (Long) -> Unit,
+    onCloseDeposit: () -> Unit,
     onRequestDepositCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
     onRequestDepositEdit: (paymentId: String) -> Unit,
     onDismissError: () -> Unit,
@@ -143,7 +156,11 @@ fun SetoranScreen(
 
             when (state.selectedTab) {
                 SetoranTab.Input -> InputTab(
+                    deposit = deposit,
                     onOpen = onOpenDepositInput,
+                    onChange = onDepositFormChange,
+                    onSave = onSaveDeposit,
+                    onClose = onCloseDeposit,
                     modifier = Modifier.weight(1f),
                 )
 
@@ -163,35 +180,65 @@ fun SetoranScreen(
 }
 
 /**
- * The Input tab: one door to the existing deposit sheet.
+ * The Input tab: the prototype's two-pane split — the form on the left, the numpad on
+ * the right in landscape; the form above, the numpad below in portrait.
  *
- * ## Why a single action and not a form
+ * ## Why the form is on the page rather than behind a sheet
  *
- * The sheet is the form. Duplicating even the amount field here would be a second place
- * a rupiah figure is typed and validated — the "second derivation" defect the spec's
- * Never list names first.
+ * Because the prototype puts it there (`payments.html`, `shared.css:685-701`). The
+ * screenshot that settled it is `.shots/prototype/payments.png`: the amount display, the
+ * 4x3 pad and the `SIMPAN` key are on screen at the same time as the renter picker, and
+ * the pad never moves.
+ *
+ * The app had it the other way round — an empty state with a "Catat Setoran" button that
+ * opened a bottom sheet — which meant the amount, the single most-used control in the app,
+ * was two taps and a swipe away.
+ *
+ * ## Why the same fields as the sheet
+ *
+ * Because they are the same form. [DepositFormFields] is the one implementation; the
+ * split and the sheet are two layouts over it.
  */
 @Composable
 private fun InputTab(
+    deposit: SetoranUiState,
     onOpen: () -> Unit,
+    onChange: ((DepositFormState) -> DepositFormState) -> Unit,
+    onSave: (Long) -> Unit,
+    onClose: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    KnEmptyState(
-        title = stringResource(R.string.setoran_input_title),
-        // Says what happens next, so the tab is an instruction rather than a stub.
-        body = stringResource(R.string.setoran_input_body),
-        icon = Lucide.NotebookPen,
-        modifier = modifier
-            .fillMaxWidth()
-            .testTag(TAG_SETORAN_INPUT_TAB),
-        action = {
-            KnButton(
-                label = stringResource(R.string.deposito_action),
-                onClick = onOpen,
-                variant = KnButtonVariant.Primary,
-                modifier = Modifier.testTag(TAG_SETORAN_INPUT_ACTION),
-            )
-        },
+    val form = deposit.form
+    if (form == null) {
+        // No form open: the tab's invitation. Once the owner starts a deposit the form
+        // takes the tab over entirely — the prototype's `.input-split` is the tab, and it
+        // holds the pad from the first digit.
+        KnEmptyState(
+            title = stringResource(R.string.setoran_input_title),
+            // Says what happens next, so the tab is an instruction rather than a stub.
+            body = stringResource(R.string.setoran_input_body),
+            icon = Lucide.NotebookPen,
+            modifier = modifier
+                .fillMaxWidth()
+                .testTag(TAG_SETORAN_INPUT_TAB),
+            action = {
+                KnButton(
+                    label = stringResource(R.string.deposito_action),
+                    onClick = onOpen,
+                    variant = KnButtonVariant.Primary,
+                    modifier = Modifier.testTag(TAG_SETORAN_INPUT_ACTION),
+                )
+            },
+        )
+        return
+    }
+
+    SetoranInputLayout(
+        state = deposit,
+        onChange = onChange,
+        onSave = onSave,
+        onClose = onClose,
+        modifier = modifier,
     )
 }
 

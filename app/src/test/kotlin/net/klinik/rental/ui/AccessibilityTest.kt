@@ -824,6 +824,7 @@ class AccessibilityTest {
         dashboard = Screens.Dashboard(
             state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
+            onSelectPeriod = {},
             // Story 5.5's reminder. Named for the same reason as every callback above: this
             // file walks every interactive node the shell can draw, and the banner's action is
             // one of them.
@@ -948,5 +949,4 @@ class AccessibilityTest {
 
     }
 }
-
 

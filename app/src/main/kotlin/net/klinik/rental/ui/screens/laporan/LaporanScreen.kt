@@ -155,10 +155,19 @@ fun LaporanScreen(
                     // read as a month with no money in it, which is a claim rather than a
                     // placeholder.
                     repeat(4) { MetricSkeleton(modifier = Modifier.weight(1f)) }
-                } else if (state.isQuietPeriod) {
-                    QuietPeriod()
                 } else {
+                    // The four tiles are **always** drawn, and the quiet-period note sits
+                    // **below** them.
+                    //
+                    // The prototype does that (`reports.html:77` — the KPI grid is
+                    // unconditional, and a period with no money shows four zeroes and a
+                    // note). Replacing the tiles with the note meant the owner of a quiet
+                    // month saw no figures at all, which reads as a broken screen rather
+                    // than as a quiet month.
                     Metrics(state)
+                    if (state.isQuietPeriod) {
+                        QuietPeriod()
+                    }
                     Trend(state)
                     RiskBreakdown(state)
                     BreakdownTable(state)

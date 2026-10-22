@@ -3,6 +3,9 @@ package net.klinik.rental.ui.screens.kontrak
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.navigationBarsPadding
+import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
@@ -166,14 +169,20 @@ fun ExceptionFormSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_EXCEPTION_SHEET),
+        modifier = modifier
+            .testTag(TAG_EXCEPTION_SHEET)
+            // The ceiling belongs on the sheet, not the scrolling content — on the content it
+            // became the scroll viewport and the action row below it was unreachable.
+            // See `ContractFormSheet`'s sheet for the full explanation.
+            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+                .weight(1f),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -301,12 +310,22 @@ fun ExceptionFormSheet(
                         .testTag(TAG_EXCEPTION_ERROR),
                 )
             }
+        }
 
+            // The sheet's way out, **pinned** below the scrolling list.
+            //
+            // It is the only control that closes a sheet whose list can be any length, so
+            // leaving it at the end of the scroll made it unreachable on a long list — the
+            // owner could add an exception and then have no way back to the contract.
             KnButton(
                 label = stringResource(R.string.kontrak_cancel),
                 onClick = onClose,
                 variant = KnButtonVariant.Ghost,
-                modifier = Modifier.testTag(TAG_EXCEPTION_CLOSE),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.sm)
+                    .navigationBarsPadding()
+                    .testTag(TAG_EXCEPTION_CLOSE),
             )
         }
     }
@@ -637,14 +656,18 @@ fun EndContractSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_END_SHEET),
+        modifier = modifier
+            .testTag(TAG_END_SHEET)
+            // On the sheet, not the content — see the exception sheet above.
+            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
     ) {
+        Column(modifier = Modifier.fillMaxWidth()) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+                .weight(1f),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -692,26 +715,38 @@ fun EndContractSheet(
                         .testTag(TAG_END_ERROR),
                 )
             }
+        }
 
-            KnButton(
-                label = stringResource(R.string.kontrak_end_confirm),
-                onClick = onConfirmEnd,
-                icon = Lucide.CircleCheck,
-                variant = KnButtonVariant.Primary,
-                // `canEndContract` and nothing more: a date before the contract's start
-                // is *not* filtered out here, because the sheet cannot see the start
-                // date without carrying it, and a permanently disabled button with no
-                // explanation is worse than a refusal that names the start date.
-                enabled = state.canEndContract,
-                modifier = Modifier.testTag(TAG_END_CONFIRM),
-            )
-
-            KnButton(
-                label = stringResource(R.string.kontrak_cancel),
-                onClick = onClose,
-                variant = KnButtonVariant.Ghost,
-                modifier = Modifier.testTag(TAG_END_CLOSE),
-            )
+            // The two decisions, **pinned**. Ending a contract is the one write in this app
+            // that cannot be undone from the screen, so its button must not be something the
+            // owner has to scroll to find.
+            FlowRow(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.sm)
+                    .navigationBarsPadding(),
+                horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
+                maxItemsInEachRow = 2,
+            ) {
+                KnButton(
+                    label = stringResource(R.string.kontrak_cancel),
+                    onClick = onClose,
+                    variant = KnButtonVariant.Ghost,
+                    modifier = Modifier.testTag(TAG_END_CLOSE),
+                )
+                KnButton(
+                    label = stringResource(R.string.kontrak_end_confirm),
+                    onClick = onConfirmEnd,
+                    icon = Lucide.CircleCheck,
+                    variant = KnButtonVariant.Primary,
+                    // `canEndContract` and nothing more: a date before the contract's start
+                    // is *not* filtered out here, because the sheet cannot see the start
+                    // date without carrying it, and a permanently disabled button with no
+                    // explanation is worse than a refusal that names the start date.
+                    enabled = state.canEndContract,
+                    modifier = Modifier.testTag(TAG_END_CONFIRM),
+                )
+            }
         }
     }
 }

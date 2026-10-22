@@ -431,6 +431,23 @@ class DashboardViewModel(
     }
 
     /**
+     * The period the income tile reads at.
+     *
+     * The prototype's segmented control (`dashboard.html:29-34`) is the screen's own
+     * filter: *Hari ini / Minggu / Cut off / Custom*. Only the **income** tile follows
+     * it — the cutoff tile is always the billing period, the arrears total is always
+     * everything outstanding, and the rate is always over the whole book.
+     */
+    private val period = MutableStateFlow(DashboardPeriod.Today)
+
+    /**
+     * Picks the period the income tile reads at.
+     */
+    fun selectPeriod(selected: DashboardPeriod) {
+        period.value = selected
+    }
+
+    /**
      * The screen state.
      *
      * `flatMapLatest` on the arrears source keeps the failure a value rather than an
@@ -440,8 +457,15 @@ class DashboardViewModel(
     val uiState: StateFlow<DashboardUiState> = combine(
         combine(
             arrearsSource,
-            payments.observeTodaysIncome(clock),
-            payments.observeTransactionCountBetween(today, today),
+            // The income tile reads the **selected** period, so the read is a function of
+            // the filter rather than a fixed one. `flatMapLatest` cancels the old window
+            // when the owner picks another, so a slow read cannot land on top of a newer one.
+            period.flatMapLatest { selected ->
+                payments.observeIncomeBetween(selected.start(today), selected.end(today))
+            },
+            period.flatMapLatest { selected ->
+                payments.observeTransactionCountBetween(selected.start(today), selected.end(today))
+            },
         ) { source, income, transactions -> Triple(source, income, transactions) },
         fleet,
         reminderSource,

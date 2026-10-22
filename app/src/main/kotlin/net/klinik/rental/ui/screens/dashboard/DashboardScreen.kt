@@ -42,6 +42,7 @@ import net.klinik.rental.ui.components.KnKpiGrid
 import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnKpiTile
 import net.klinik.rental.ui.components.KnKpiTileSkeleton
+import net.klinik.rental.ui.components.KnSegmented
 import net.klinik.rental.ui.components.KnTopBar
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knColors
@@ -100,6 +101,7 @@ fun DashboardScreen(
     onBackupReminderTap: () -> Unit,
     onBackupExport: () -> Unit,
     onSeeAllTransactions: () -> Unit,
+    onSelectPeriod: (DashboardPeriod) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -117,7 +119,24 @@ fun DashboardScreen(
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
         Column(Modifier.fillMaxSize()) {
-            KnTopBar(title = stringResource(R.string.beranda_title))
+            // The prototype's `dashboard.html:29-34`: a segmented period filter in the
+            // top bar's actions slot, beside the theme toggle. It switches what the
+            // **income** tile reads — the other three tiles are about the whole book.
+            KnTopBar(
+                title = stringResource(R.string.beranda_title),
+                actions = {
+                    KnSegmented(
+                        options = DashboardPeriod.entries.map { stringResource(it.labelRes()) },
+                        selectedIndex = DashboardPeriod.entries.indexOf(state.period),
+                        onSelect = { index ->
+                            onSelectPeriod(DashboardPeriod.entries[index])
+                        },
+                        modifier = Modifier
+                            .padding(end = spacing.xxl)
+                            .testTag(TAG_PERIOD_FILTER),
+                    )
+                },
+            )
 
             Column(
                 modifier = Modifier
@@ -272,6 +291,7 @@ private fun KpiPlaceholder() {
 
 internal const val TAG_KPI_ROW = "beranda-kpi-row"
 internal const val TAG_CHARTS_SECTION = "beranda-charts-section"
+internal const val TAG_PERIOD_FILTER = "beranda-period-filter"
 internal const val TAG_KPI_ARREARS = "beranda-kpi-arrears"
 internal const val TAG_KPI_CUTOFF = "beranda-kpi-cutoff"
 internal const val TAG_KPI_INCOME = "beranda-kpi-income"
