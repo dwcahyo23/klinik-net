@@ -19,6 +19,8 @@ import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
+import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -107,13 +109,30 @@ internal fun SetoranSplitLayout(
 
         // ---- the numpad column.
         //
-        // The prototype's `.numpad-shell`: a card-coloured column with a **left** border, so
-        // it reads as a separate surface rather than as more of the form.
+        // The prototype's `.numpad-shell` (`shared.css:687-691`): a card-coloured column
+        // with a **left** border and no top border, so it reads as a separate surface
+        // rather than as more of the form. The border is the whole of that distinction —
+        // without it the pad is a panel of white inside a white page.
+        //
+        // The border colour is read **here**, outside the draw scope: a `drawBehind` lambda
+        // is a draw scope, not a composable one, so `MaterialTheme` cannot be read inside it.
+        val borderColour = MaterialTheme.knColors.border
         Column(
             modifier = Modifier
                 .width(NumpadColumnWidth)
                 .fillMaxHeight()
-                .background(MaterialTheme.knColors.bgCard),
+                .background(MaterialTheme.knColors.bgCard)
+                // The line on the **left** only, drawn as a line rather than a border:
+                // the CSS says `border-left: 1px solid var(--border)`, and a full border
+                // would draw a line along the screen's outer edge too.
+                .drawBehind {
+                    drawLine(
+                        color = borderColour,
+                        start = Offset(0f, 0f),
+                        end = Offset(0f, size.height),
+                        strokeWidth = 1f,
+                    )
+                },
         ) {
             KnNumPad(
                 value = form.amountDigits,

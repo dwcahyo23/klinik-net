@@ -306,6 +306,10 @@ class SetoranViewModel(
             // The Input tab shows the form inline — the prototype's `payments.html` has the
             // form and the numpad in the tab, not behind a sheet. The shell reads this to
             // avoid mounting the sheet over the form it is already drawing.
+            //
+            // Tied to the **tab**, not to the form alone: a correction opened from a
+            // contract row sets the same form state while the owner is on the Kontrak
+            // screen, and there the sheet is still the right presentation.
             isShowingForm = tab == SetoranTab.Input && currentForm != null,
             rows = allRows,
             historyQuery = query,

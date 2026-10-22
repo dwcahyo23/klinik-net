@@ -138,6 +138,57 @@ class AppShellTest {
     }
 
     /**
+     * The deposit sheet is **suppressed** while the Setoran screen shows the form inline.
+     *
+     * The prototype's Input tab *is* the form (`payments.html`), so on that screen the form
+     * is already on the page. Mounting the sheet over it would be the same form twice.
+     */
+    @Test
+    fun `the sheet is not mounted while Setoran shows the form inline`() {
+        val screens = testScreens(
+            setoranState = net.klinik.rental.ui.screens.setoran.SetoranScreenState(
+                isShowingForm = true,
+            ),
+            depositoState = net.klinik.rental.ui.screens.setoran.SetoranUiState(
+                form = net.klinik.rental.ui.screens.setoran.DepositFormState(
+                    date = java.time.LocalDate.of(2026, 10, 17),
+                ),
+            ),
+        )
+        compose.setContent { theme { AppShell(screens = screens, showRail = true) } }
+
+        // On the Setoran screen, where the form is drawn inline.
+        compose.onNodeWithContentDescription("Setoran").performClick()
+        compose.waitForIdle()
+
+        compose.onNodeWithTag(net.klinik.rental.ui.screens.setoran.TAG_DEPOSIT_SHEET)
+            .assertDoesNotExist()
+    }
+
+    /**
+     * The deposit sheet **is** mounted on every other screen.
+     *
+     * The counterpart of the test above, and the one that catches a real defect: a
+     * correction opened from a contract row sets the same form state while the owner is on
+     * the Kontrak screen, and there the sheet is still the right presentation. Suppressing
+     * it on the strength of the form alone would make that verb open nothing.
+     */
+    @Test
+    fun `the sheet is mounted on a screen that does not draw the form`() {
+        val screens = testScreens(
+            depositoState = net.klinik.rental.ui.screens.setoran.SetoranUiState(
+                form = net.klinik.rental.ui.screens.setoran.DepositFormState(
+                    date = java.time.LocalDate.of(2026, 10, 17),
+                ),
+            ),
+        )
+        compose.setContent { theme { AppShell(screens = screens, showRail = true) } }
+
+        compose.onNodeWithTag(net.klinik.rental.ui.screens.setoran.TAG_DEPOSIT_SHEET)
+            .assertExists()
+    }
+
+    /**
      * The app opens on **Beranda**, the morning summary.
      *
      * Story 4.3 moved `Destination.START` from the fleet to the summary, because the
@@ -632,6 +683,8 @@ class AppShellTest {
     private fun testScreens(
         depositoState: net.klinik.rental.ui.screens.setoran.SetoranUiState =
             net.klinik.rental.ui.screens.setoran.SetoranUiState(),
+        setoranState: net.klinik.rental.ui.screens.setoran.SetoranScreenState =
+            net.klinik.rental.ui.screens.setoran.SetoranScreenState(),
         wiring: ShellWiring? = null,
     ): Screens = Screens(
         mobil = Screens.Mobil(
@@ -804,7 +857,7 @@ class AppShellTest {
         // builds the container the shell hands to the route, so an omitted callback would
         // be a silent no-op at runtime rather than a compile error.
         setoran = Screens.Setoran(
-            state = net.klinik.rental.ui.screens.setoran.SetoranScreenState(),
+            state = setoranState,
             onSelectTab = {},
             onRequestDepositCancel = { _, _, _ -> },
             onRequestDepositEdit = {},

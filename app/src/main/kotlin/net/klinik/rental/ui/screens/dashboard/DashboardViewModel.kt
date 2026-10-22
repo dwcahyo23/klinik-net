@@ -108,11 +108,16 @@ class DashboardViewModel(
      * cutoff period decides every window on this screen, and the caller already holds the
      * value because it wired [PaymentRepository]. One read, one place.
      *
+     * A **suspend function** rather than a value, because the day lives in the database
+     * and a ViewModel may not read it on its constructor. The value is read once, when the
+     * period filter is first used, and cached — the same shape `LaporanViewModel` uses for
+     * the same reason.
+     *
      * Defaults to the repository's own default so the tests that build this ViewModel
      * without one keep compiling — and so a caller that forgets produces the same period a
      * fresh install would, rather than an exception.
      */
-    private val cutoffDayOverride: Int = PaymentRepository.DEFAULT_CUTOFF_DAY,
+    private val cutoffDay: suspend () -> Int = { PaymentRepository.DEFAULT_CUTOFF_DAY },
 ) : ViewModel() {
 
     /**
@@ -146,7 +151,7 @@ class DashboardViewModel(
      * changed the cutoff day between them.
      */
     private val cutoffIncome: Flow<Pair<Long, LocalDate>> = flow {
-        val period = CutoffPeriod.containing(cutoffDayOverride, today)
+        val period = CutoffPeriod.containing(cutoffDay(), today)
         emitAll(
             payments.observeIncomeBetween(period.start, today)
                 .map { income -> income to period.start },
@@ -460,11 +465,23 @@ class DashboardViewModel(
             // The income tile reads the **selected** period, so the read is a function of
             // the filter rather than a fixed one. `flatMapLatest` cancels the old window
             // when the owner picks another, so a slow read cannot land on top of a newer one.
+            //
+            // The window is computed from the **saved** cutoff day, not the default: the
+            // owner's setting decides which days the engine charges for, and a filter that
+            // used the default would read a period the app does not bill.
             period.flatMapLatest { selected ->
-                payments.observeIncomeBetween(selected.start(today), selected.end(today))
+                val day = cutoffDay()
+                payments.observeIncomeBetween(
+                    selected.start(today, day),
+                    selected.end(today, day),
+                )
             },
             period.flatMapLatest { selected ->
-                payments.observeTransactionCountBetween(selected.start(today), selected.end(today))
+                val day = cutoffDay()
+                payments.observeTransactionCountBetween(
+                    selected.start(today, day),
+                    selected.end(today, day),
+                )
             },
         ) { source, income, transactions -> Triple(source, income, transactions) },
         fleet,

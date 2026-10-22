@@ -582,15 +582,20 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
  */
 internal fun createDashboardViewModel(context: Context): DashboardViewModel {
     val database = KlinikDatabase.get(context)
+    // Named rather than inline, because the period filter's *Cut off* stop reads the
+    // owner's saved cutoff day through **this** repository — the same one the arrears and
+    // income figures come from. A second instance would be a second answer to "which
+    // days does the engine charge for".
+    val payments = PaymentRepository(
+        paymentDao = database.paymentDao(),
+        allocationDao = database.allocationDao(),
+        contractDao = database.contractDao(),
+        exceptionDao = database.serviceExceptionDao(),
+        settingDao = database.settingDao(),
+        database = database,
+    )
     return DashboardViewModel(
-        payments = PaymentRepository(
-            paymentDao = database.paymentDao(),
-            allocationDao = database.allocationDao(),
-            contractDao = database.contractDao(),
-            exceptionDao = database.serviceExceptionDao(),
-            settingDao = database.settingDao(),
-            database = database,
-        ),
+        payments = payments,
         vehicleRepository = VehicleRepository(database.vehicleDao(), database),
         strings = RStrings(context),
         // The dashboard's charts and its transaction table. `contracts` carries the frozen
@@ -607,6 +612,10 @@ internal fun createDashboardViewModel(context: Context): DashboardViewModel {
         // The same clock every other ViewModel gets, for the same reason: "today" decides
         // which deposits count, and a test that passed in October would fail in November.
         clock = Clock.systemDefaultZone(),
+        // The owner's saved cutoff day, for the period filter's *Cut off* stop. Read
+        // through the repository so the window the filter reads is the one the allocation
+        // engine charged for — the same rule `LaporanViewModel` follows.
+        cutoffDay = { payments.cutoffDay() },
         // Story 5.5's reminder, over the **same** repository the settings screen exports
         // through. Two instances would still read the same rows, but the reminder's date and
         // the export's date must be one fact, and one repository makes that structural.

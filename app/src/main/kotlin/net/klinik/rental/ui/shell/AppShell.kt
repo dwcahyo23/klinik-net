@@ -187,10 +187,14 @@ internal fun AppShell(
             // **Not** mounted while the Setoran screen is showing the form inline. The
             // prototype's Input tab *is* the form (`payments.html`), so on that screen the
             // form is already on the page and a sheet over it would be the same form
-            // twice. The sheet is the fallback for the doors that are **not** on a screen
-            // of their own — a correction opened from a contract row, a deposit started
-            // from the dashboard.
-            if (!screens.setoran.state.isShowingForm) {
+            // twice.
+            //
+            // The check is on the **route** as well as the flag. A correction opened from
+            // a contract row sets the same form state, and the owner is on the Kontrak
+            // screen when they do it — so the sheet must still open there. Only the
+            // Setoran screen, on its Input tab, draws the form itself.
+            val isSetoranShowing = backStackEntry?.destination?.route == Destination.Setoran.route
+            if (!(isSetoranShowing && screens.setoran.state.isShowingForm)) {
                 DepositHost(screens.deposito)
             }
         }
