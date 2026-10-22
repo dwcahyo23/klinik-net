@@ -26,11 +26,13 @@ import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.intl.Locale as ComposeLocale
+import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.focusRing
@@ -43,27 +45,34 @@ import net.klinik.rental.ui.theme.knTypography
 import net.klinik.rental.ui.theme.minTouchTarget
 
 /**
- * `.card` from `shared.css` — radius 20, `--el-1`, `--sp-5` padding.
+ * `.card` from `shared.css` — the app's one card surface.
  *
- * Presentation only. Nothing here computes arrears, risk tier, credit or
- * status; a card renders what it is handed.
+ * Radius 20, `--el-1`, `--sp-5` padding.
  *
- * ## Why the card fills its parent's width
+ * ## Why this is the only card
  *
- * Because a card that sized to its own longest child is the defect `PengaturanScreen`
- * shipped: its four section surfaces rendered at roughly 45% and 100% of the page on the
- * same screen, because a `Surface` with no width modifier wraps its content and the
- * content happened to differ. A card is a page section, not an inline chip, so
- * [Modifier.fillMaxWidth] belongs to the component rather than to each call site — and
- * putting it here means a screen cannot forget, which is the failure this replaces.
+ * Because the app had three: this one, a second `Surface` inside `KnKpiTile`, and a
+ * third inside `KnKpiTileSkeleton` — each re-implementing the same radius, shadow and
+ * background, and each free to drift. The prototype has one (`.card`), so this is it:
+ * the KPI tile and its skeleton are **this**, with the tile's two extras switched on.
  *
- * A caller that genuinely wants a narrower card constrains the *parent*, not this: the
- * modifier is applied before [padding] so it sizes the outer box the shadow traces, not
- * the padded content rect.
+ * ## Why the padding moved inside
+ *
+ * The CSS is `.card { background: var(--bg-card); padding: var(--sp-5) }` — the
+ * background covers the whole card and the padding is *inside* it. This used to apply
+ * the padding to the `Surface`'s own modifier, which shrank the painted card and left
+ * a transparent gutter around it: the card was 40dp narrower than the space it was
+ * given, and the gutter showed the page through. The padding now sits on the content,
+ * inside the painted surface, so the card fills its slot the way the prototype's does.
  *
  * @param onClick when non-null the card becomes a clickable surface. Clickable
  *   cards are not the default: a card that *looks* tappable but is not is a
  *   gesture-only path to an important action, which the epic context forbids.
+ * @param accent the 5dp brand edge down the left side — `.kpi-accent::after`
+ *   (`shared.css:430-433`). Drawn over the surface rather than laid out beside it,
+ *   so it spans the card's full height whatever the content's height is.
+ * @param icon the 40dp corner glyph — `.kpi-icon` (`shared.css:421-426`), which
+ *   the prototype pins to the card's top-right corner at 16px.
  */
 @Composable
 fun KnCard(
@@ -71,20 +80,36 @@ fun KnCard(
     padding: Dp = MaterialTheme.knSpacing.xl,
     outlined: Boolean = false,
     onClick: (() -> Unit)? = null,
+    accent: Boolean = false,
+    icon: ImageVector? = null,
+    iconTint: Color? = null,
     content: @Composable () -> Unit,
 ) {
     val kn = MaterialTheme.knColors
     val shape = RoundedCornerShape(MaterialTheme.knRadii.lg)
     val elevation = if (outlined) 0.dp else MaterialTheme.knElevation.level1
-    // The ring and the shadow wrap the *card*, so they are applied before the
-    // content padding. Appended after it, both would size to the padded content
-    // rect and the ring would float inside the card's own edge rather than trace
-    // it — correct-looking until you focus a card and see the 3dp line sitting
-    // one padding-width in from the border.
+    // The ring and the shadow wrap the *card*, so they are applied before the content
+    // padding. Appended after it, both would size to the padded content rect and the
+    // ring would float inside the card's own edge rather than trace it.
     val base = modifier
         .fillMaxWidth()
         .knShadow(elevation, shape)
-        .padding(padding)
+        .then(
+            if (accent) {
+                // The colour is read **here**, outside the draw scope: a `drawBehind` lambda
+                // is a draw scope, not a composable one, so `MaterialTheme` cannot be read
+                // inside it.
+                val accentColour = kn.primaryFill
+                Modifier.drawBehind {
+                    drawRect(
+                        color = accentColour,
+                        size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height),
+                    )
+                }
+            } else {
+                Modifier
+            },
+        )
     val border = if (outlined) androidx.compose.foundation.BorderStroke(1.dp, kn.border) else null
 
     if (onClick != null) {
@@ -104,7 +129,7 @@ fun KnCard(
             contentColor = kn.textPrimary,
             border = border,
             interactionSource = interaction,
-            content = { content() },
+            content = { CardContent(padding, icon, iconTint, content) },
         )
     } else {
         Surface(
@@ -113,35 +138,40 @@ fun KnCard(
             color = kn.bgCard,
             contentColor = kn.textPrimary,
             border = border,
-            content = { content() },
+            content = { CardContent(padding, icon, iconTint, content) },
         )
     }
 }
 
 /**
- * The widest a screen's content column is allowed to be.
+ * A card's body: the content, inset by the card's padding, plus the corner glyph
+ * when there is one.
  *
- * ## Why this exists
- *
- * The prototype has no max-width, and the reason is in its frame: `shared.css` was only
- * ever previewed at 1280x800, where a full-width card is already a comfortable measure. On
- * the audited 711dp tablet a full-width card puts a single sentence 700dp long on screen —
- * long enough that the eye loses the line on the return sweep, which is the one thing a
- * reading column is supposed to prevent.
- *
- * 840dp rather than a token, because it is not in the spacing scale and adding one would be
- * pretending it is one of the four-pixels-per-step sizes it is not. It lives here, beside
- * [KnCard], rather than in a screen because the cap and [KnCard]'s [Modifier.fillMaxWidth]
- * are the same decision seen from two ends: the card fills whatever the column gives it,
- * and the column refuses to give more than this. Declared `internal` so a screen reads a
- * named constant instead of repeating `840.dp`.
- *
- * A screen opts in by wrapping its body in
- * `Modifier.widthIn(max = KnContentMaxWidth).align(Alignment.CenterHorizontally)` — the
- * width modifier first, then `fillMaxWidth`, because in the other order the fill has
- * already fixed the width before the cap can narrow it.
+ * The glyph is **absolute** — pinned to the card's top-right corner — because the
+ * prototype's is (`position:absolute; top:16px; right:16px`, `shared.css:421-426`)
+ * and because a glyph in the flow would push the content sideways instead of
+ * sitting over the card's corner.
  */
-internal val KnContentMaxWidth = 840.dp
+@Composable
+private fun CardContent(
+    padding: Dp,
+    icon: ImageVector?,
+    iconTint: Color?,
+    content: @Composable () -> Unit,
+) {
+    Box(Modifier.fillMaxWidth()) {
+        Box(Modifier.padding(padding)) { content() }
+        if (icon != null) {
+            KpiIcon(
+                icon = icon,
+                tint = iconTint,
+                modifier = Modifier
+                    .align(Alignment.TopEnd)
+                    .padding(16.dp),
+            )
+        }
+    }
+}
 
 /** `.card-header` — title on the leading side, optional trailing slot. */
 @Composable
@@ -161,12 +191,16 @@ fun KnCardHeader(
                 text = title,
                 style = MaterialTheme.knTypography.bodyLarge.copy(fontWeight = FontWeight.Bold),
                 color = MaterialTheme.knColors.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
             )
             if (subtitle != null) {
                 Text(
                     text = subtitle,
                     style = MaterialTheme.knTypography.body,
                     color = MaterialTheme.knColors.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
                 )
             }
         }
@@ -188,18 +222,24 @@ fun KnCardHeader(
  *
  * ## Why the figure is `moneyLarge` and not `displayMedium`
  *
- * Because a number is a number, and the two faces disagree about what a number is.
- * `displayMedium` is Fraunces at the same 36sp, and Fraunces carries no `tnum` —
- * verified against the GSUB feature table of `res/font/fraunces_600.ttf` and
- * `fraunces_700.ttf`, which list `case, liga, rvrn, ss01` and nothing else. Every
- * one of the five `plus_jakarta_sans_*.ttf` files does carry `tnum`. So a KPI
- * figure drawn in the display face loses the tabular figures, and the rupiah column
- * jitters as amounts change — which is the one thing the token exists to prevent.
+ * Because a number is a number, and a figure has to line up in a column.
  *
  * `moneyLarge` is the prototype's own `.kpi-value` numbers, read off: `--fs-2xl`
  * 36, `font-weight: 800`, `letter-spacing: -1.2px`, `font-variant-numeric:
- * tabular-nums`. The size, the weight and the tracking already match; only the
- * family was wrong.
+ * tabular-nums`.
+ *
+ * ## Why every line here is one line long
+ *
+ * Because a tile that wraps is a tile that grows, and a row of tiles that
+ * disagrees about its own height is a row that reads as broken. The Tunggakan
+ * summary is the case that caught it: *"%1$d penyewa dari %2$d kontrak"* is a
+ * long sentence in a 14sp body face, and in a 230dp tile it wrapped to two lines
+ * and stretched that one tile past its three neighbours.
+ *
+ * So the label, the value and the meta each get `maxLines = 1` and an ellipsis.
+ * A caption too long for its tile is now **shortened by the renderer** instead
+ * of **wrapped by the layout**, and a caller who wants a shorter caption
+ * simply passes a shorter one.
  */
 @Composable
 fun KnKpiTile(
@@ -216,7 +256,7 @@ fun KnKpiTile(
      * Where the glyph goes.
      *
      * [KnKpiIconLayout.Stacked] is this component's original shape and stays the default, so
-     * Beranda and Laporan do not move. [KnKpiIconLayout.Corner] is the prototype's `.kpi`, whose
+     * Dashboard and Laporan do not move. [KnKpiIconLayout.Corner] is the prototype's `.kpi`, whose
      * `.kpi-icon` is `position:absolute; top:16px; right:16px` (`shared.css:421-426`) — the
      * card the Mobil and Tunggakan summaries are built from.
      */
@@ -224,7 +264,6 @@ fun KnKpiTile(
 ) {
     val kn = MaterialTheme.knColors
     val spacing = MaterialTheme.knSpacing
-    val shape = RoundedCornerShape(MaterialTheme.knRadii.lg)
     val corner = iconLayout == KnKpiIconLayout.Corner
     // `String.uppercase()` takes a `java.util.Locale`; Compose exposes its own locale
     // type, so it is bridged rather than silently defaulting to ROOT — the same
@@ -232,64 +271,46 @@ fun KnKpiTile(
     val locale = ComposeLocale.current.toLanguageTag()
         .let { java.util.Locale.forLanguageTag(it) }
 
-    Surface(
-        modifier = modifier.knShadow(MaterialTheme.knElevation.level1, shape),
-        shape = shape,
-        color = kn.bgCard,
-        contentColor = kn.textPrimary,
+    KnCard(
+        modifier = modifier,
+        accent = accent,
+        // The glyph is the card's corner glyph, so the card owns it — that is the
+        // whole reason the card and the tile are one component.
+        icon = icon.takeIf { corner },
+        iconTint = iconTint,
     ) {
-        Row {
-            if (accent) {
-                Surface(
-                    modifier = Modifier.size(width = 5.dp, height = 116.dp),
-                    color = MaterialTheme.knColors.primaryFill,
-                    content = {},
-                )
+        Column(
+            // `weight(1f)`: the column takes the space the card gives it and the
+            // text inside it may shrink. Without it a long caption is measured
+            // at its natural width and the card grows instead of the text.
+            modifier = if (corner) Modifier.fillMaxWidth() else Modifier,
+            verticalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            if (icon != null && !corner) {
+                KpiIcon(icon = icon, tint = iconTint)
             }
-            // `fillMaxWidth` in the corner layout only: a stacked tile sizes to its content, and a
-            // corner tile has to fill so its glyph can be pinned to the right edge.
-            Box(
-                modifier = if (corner) {
-                    Modifier.fillMaxWidth().padding(spacing.xl)
-                } else {
-                    Modifier.padding(spacing.xl)
-                },
-            ) {
-                // The trailing inset reserved for the pinned glyph, so the value cannot run
-                // underneath it on a long figure.
-                Column(
-                    modifier = if (corner) Modifier.padding(end = 48.dp) else Modifier,
-                ) {
-                    if (icon != null && !corner) {
-                        KpiIcon(icon = icon, tint = iconTint)
-                    }
-                    Text(
-                        text = label.uppercase(locale),
-                        style = MaterialTheme.knTypography.overline,
-                        color = kn.textTertiary,
-                    )
-                    Text(
-                        text = value,
-                        style = MaterialTheme.knTypography.moneyLarge,
-                        color = kn.textPrimary,
-                        modifier = Modifier.padding(top = spacing.sm),
-                    )
-                    if (meta != null) {
-                        Text(
-                            text = meta,
-                            style = MaterialTheme.knTypography.body,
-                            color = metaTint ?: kn.textTertiary,
-                            modifier = Modifier.padding(top = spacing.sm),
-                        )
-                    }
-                }
-                if (icon != null && corner) {
-                    KpiIcon(
-                        icon = icon,
-                        tint = iconTint,
-                        modifier = Modifier.align(Alignment.TopEnd),
-                    )
-                }
+            Text(
+                text = label.uppercase(locale),
+                style = MaterialTheme.knTypography.overline,
+                color = kn.textTertiary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            Text(
+                text = value,
+                style = MaterialTheme.knTypography.moneyLarge,
+                color = kn.textPrimary,
+                maxLines = 1,
+                overflow = TextOverflow.Ellipsis,
+            )
+            if (meta != null) {
+                Text(
+                    text = meta,
+                    style = MaterialTheme.knTypography.body,
+                    color = metaTint ?: kn.textTertiary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
             }
         }
     }
@@ -347,35 +368,27 @@ fun KnKpiTileSkeleton(
         )
     }
 
-    Surface(
-        modifier = modifier,
-        shape = RoundedCornerShape(MaterialTheme.knRadii.lg),
-        color = kn.bgCard,
-    ) {
-        Box(
-            modifier = if (corner) {
-                Modifier.fillMaxWidth().padding(spacing.xl)
-            } else {
-                Modifier.padding(spacing.xl)
-            },
-        ) {
-            Column(modifier = if (corner) Modifier.padding(end = 48.dp) else Modifier) {
-                if (!corner) {
-                    // `.kpi-icon`: 40dp, with no gap of its own — the label's line box is
-                    // what separates it from the text below, exactly as in the tile.
-                    Box(
-                        Modifier
-                            .size(40.dp)
-                            .background(kn.bgSunken, RoundedCornerShape(MaterialTheme.knRadii.md)),
-                    )
-                }
-                bar(widthFraction = 0.55f, style = typography.overline)
-                bar(
-                    widthFraction = 0.8f,
-                    style = typography.displayMedium,
-                    topPadding = spacing.sm,
+    KnCard(modifier = modifier) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+            if (!corner) {
+                // `.kpi-icon`: 40dp, with no gap of its own — the label's line box is
+                // what separates it from the text below, exactly as in the tile.
+                Box(
+                    Modifier
+                        .size(40.dp)
+                        .background(kn.bgSunken, RoundedCornerShape(MaterialTheme.knRadii.md)),
                 )
             }
+            bar(widthFraction = 0.55f, style = typography.overline)
+            bar(
+                widthFraction = 0.8f,
+                style = typography.moneyLarge,
+            )
+            // The **meta** bar, because every dashboard tile has one (`dashboard.html:174-194`)
+            // and the tile is taller for it. A skeleton that reserved only label and value
+            // would be 43dp short of the tile it stands in for, and the row would jump the
+            // moment the figures landed — the defect this function's whole design is against.
+            bar(widthFraction = 0.65f, style = typography.body)
         }
     }
 }

@@ -11,7 +11,7 @@ import net.klinik.rental.ui.theme.KnSpacing
  * internal parent.
  *
  * `shared.css:285-289` pads `.page-body` once, with `--sp-6` — 24dp. The three master-detail
- * screens (`TunggakanScreen`, `KendaraanScreen`, `PenyewaScreen`) each apply that padding to
+ * screens (`TunggakanScreen`, `MobilScreen`, `PenyewaScreen`) each apply that padding to
  * their own body column, and `KnMasterDetail` used to apply it a second time, which shipped 48dp
  * where the prototype has 24dp.
  *

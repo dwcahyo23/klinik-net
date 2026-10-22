@@ -52,7 +52,7 @@ import java.time.LocalDate
  * ## Why the action is on the top bar and not a FAB
  *
  * `PenyewaScreen` puts its add action on the empty state and nowhere else, and
- * `KendaraanScreen` does the same. The epic context's floating action button with
+ * `MobilScreen` does the same. The epic context's floating action button with
  * its speed dial is Story 2.8's shell, and it explicitly appears on every screen
  * *except* the home screen — so a FAB here would be a second door to the same action
  * the shell is about to add. A top-bar action is what this screen owns, it is

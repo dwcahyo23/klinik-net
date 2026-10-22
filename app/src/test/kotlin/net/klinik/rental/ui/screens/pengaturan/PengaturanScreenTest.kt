@@ -19,7 +19,6 @@ import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
 import androidx.test.ext.junit.runners.AndroidJUnit4
 import net.klinik.rental.domain.model.BusinessAccount
-import net.klinik.rental.ui.components.KnContentMaxWidth
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertNotNull
@@ -844,22 +843,27 @@ class PengaturanScreenTest {
     }
 
     /**
-     * The column is **capped**, so a wide tablet does not stretch a sentence across it.
+     * The column is **full-bleed** — the body fills the window less its 24dp gutters.
      *
-     * Asserted on a 1280dp window against [KnContentMaxWidth]. At 711dp the cap never binds —
-     * the gutter test above already covers that case — so without a wide window this whole
-     * branch would be unmeasured code.
+     * The prototype's `.page-body` sets no max-width (`shared.css:285-289`): its cards run
+     * the width of the frame. The app used to cap the column at 840dp and centre it, which on
+     * a 1280dp tablet stranded a wide band of empty page down each side — the one thing the
+     * prototype does not have.
+     *
+     * Asserted on a 1280dp window because that is where the cap used to bind; at 711dp it
+     * never did, so without a wide window this branch would be unmeasured code.
      */
     @Test
     @Config(sdk = [34], qualifiers = "w1280dp-h800dp-land")
-    fun `the column is capped at the maximum content width`() {
+    fun `the column fills the window less its gutter`() {
         compose.setContent { theme { Screen(state = allFourSections()) } }
 
         val width = compose.onNodeWithTag(TAG_IDENTITY_SECTION).fetchSemanticsNode().size.width
+        // The window less one 24dp gutter on each side (`--sp-6`, `shared.css:288`).
         assertTrue(
-            "the card measured ${width}dp on a 1280dp window, expected at most " +
-                "${KnContentMaxWidth} less two 24dp gutters",
-            width <= (KnContentMaxWidth.value - 48).toFloat(),
+            "the card measured ${width}dp on a 1280dp window, expected the full width " +
+                "less two 24dp gutters",
+            width > (1280 - 48 - 1),
         )
     }
 

@@ -113,7 +113,7 @@ class ContractRepository(
      * `vehicleId` against those flows in Kotlin. A `@Query` with two JOINs would
      * need a new row POJO and would put a second way to read renters and vehicles
      * next to `observeRenters()`/`observeVehicles()` — the two-readers problem AD-5
-     * exists to prevent. `KendaraanViewModel` already combines several flows in
+     * exists to prevent. `MobilViewModel` already combines several flows in
      * Kotlin, and this is the same pattern.
      */
     fun observeContracts(): Flow<List<Contract>> =

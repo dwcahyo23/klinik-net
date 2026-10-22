@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -95,8 +95,8 @@ import net.klinik.rental.ui.theme.knTypography
  *   screen, not a navigation, so returning from it restores the owner's place.
  */
 @Composable
-fun KendaraanScreen(
-    state: KendaraanUiState,
+fun MobilScreen(
+    state: MobilUiState,
     onQueryChange: (String) -> Unit,
     onFilterChange: (VehicleFilter) -> Unit,
     onClearQuery: () -> Unit,
@@ -167,7 +167,7 @@ fun KendaraanScreen(
                         FleetSummaryRow(state.summary)
                     }
 
-                    KendaraanFilterRow(
+                    MobilFilterRow(
                         selected = state.filter,
                         counts = state.counts,
                         onSelect = onFilterChange,
@@ -181,8 +181,8 @@ fun KendaraanScreen(
                         list = {
                             when {
                                 state.isLoading -> KnSkeletonList()
-                                state.isEmptyFleet -> KendaraanEmptyFleet(onAdd = onAdd)
-                                state.isEmptySearch -> KendaraanEmptySearch(
+                                state.isEmptyFleet -> MobilEmptyFleet(onAdd = onAdd)
+                                state.isEmptySearch -> MobilEmptySearch(
                                     query = state.query,
                                     onAdd = onAdd,
                                 )
@@ -199,7 +199,7 @@ fun KendaraanScreen(
                                         // their saved state onto a different car.
                                         key = { it.vehicle.id },
                                     ) { row ->
-                                        KendaraanRow(
+                                        MobilRow(
                                             row = row,
                                             selected = row.vehicle.id == state.selectedRow?.vehicle?.id,
                                             onClick = { onSelect(row.vehicle.id) },
@@ -211,7 +211,7 @@ fun KendaraanScreen(
                         detail = {
                             val selected = state.selectedRow
                             if (selected != null && !state.isLoading) {
-                                KendaraanDetail(
+                                MobilDetail(
                                     row = selected,
                                     contract = state.selectedContract,
                                     onEdit = { onEdit(selected.vehicle) },
@@ -274,7 +274,7 @@ fun KendaraanScreen(
  */
 @OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun KendaraanFilterRow(
+private fun MobilFilterRow(
     selected: VehicleFilter,
     counts: Map<VehicleFilter, Int>,
     onSelect: (VehicleFilter) -> Unit,
@@ -359,7 +359,7 @@ private fun FleetSummaryRow(summary: FleetSummary) {
  *   car without opening a form over it.
  */
 @Composable
-private fun KendaraanRow(
+private fun MobilRow(
     row: VehicleRow,
     selected: Boolean,
     onClick: () -> Unit,
@@ -413,7 +413,7 @@ private fun KendaraanRow(
  * the renter, and leaves the running total to the screen that already computes it.
  */
 @Composable
-private fun KendaraanDetail(
+private fun MobilDetail(
     row: VehicleRow,
     contract: VehicleContractFacts?,
     onEdit: () -> Unit,
@@ -560,7 +560,7 @@ private fun KnDivider() {
 
 /** Nothing stored yet: say what is missing and what to do about it. */
 @Composable
-private fun KendaraanEmptyFleet(onAdd: () -> Unit, modifier: Modifier = Modifier) {
+private fun MobilEmptyFleet(onAdd: () -> Unit, modifier: Modifier = Modifier) {
     KnEmptyState(
         title = stringResource(R.string.kendaraan_empty_title),
         body = stringResource(R.string.kendaraan_empty_body),
@@ -584,7 +584,7 @@ private fun KendaraanEmptyFleet(onAdd: () -> Unit, modifier: Modifier = Modifier
  * from an empty account — the two need opposite actions.
  */
 @Composable
-private fun KendaraanEmptySearch(
+private fun MobilEmptySearch(
     query: String,
     onAdd: () -> Unit,
     modifier: Modifier = Modifier,
@@ -675,10 +675,10 @@ internal const val TAG_BANNER = "kendaraan-banner"
 
 @Preview(showBackground = true)
 @Composable
-private fun KendaraanScreenPreview() {
+private fun MobilScreenPreview() {
     KlinikNetTheme(darkTheme = false) {
-        KendaraanScreen(
-            state = KendaraanUiState(rows = PREVIEW_ROWS),
+        MobilScreen(
+            state = MobilUiState(rows = PREVIEW_ROWS),
             onQueryChange = {},
             onFilterChange = {},
             onClearQuery = {},

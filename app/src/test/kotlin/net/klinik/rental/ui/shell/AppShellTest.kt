@@ -27,9 +27,9 @@ import androidx.test.ext.junit.runners.AndroidJUnit4
 import android.content.Context
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
-import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
-import net.klinik.rental.ui.screens.kendaraan.TAG_SEARCH as TAG_KENDARAAN_SEARCH
-import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
+import net.klinik.rental.ui.screens.mobil.MobilUiState
+import net.klinik.rental.ui.screens.mobil.TAG_SEARCH as TAG_KENDARAAN_SEARCH
+import net.klinik.rental.ui.screens.mobil.VehicleFilter
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
@@ -108,7 +108,7 @@ class AppShellTest {
     fun `the compact rail draws no destination labels`() {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        Destination.entries.forEach { destination ->
+        Destination.railEntries.forEach { destination ->
             compose.onAllNodes(
                 hasText(labelOf(destination), substring = true) and
                     hasAnyAncestor(hasTestTag(TAG_RAIL)),
@@ -129,7 +129,7 @@ class AppShellTest {
     fun `the compact rail still names every destination`() {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        Destination.entries.forEach { destination ->
+        Destination.railEntries.forEach { destination ->
             compose.onAllNodes(
                 hasContentDescriptionExactly(labelOf(destination)) and
                     hasAnyAncestor(hasTestTag(TAG_RAIL)),
@@ -138,184 +138,12 @@ class AppShellTest {
     }
 
     /**
-     * Story 3.2's FAB is on the shell, so it appears over **every** destination — and the
-     * branch that puts it somewhere else would be a control the owner reaches on some
-     * devices and not others, which is what AR-18's "identical graph in both widths"
-     * exists to prevent.
-     *
-     * One test per chrome rather than both in one, because a `ComposeTestRule`
-     * accepts exactly one `setContent` per method — the reason this file's own harness
-     * drives a single tree per pass.
-     *
-     * **One exception, and it is Story 4.3's:** the FAB is *absent* on Beranda, because
-     * the summary's "Catat Setoran" tile is the only door to that action from there. So
-     * these two tests navigate to the fleet first — otherwise they would be asserting the
-     * FAB is present on the screen that deliberately has no FAB.
-     *
-     * The rail case taps by **content description**, because the compact rail draws no
-     * labels; the bottom-nav case taps by text, because that bar still draws them. Both name
-     * `"Kendaraan"` and neither touches the fleet screen's own `"Armada"` title, which is
-     * what made an earlier version of this pass while navigating to the wrong screen.
-     */
-    @Test
-    fun `the deposit FAB appears over the rail`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        compose.onNodeWithContentDescription("Kendaraan").performClick()
-        compose.waitForIdle()
-
-        compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
-        compose.onAllNodesWithTag(TAG_RAIL).assertCountEquals(1)
-    }
-
-    @Test
-    fun `the deposit FAB appears over the bottom nav`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
-
-        compose.onNodeWithText("Kendaraan").performClick()
-        compose.waitForIdle()
-
-        compose.onNodeWithTag(TAG_DEPOSIT_FAB).assertExists()
-        compose.onAllNodesWithTag(TAG_BOTTOM_NAV).assertCountEquals(1)
-    }
-
-    /**
-     * And the FAB is **absent on Beranda** — the promise `DepositFab`'s KDoc has carried
-     * since Story 3.2, waiting for the screen that would hide it.
-     *
-     * UX-DR17: *"speed dial TIDAK muncul di Beranda — grid aksi adalah satu-satunya pintu
-     * dari sini."* Two doors to one action is how one of them goes stale, and the summary's
-     * grid is the door that stays.
-     */
-    @Test
-    fun `the deposit FAB is absent on the morning summary`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        // The app opens on Beranda, so the FAB is already gone.
-        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
-    }
-
-    /**
-     * And the FAB is **absent on Setoran** — the second route in `FAB_HIDDEN_ROUTES`.
-     *
-     * The deposit screen's Input tab is the door to the sheet from there, exactly as
-     * Beranda's grid is; a FAB over the same sheet would be the third door, and two doors
-     * to one action is how one of them goes stale. Asserted the same way the Beranda
-     * absence is: by reaching the destination and finding no FAB node at all.
-     */
-    @Test
-    fun `the deposit FAB is absent on the deposit screen`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        compose.onNodeWithContentDescription("Setoran").performClick()
-        compose.waitForIdle()
-
-        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
-    }
-
-    /** And it clears the 48dp floor — UX-DR17's 54dp, measured rather than assumed. */
-    @Test
-    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
-    fun `the deposit FAB clears the touch floor`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        // The fleet, because the FAB is deliberately absent on Beranda — see the
-        // absence test above. The nav destination is `"Kendaraan"`, not the screen's
-        // `"Armada"` title; see the note on the FAB's rail test.
-        compose.onNodeWithContentDescription("Kendaraan").performClick()
-        compose.waitForIdle()
-
-        compose.onNodeWithTag(TAG_DEPOSIT_FAB)
-            .assertExists()
-            .assertWidthIsAtLeast(48.dp)
-            .assertHeightIsAtLeast(48.dp)
-    }
-
-    /**
-     * The FAB's label sits **beside** the button, and nowhere else.
-     *
-     * The defect this closes is a pure layout one and no presence assertion could see it: the
-     * label used to be emitted as a second top-level composable in `DepositFab`, which made it a
-     * sibling of nothing. `AppShell` aligns the FAB to `Alignment.BottomEnd`, so the bare `Text`
-     * was laid out at that `Box`'s **top-left** — over the first screen's content — while both
-     * nodes existed and every `assertExists()` passed. On the audited tablet "Catat Setoran"
-     * overlapped "Pengaturan".
-     *
-     * So the assertion is geometric, not existential: the two nodes are fetched and their
-     * positions compared. "Exists", "exists somewhere near the button" and "exists in the
-     * opposite corner of the screen" are three different states, and only the third one is the
-     * bug.
-     */
-    @Test
-    @Config(sdk = [34], qualifiers = "w711dp-h1138dp-port")
-    fun `the FAB label is beside the button and nowhere else`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        compose.onNodeWithContentDescription("Kendaraan").performClick()
-        compose.waitForIdle()
-
-        val button = compose.onNodeWithTag(TAG_DEPOSIT_FAB).fetchSemanticsNode().positionInRoot
-        val label = compose.onNodeWithTag(TAG_DEPOSIT_FAB_LABEL)
-            .fetchSemanticsNode()
-            .positionInRoot
-
-        // Beside: the same row. "Beside" for a label to the button's right means the label's
-        // vertical centre is within the button's own height of the button's vertical centre.
-        val buttonHeight = compose.onNodeWithTag(TAG_DEPOSIT_FAB)
-            .fetchSemanticsNode()
-            .size
-            .height
-        val labelCentre = label.y + compose.onNodeWithTag(TAG_DEPOSIT_FAB_LABEL)
-            .fetchSemanticsNode()
-            .size
-            .height / 2f
-        val buttonCentre = button.y + buttonHeight / 2f
-        assertEquals(
-            "the label is not vertically aligned with the button it names",
-            0f,
-            labelCentre - buttonCentre,
-            1f,
-        )
-
-        // And on the button's right, which is what "beside" means for this layout — the label
-        // reads after the action it names.
-        assertTrue(
-            "the label sits to the left of the button it names",
-            label.x > button.x,
-        )
-    }
-
-    /**
-     * The FAB **disappears** while the sheet is open.
-     *
-     * Both are windows: a FAB showing through an open sheet is the same defect at a
-     * smaller size as two `ModalBottomSheet`s over one state, which was the only `high`
-     * Story 2.8's review found.
-     */
-    @Test
-    fun `the FAB is absent while the deposit sheet is open`() {
-        val open = testScreens(
-            depositoState = net.klinik.rental.ui.screens.setoran.SetoranUiState(
-                form = net.klinik.rental.ui.screens.setoran.DepositFormState(
-                    // Pinned rather than defaulted: this test is about window stacking, so
-                    // the date only has to be *a* date — but a `now()` default would make
-                    // the fixture drift with the wall clock.
-                    date = java.time.LocalDate.of(2026, 10, 17),
-                ),
-            ),
-        )
-        compose.setContent { theme { AppShell(screens = open, showRail = true) } }
-
-        compose.onAllNodesWithTag(TAG_DEPOSIT_FAB).assertCountEquals(0)
-    }
-
-    /**
      * The app opens on **Beranda**, the morning summary.
      *
      * Story 4.3 moved `Destination.START` from the fleet to the summary, because the
      * summary is the screen that answers "what do I have to do today" and a summary the
      * owner has to go *to* is not a summary. The assertion is on content only the summary
-     * draws — the rail's "Beranda" label is also the screen's own title, so asserting on
+     * draws — the rail's "Dashboard" label is also the screen's own title, so asserting on
      * that would prove nothing about which screen is up.
      */
     @Test
@@ -350,245 +178,10 @@ class AppShellTest {
     fun `tapping a bottom-nav destination opens that screen`() {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = false) } }
 
-        compose.onNodeWithText("Kontrak").performClick()
+        compose.onNodeWithText("Tunggakan").performClick()
         compose.waitForIdle()
 
-        compose.onNodeWithText("Belum ada Kontrak").assertExists()
-    }
-
-    // ------------------------------------------------- Story 4.6: search results
-
-    /**
-     * Choosing a search result opens **the screen that owns it**, narrowed to that item.
-     *
-     * ## Why this drives the real shell
-     *
-     * `GlobalSearchBarTest` renders the bar with its own `onSelect`, so it proves the component
-     * *emits* a hit and stops there. Everything after the emit — the navigation, the query
-     * handed to the destination, the overlay clearing — happens in `AppShell`, so a test of the
-     * bar alone cannot reach any of it.
-     *
-     * And every shell fixture builds the search state from an empty query, which makes the bar
-     * return before drawing results. So this supplies a **typed** query and real rows; without
-     * them the results panel never composes and the whole select path is unreachable.
-     *
-     * The failure this guards is inert rather than loud: dropping the `narrowTo` call, or
-     * swapping its two branches so a renter writes to the fleet, would land the owner on the
-     * right screen with the wrong list and nothing to say why.
-     */
-    @Test
-    fun `choosing a result opens its screen narrowed to that result`() {
-        val wiring = ShellWiring().apply {
-            searchQuery = "siti"
-            searchRenters = listOf(sitiRenter(), budiRenter())
-        }
-        compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
-        }
-
-        compose.onNodeWithTag(searchResultTag("Siti Aminah")).performClick()
-        compose.waitForIdle()
-
-        // The destination moved…
-        compose.onNodeWithText("Belum ada Penyewa").assertExists()
-        // …and it moved carrying the query the hit names.
-        assertEquals(
-            "the renters screen is narrowed to the tapped renter",
-            "Siti Aminah",
-            wiring.penyewaQuery,
-        )
-    }
-
-    /**
-     * The second jump is the one that fails, and this is the case that says so.
-     *
-     * `restoreState` re-asserts a destination's saved state, so searching A, tapping, leaving,
-     * then tapping B can land on A again — the story's central claim holding on the first
-     * navigation and failing silently on every later one. It says which of the two candidate
-     * fixes is right: dropping `restoreState` from this navigation, or ordering the writes so
-     * the query wins. Both make this pass; only one is correct, and this is what decides.
-     */
-    @Test
-    fun `a second result selection wins over the destination's restored state`() {
-        val wiring = ShellWiring().apply {
-            searchQuery = "siti"
-            searchRenters = listOf(sitiRenter())
-        }
-        compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
-        }
-
-        // First search: land on the renters screen narrowed to Siti.
-        compose.onNodeWithTag(searchResultTag("Siti Aminah")).performClick()
-        compose.waitForIdle()
-        assertEquals("first jump narrowed to Siti", "Siti Aminah", wiring.penyewaQuery)
-
-        // Leave, then search for someone else and take that one instead.
-        //
-        // The fleet draws **its own** field, which replaces the shell's in the bar
-        // (`LocalTopBarSearch` is a fallback, not a source). So the walk goes to a destination
-        // that falls back to the shell's field before the query is retyped — otherwise the
-        // overlay under test is not the one mounted.
-        compose.onNodeWithContentDescription("Kendaraan").performClick()
-        compose.waitForIdle()
-        compose.onNodeWithContentDescription("Tunggakan").performClick()
-        compose.waitForIdle()
-
-        wiring.searchQuery = "budi"
-        wiring.searchRenters = listOf(sitiRenter(), budiRenter())
-        compose.waitForIdle()
-
-        compose.onNodeWithTag(searchResultTag("Budi Santoso")).performClick()
-        compose.waitForIdle()
-
-        assertEquals(
-            "the second jump narrows to Budi, not back to the restored Siti",
-            "Budi Santoso",
-            wiring.penyewaQuery,
-        )
-    }
-
-    /**
-     * Choosing a **vehicle** clears the fleet's status filter as well as its query.
-     *
-     * The fleet applies two narrowing layers, so a search that resets only one of them can
-     * open a list with nothing in it: picking a car that is currently `Servis` while the
-     * `Tersedia` chip is active lands the owner on an empty fleet with no visible reason.
-     * A search says where the thing *is*, not which slice of the list it belongs in.
-     */
-    @Test
-    fun `choosing a vehicle clears the fleet's status filter too`() {
-        // The filter is passed to the **constructor**, not set in an `apply` block: the
-        // fixture's callbacks write back into these properties on every click, so a value
-        // assigned by a block after construction would be indistinguishable from one the
-        // shell never touched.
-        val wiring = ShellWiring(
-            searchQuery = "1235",
-            searchVehicles = listOf(avanzaVehicle()),
-            // The fleet starts filtered to the cars that are *available*.
-            kendaraanFilter = VehicleFilter.Tersedia,
-        )
-        compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
-        }
-
-        compose.onNodeWithTag(searchResultTag("B 1235 TF")).performClick()
-        compose.waitForIdle()
-
-        assertEquals(
-            "the filter resets alongside the query",
-            VehicleFilter.Semua,
-            wiring.kendaraanFilter,
-        )
-        assertEquals(
-            "and the fleet is narrowed to the car that was tapped — the full plate, " +
-                "not the fragment the owner typed, so the screen's own bar shows what it can clear",
-            "B 1235 TF",
-            wiring.kendaraanQuery,
-        )
-    }
-
-    /**
-     * `SEARCH_EVERY_SCREEN`: every destination has **a** field in its bar.
-     *
-     * ## What changed, and why the tag is now two tags
-     *
-     * The field used to be one full-width row owned by the shell, above every screen. It is now
-     * inside the top bar (`index.html:92-97`), and it belongs to whoever is on screen: the fleet
-     * and the renters draw **their own** — the only control that can widen a list the global
-     * search narrowed — while the rest fall back to the shell's cross-app field
-     * (`LocalTopBarSearch`).
-     *
-     * So the claim the test makes is the one that still matters: *every* destination shows a
-     * field, and the field that is shown is reachable. Asserting one specific tag would now be
-     * asserting an implementation detail of which screen owns the field rather than the criterion.
-     */
-    @Test
-    fun `every destination shows a search field`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        Destination.entries.forEach { destination ->
-            // Scoped to the **rail**, not `onNodeWithText`: once a destination's name is also
-            // its screen's own title — which Beranda now is, being both the start destination
-            // and the first rail item — a bare text match finds two nodes and the injection
-            // fails. The rail is what this test is walking.
-            //
-            // By content description rather than by text, because this rail is the compact one
-            // and a compact rail draws no labels — see `tapRailItem`.
-            compose.onNode(
-                hasContentDescriptionExactly(destinationLabel(destination)) and
-                    hasAnyAncestor(hasTestTag(TAG_RAIL)),
-            ).performClick()
-            compose.waitForIdle()
-
-            val ownField = when (destination) {
-                Destination.Kendaraan -> TAG_KENDARAAN_SEARCH
-                Destination.Penyewa -> TAG_PENYEWA_SEARCH
-                // `Setoran` has no bar of its own — see the gap marker below.
-                Destination.Setoran -> return@forEach
-                else -> null
-            }
-            val tag = ownField ?: TAG_GLOBAL_SEARCH_FIELD
-            assertTrue(
-                "${destination.name} must show a search field",
-                compose.onAllNodesWithTag(tag).fetchSemanticsNodes().isNotEmpty(),
-            )
-        }
-    }
-
-    /**
-     * Setoran was the one destination without a bar, so it was the one destination without a
-     * search field. That gap is closed: `SetoranScreen` now draws through `KnTopBar`
-     * (`payments.html:23-35`), so the same field lands there as everywhere else.
-     *
-     * ## Why this test still exists
-     *
-     * The walk above already covers every destination in `entries`, so this is technically
-     * redundant — but it is kept as the **named** claim rather than a comment, because the gap was
-     * named for long enough that its absence is worth stating out loud. It asserts the two facts
-     * that changed: the screen carries a bar, and the bar carries the field.
-     */
-    @Test
-    fun `Setoran has a bar and therefore a search field`() {
-        compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
-
-        Destination.Setoran.let {
-            compose.onNode(
-                hasContentDescriptionExactly(destinationLabel(it)) and
-                    hasAnyAncestor(hasTestTag(TAG_RAIL)),
-            ).performClick()
-            compose.waitForIdle()
-        }
-
-        assertTrue(
-            "Setoran draws through the same bar every other screen uses",
-            compose.onAllNodesWithTag(TAG_SETORAN_TITLE).fetchSemanticsNodes().isNotEmpty() &&
-                compose.onAllNodesWithTag(TAG_GLOBAL_SEARCH_FIELD).fetchSemanticsNodes().isNotEmpty(),
-        )
-    }
-
-    /**
-     * Navigating away closes the overlay.
-     *
-     * The results are a view of *this* screen, so they must not travel to the next one and
-     * stay pinned over it.
-     */
-    @Test
-    fun `navigating away closes the results overlay`() {
-        val wiring = ShellWiring().apply {
-            searchQuery = "siti"
-            searchRenters = listOf(sitiRenter())
-        }
-        compose.setContent {
-            theme { AppShell(screens = testScreens(wiring = wiring), showRail = true) }
-        }
-
-        compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertExists()
-
-        compose.onNodeWithContentDescription("Kontrak").performClick()
-        compose.waitForIdle()
-
-        compose.onNodeWithTag(TAG_GLOBAL_SEARCH_RESULTS).assertDoesNotExist()
+        compose.onNodeWithText("Tidak ada tunggakan").assertExists()
     }
 
     @Test
@@ -598,7 +191,7 @@ class AppShellTest {
         // The app opens on Beranda now, so the *already-selected* destination is the
         // summary — and this still asserts the fleet's own screen after tapping its
         // label, because the claim is about the back stack rather than about the start.
-        compose.onNodeWithContentDescription("Kendaraan").performClick()
+        compose.onNodeWithContentDescription("Mobil").performClick()
         compose.waitForIdle()
 
         // `launchSingleTop` plus `restoreState`: re-tapping is a no-op, not a
@@ -612,7 +205,7 @@ class AppShellTest {
     /**
      * Every destination the graph declares is reachable **in the chrome**, by name.
      *
-     * Scoped to the rail, not to the screen: "Kendaraan" is also the fleet screen's own title,
+     * Scoped to the rail, not to the screen: "Mobil" is also the fleet screen's own title,
      * so an unscoped query matches two nodes and says nothing about the chrome. The chrome is
      * what is under test.
      *
@@ -628,7 +221,7 @@ class AppShellTest {
     fun `the rail carries every destination the graph declares`() {
         compose.setContent { theme { AppShell(screens = testScreens(), showRail = true) } }
 
-        Destination.entries.forEach { destination ->
+        Destination.railEntries.forEach { destination ->
             compose.onAllNodes(
                 hasContentDescriptionExactly(labelOf(destination)) and
                     hasAnyAncestor(hasTestTag(TAG_RAIL)),
@@ -661,7 +254,7 @@ class AppShellTest {
         )
         assertEquals(
             "rail rendered the wrong number of navigation targets",
-            Destination.entries.size,
+            Destination.railEntries.size,
             targets.fetchSemanticsNodes().size,
         )
 
@@ -683,7 +276,7 @@ class AppShellTest {
         )
         assertEquals(
             "bottom nav rendered the wrong number of navigation targets",
-            Destination.entries.size,
+            Destination.railEntries.size,
             targets.fetchSemanticsNodes().size,
         )
         targets.fetchSemanticsNodes().indices.forEach { i ->
@@ -767,50 +360,62 @@ class AppShellTest {
     }
 
     /**
-     * The start destination is the morning summary.
+     * The start destination is the dashboard.
      *
-     * Story 4.3 moved it from the fleet, because the summary is the screen that answers
-     * "what do I have to do today" and a summary the owner has to go *to* is not a summary.
-     *
-     * The **second** assertion — that the summary leads the table — is what this file's own
-     * convention asks for: the rail is built from `entries`, so the entry that leads the
-     * table leads the rail. Story 4.3 appended Beranda rather than putting it first,
-     * because UX-DR17's rail order needed three destinations that did not exist yet;
-     * `the rail is ordered by UX-DR17's frequency order` is the test that closes that.
+     * The prototype's rail opens on "Dashboard" (`prototype/shared.js:96`), and the app's
+     * rail now reads in the same order.
      */
     @Test
-    fun `the start destination is the morning summary`() {
-        assertEquals(Destination.Beranda, Destination.START)
+    fun `the start destination is the dashboard`() {
+        assertEquals(Destination.Dashboard, Destination.START)
     }
 
     /**
-     * The rail **is** UX-DR17's order, and this is the only test that says so.
+     * The rail **is** the prototype's order, and this is the only test that says so.
      *
      * `every entry maps to its own index` proves the table is internally consistent — a
      * re-ordering satisfies it exactly as well as the current order does. This test is what
-     * makes the re-ordering a fact rather than a KDoc claim: UX-DR17 orders the rail by how
-     * often the owner goes there, and a table that drifts back to declaration order would
-     * put Settings second and Settings is the destination he visits least.
+     * makes the re-ordering a fact rather than a KDoc claim: the prototype's
+     * `shared.js:95-104` lists the pages in this order, and a table that drifted back to
+     * declaration order would put Settings second, and Settings is the destination the
+     * owner visits least.
      *
-     * Kontrak sits **after** Kendaraan because it is not in UX-DR17's list at all — it
-     * arrived with Epic 3, after that list was written — and the prototype's screen map
-     * hangs it beneath the fleet. That is the one entry whose position is a judgement, and
-     * saying so here is what stops it being "tidied" later by someone who has forgotten.
+     * `Kontrak` is **not** in the rail: the prototype has no contract page — its contracts
+     * live inside the renter's detail pane (`renters.html:247-264`) — so the app reaches
+     * the contract screen from there and keeps it out of the chrome.
      */
     @Test
-    fun `the rail is ordered by UX-DR17's frequency order`() {
+    fun `the rail is ordered by the prototype's order`() {
         assertEquals(
             listOf(
-                Destination.Beranda,
+                Destination.Dashboard,
                 Destination.Setoran,
-                Destination.Kendaraan,
-                Destination.Kontrak,
+                Destination.Mobil,
                 Destination.Penyewa,
                 Destination.Tunggakan,
                 Destination.Laporan,
                 Destination.Pengaturan,
             ),
-            Destination.entries.toList(),
+            Destination.railEntries.toList(),
+        )
+    }
+
+    /**
+     * The contract screen is composed but not in the rail.
+     *
+     * The prototype reaches a renter's contracts from that renter's detail pane, so the
+     * app's contract destination has no rail item — but it is still a route, and a route
+     * that is composed but not in the rail is the same fact seen from the other side.
+     */
+    @Test
+    fun `the contract screen is composed but not in the rail`() {
+        assertEquals(
+            false,
+            Destination.Kontrak.showInRail,
+        )
+        assertTrue(
+            "the contract screen must not be a rail item",
+            Destination.railEntries.none { it == Destination.Kontrak },
         )
     }
 
@@ -829,12 +434,12 @@ class AppShellTest {
         // wrong screen — the wrong screen being a contract list where the owner
         // expected their fleet.
         assertEquals(null, Destination.routeAt(-1))
-        assertEquals(null, Destination.routeAt(Destination.entries.size))
+        assertEquals(null, Destination.routeAt(Destination.railEntries.size))
     }
 
     @Test
     fun `every entry maps to its own index`() {
-        Destination.entries.forEachIndexed { index, destination ->
+        Destination.railEntries.forEachIndexed { index, destination ->
             assertEquals(index, Destination.indexOf(destination.route))
             assertEquals(destination.route, Destination.routeAt(index))
         }
@@ -862,10 +467,10 @@ class AppShellTest {
         }
         compose.waitForIdle()
 
-        compose.onNodeWithContentDescription("Kontrak").performClick()
+        compose.onNodeWithContentDescription("Penyewa").performClick()
         compose.waitForIdle()
 
-        assertEquals(Destination.Kontrak.route, seen)
+        assertEquals(Destination.Penyewa.route, seen)
     }
 
     /**
@@ -877,22 +482,19 @@ class AppShellTest {
      * reason this test cannot silently stop covering a destination.
      */
     private fun labelOf(destination: Destination): String = when (destination) {
-        Destination.Kendaraan -> "Kendaraan"
+        Destination.Mobil -> "Mobil"
         Destination.Penyewa -> "Penyewa"
         Destination.Kontrak -> "Kontrak"
         Destination.Pengaturan -> "Pengaturan"
-        // The fifth, added by Story 4.1. The `when` being non-exhaustive again is the
-        // mechanism this file documents: a destination whose label is not asserted here is a
-        // nav item that could be spelled anything.
+        // The `when` being non-exhaustive is the mechanism this file documents: a
+        // destination whose label is not asserted here is a nav item that could be spelled
+        // anything.
         Destination.Tunggakan -> "Tunggakan"
-        // The sixth, added by Story 4.3 — and the one the app now opens on.
-        Destination.Beranda -> "Beranda"
-        // The seventh, added by Story 4.5. The `when` going non-exhaustive is again the
-        // mechanism this file documents: the seventh destination's label could have been
-        // spelled anything and every other assertion here would still have passed.
+        // The one the app now opens on.
+        Destination.Dashboard -> "Dashboard"
+        // The period report.
         Destination.Laporan -> "Laporan"
-        // The eighth — the deposit screen. The rail's order is now UX-DR17's, with this
-        // entry second from the top, and the label is asserted like every other's.
+        // The deposit screen.
         Destination.Setoran -> "Setoran"
     }
 
@@ -903,7 +505,7 @@ class AppShellTest {
      * prototype's compact one and a compact rail draws no labels (`shared.css:1031`). The
      * description is where a compact rail keeps the destination's name — see `KnNavRailItem`.
      *
-     * Scoped to the rail for the reason it always was: the fleet's destination is "Kendaraan"
+     * Scoped to the rail for the reason it always was: the fleet's destination is "Mobil"
      * while its screen title is "Armada", and an unscoped query for the screen's own heading
      * would tap the heading instead of the rail. Scoping keeps the tap on the chrome.
      */
@@ -1032,8 +634,8 @@ class AppShellTest {
             net.klinik.rental.ui.screens.setoran.SetoranUiState(),
         wiring: ShellWiring? = null,
     ): Screens = Screens(
-        kendaraan = Screens.Kendaraan(
-            state = KendaraanUiState(
+        mobil = Screens.Mobil(
+            state = MobilUiState(
                 query = wiring?.kendaraanQuery.orEmpty(),
                 filter = wiring?.kendaraanFilter ?: VehicleFilter.Semua,
             ),
@@ -1179,8 +781,8 @@ class AppShellTest {
         // callback in these fixtures: a defaulted handler would be a quick-action tile
         // that reaches nothing, and the tile is the only door to its action from
         // Beranda.
-        beranda = Screens.Beranda(
-            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+        dashboard = Screens.Dashboard(
+            state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
             onBackupReminderTap = {},
         ),
@@ -1196,21 +798,6 @@ class AppShellTest {
             onApplyCustomRange = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
-        ),
-        // Story 4.6's field. Required for the same reason every other parameter here is: the
-        // compiler found this call site rather than a test discovering at runtime that the
-        // shell renders a search box wired to nothing.
-        //
-        // The state is **derived** from the wiring rather than handed over, so it recomposes as
-        // the test types — the same `stateIn` shape production has.
-        search = Screens.Search(
-            state = GlobalSearchUiState.of(
-                query = wiring?.searchQuery.orEmpty(),
-                renters = wiring?.searchRenters.orEmpty(),
-                vehicles = wiring?.searchVehicles.orEmpty(),
-            ),
-            onQueryChange = { wiring?.searchQuery = it },
-            onClear = { wiring?.searchCleared() },
         ),
         // The deposit screen's wiring, stated like every other bundle here: this fixture
         // builds the container the shell hands to the route, so an omitted callback would

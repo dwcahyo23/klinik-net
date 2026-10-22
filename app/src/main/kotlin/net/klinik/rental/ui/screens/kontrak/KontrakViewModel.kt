@@ -56,7 +56,7 @@ import java.util.concurrent.atomic.AtomicBoolean
  * `observeRenters()` and `observeVehicles()` are combined regardless. A `@Query`
  * with two JOINs would add a second way to read renters and vehicles next to the
  * existing ones — the two-readers problem AD-5 exists to prevent — and would need
- * a row POJO to carry it. `KendaraanViewModel` already combines several flows in
+ * a row POJO to carry it. `MobilViewModel` already combines several flows in
  * Kotlin, and this is that pattern with one more source.
  *
  * A contract whose renter or vehicle is somehow absent from the observed flows
@@ -219,7 +219,7 @@ class KontrakViewModel(
      * error message, the exception sheet, and the exception sheet's own failure
      * message. Nesting keeps every source typed rather than reaching for the `vararg`
      * overload, which would hand the lambda an `Array<Any?>` and push the inference
-     * problem into the body. `KendaraanViewModel` and `PenyewaViewModel` nest for
+     * problem into the body. `MobilViewModel` and `PenyewaViewModel` nest for
      * exactly this reason.
      *
      * `distinctUntilChanged()` is applied *after* the projection, so a Room

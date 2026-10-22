@@ -29,7 +29,7 @@ data class AccountRow(
  * `PengaturanViewModel`).
  *
  * @param isLoading true while the account flow has not emitted anything yet.
- *   See `KendaraanUiState.isLoading` for why this cannot be `rows.isEmpty()`: the database's
+ *   See `MobilUiState.isLoading` for why this cannot be `rows.isEmpty()`: the database's
  *   first emission is an empty list, so during every load a screen that branched on
  *   emptiness showed "Belum ada rekening" — an invitation to add an account the owner
  *   already added, and, worse, a screen that reads like a fresh install. The default is

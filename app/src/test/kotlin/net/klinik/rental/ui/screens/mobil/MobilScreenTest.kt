@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -64,11 +64,11 @@ import org.robolectric.annotation.GraphicsMode
  * reviewer skims past. So the nodes are laid out and measured.
  *
  * The screen is stateless, so no database and no ViewModel is involved: the
- * states below are the real `KendaraanUiState`, built by hand.
+ * states below are the real `MobilUiState`, built by hand.
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34], qualifiers = "w800dp-h1280dp")
-class KendaraanScreenTest {
+class MobilScreenTest {
 
     @get:Rule
     val compose = createComposeRule()
@@ -280,7 +280,7 @@ class KendaraanScreenTest {
      * The screen's own gutter, measured against the **window**.
      *
      * `shared.css:285-289` pads `.page-body` once, with `--sp-6`. This screen used to apply it
-     * twice — its own `Column` at `KendaraanScreen.kt:160` padded, and `KnMasterDetail` padded
+     * twice — its own `Column` at `MobilScreen.kt:160` padded, and `KnMasterDetail` padded
      * again — which shipped 48dp where the prototype has 24dp. The padding now lives in exactly
      * one place: this screen's `Column`.
      *
@@ -383,7 +383,7 @@ class KendaraanScreenTest {
                 status = VehicleStatus.Servis,
             ),
         )
-        val state = KendaraanUiState(rows = rows, counts = countByStatus(rows))
+        val state = MobilUiState(rows = rows, counts = countByStatus(rows))
 
         compose.setContent { theme { KendaraanScreenState(state) } }
 
@@ -411,7 +411,7 @@ class KendaraanScreenTest {
                 status = VehicleStatus.Tersewa,
             ),
         )
-        val state = KendaraanUiState(rows = rows, counts = countByStatus(rows))
+        val state = MobilUiState(rows = rows, counts = countByStatus(rows))
 
         compose.setContent { theme { KendaraanScreenState(state) } }
 
@@ -428,7 +428,7 @@ class KendaraanScreenTest {
      */
     @Test
     fun `the servis filter shows only the in-service cars and its count matches`() {
-        val state = KendaraanUiState(
+        val state = MobilUiState(
             rows = listOf(
                 row("v1", "B 1235 TF", "Agya", 250_000L, VehicleStatus.Tersedia),
                 row("v2", "B 9876 AB", "Brio", 275_000L, VehicleStatus.Tersewa),
@@ -604,8 +604,8 @@ class KendaraanScreenTest {
 
     /** Routes the state through the screen with no-op actions. */
     @Composable
-    private fun KendaraanScreenState(state: KendaraanUiState) {
-        KendaraanScreen(
+    private fun KendaraanScreenState(state: MobilUiState) {
+        MobilScreen(
             state = state,
             onQueryChange = {},
             onFilterChange = {},
@@ -621,9 +621,9 @@ class KendaraanScreenTest {
         )
     }
 
-    private fun emptyState() = KendaraanUiState()
+    private fun emptyState() = MobilUiState()
 
-    private fun populatedState() = KendaraanUiState(
+    private fun populatedState() = MobilUiState(
         rows = listOf(
             row(
                 id = "v1",
@@ -664,7 +664,7 @@ class KendaraanScreenTest {
      * A fleet where one of the two cars is in service, so the `Servis` chip has
      * a real count of one and a row that is not `Tersedia`/`Tersewa`.
      */
-    private fun servisState() = KendaraanUiState(
+    private fun servisState() = MobilUiState(
         rows = listOf(
             row(
                 id = "v1",
@@ -828,13 +828,13 @@ class KendaraanScreenTest {
         )
 
     /** A fleet carrying all three statuses, so one tree exercises all three tones. */
-    private fun allThreeStatusesState(): KendaraanUiState {
+    private fun allThreeStatusesState(): MobilUiState {
         val rows = listOf(
             row("v1", "B 1235 TF", "Agya", 250_000L, VehicleStatus.Tersedia),
             row("v2", "B 9876 AB", "Brio", 275_000L, VehicleStatus.Tersewa),
             row("v3", "B 1122 EE", "Avanza", 300_000L, VehicleStatus.Servis),
         )
-        return KendaraanUiState(rows = rows, counts = countByStatus(rows))
+        return MobilUiState(rows = rows, counts = countByStatus(rows))
     }
 
     private companion object {

@@ -4,20 +4,16 @@ import androidx.compose.material3.Typography
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.Immutable
 import androidx.compose.runtime.staticCompositionLocalOf
-import androidx.compose.ui.text.PlatformTextStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.Font
 import androidx.compose.ui.text.font.FontFamily
-import androidx.compose.ui.text.font.FontStyle
-import androidx.compose.ui.text.font.FontSynthesis
 import androidx.compose.ui.text.font.FontWeight
-import androidx.compose.ui.text.style.LineHeightStyle
 import androidx.compose.ui.unit.sp
 import net.klinik.rental.R
 import androidx.compose.material3.MaterialTheme
 
 /**
- * Plus Jakarta Sans — the body face (`--font-body`).
+ * Plus Jakarta Sans — the app's **only** face.
  *
  * `shared.css` line 6 loads this from the Google Fonts CDN. An offline tablet
  * app cannot fetch at runtime, so the weights are bundled under `res/font`.
@@ -25,6 +21,19 @@ import androidx.compose.material3.MaterialTheme
  * each weight: Android's variable-font support is API 26+ and this app's minSdk
  * is 24, so shipping the variable file alone would render every weight as the
  * default instance on API 24-25.
+ *
+ * ## Why there is no second face
+ *
+ * The CSS pairs this with Fraunces for display text (`--font-display`), and the
+ * app used to mirror that pairing. The owner rejected it: a serif heading over a
+ * sans body read as two different products on one screen. So the display slots
+ * below — [KnTypography.displayLarge], [KnTypography.displaySmall] and
+ * [KnTypography.title] — carry this same family, and the hierarchy comes from
+ * **size, weight and tracking** instead of from a typeface change.
+ *
+ * The Fraunces files are gone from `res/font` for the same reason: a bundled
+ * face nothing draws is a licence to maintain and a chance to reintroduce the
+ * split by accident.
  */
 val PlusJakartaSans = FontFamily(
     Font(R.font.plus_jakarta_sans_400, FontWeight.Normal),
@@ -32,17 +41,6 @@ val PlusJakartaSans = FontFamily(
     Font(R.font.plus_jakarta_sans_600, FontWeight.SemiBold),
     Font(R.font.plus_jakarta_sans_700, FontWeight.Bold),
     Font(R.font.plus_jakarta_sans_800, FontWeight.ExtraBold),
-)
-
-/**
- * Fraunces — the display face (`--font-display`).
- *
- * Instanced at `opsz=144`, `SOFT=0`, `WONK=0`: the CSS requests `opsz,wght@9..144`
- * and never mentions SOFT or WONK, so both stay at their axis minimum.
- */
-val Fraunces = FontFamily(
-    Font(R.font.fraunces_600, FontWeight.SemiBold),
-    Font(R.font.fraunces_700, FontWeight.Bold),
 )
 
 /**
@@ -60,7 +58,6 @@ val Fraunces = FontFamily(
 @Immutable
 data class KnTypography(
     val displayLarge: TextStyle,
-    val displayMedium: TextStyle,
     val displaySmall: TextStyle,
     val title: TextStyle,
     val bodyLarge: TextStyle,
@@ -81,13 +78,13 @@ data class KnTypography(
     /**
      * A figure at display scale — the donut's centre value.
      *
-     * A separate slot rather than a `title.copy(...)` at the call site, because the
-     * whole point is that the figure face and the display face are **different faces**:
-     * [displaySmall] and [title] are Fraunces, and Fraunces has no `tnum` (verified
-     * against `res/font/fraunces_*.ttf`'s GSUB table — `case, liga, rvrn, ss01` only).
-     * So a number rendered in the display face silently loses its tabular figures, and
-     * a money figure rendered in the body face keeps them. That distinction is the
-     * token's reason to exist.
+     * The prototype's `.donut-center .dc-val` is `--fs-lg` (20px) weight 800 with
+     * `font-variant-numeric: tabular-nums`.
+     *
+     * It is a slot rather than a `title.copy(...)` at the call site because it is
+     * **weight 800 at 20sp** — the same size as [title] but heavier, and with
+     * tabular figures, which a centre value needs so the digits do not jitter
+     * as the total changes.
      */
     val figureLarge: TextStyle,
     val moneyLarge: TextStyle,
@@ -98,31 +95,32 @@ data class KnTypography(
         val Clinic = KnTypography(
             // --fs-3xl
             displayLarge = TextStyle(
-                fontFamily = Fraunces,
+                fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 48.sp,
                 lineHeight = 56.sp,
                 letterSpacing = (-1.2).sp,
             ),
-            // --fs-2xl — used for KPI values, which are usually money.
-            // `tnum` is not optional here: a KPI row is read by comparing
-            // figures side by side, and without tabular digits the thousands
-            // separator makes the column jitter as amounts change. Fraunces has
-            // no `onum` figures, so this is inert on this face — which is
-            // exactly why the KPI tile also renders its figure in
-            // [KnKpiTile]'s dedicated style rather than relying on the display
-            // face for alignment.
-            displayMedium = TextStyle(
-                fontFamily = Fraunces,
-                fontWeight = FontWeight.Bold,
+            // --fs-2xl — the KPI value. `tnum` is not optional here: a KPI row is
+            // read by comparing figures side by side, and without tabular digits
+            // the thousands separator makes the column jitter as amounts change.
+            //
+            // This was `displayMedium` and `moneyLarge` as two slots. They split
+            // only because the display face was Fraunces, which carries no `tnum`
+            // — so a figure needed a second, body-face slot at the same size to
+            // keep its digits aligned. There is one face now, so the pair is
+            // one style: `--fs-2xl` weight 800, tabular.
+            moneyLarge = TextStyle(
+                fontFamily = PlusJakartaSans,
+                fontWeight = FontWeight.ExtraBold,
                 fontSize = 36.sp,
-                lineHeight = 42.sp,
-                letterSpacing = (-1.0).sp,
+                lineHeight = 40.sp,
+                letterSpacing = (-1.2).sp,
                 fontFeatureSettings = TABULAR_FIGURES,
             ),
             // --fs-xl
             displaySmall = TextStyle(
-                fontFamily = Fraunces,
+                fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 28.sp,
                 lineHeight = 34.sp,
@@ -130,7 +128,7 @@ data class KnTypography(
             ),
             // --fs-lg — the page title.
             title = TextStyle(
-                fontFamily = Fraunces,
+                fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.Bold,
                 fontSize = 20.sp,
                 lineHeight = 26.sp,
@@ -179,22 +177,12 @@ data class KnTypography(
                 fontFeatureSettings = TABULAR_FIGURES,
             ),
             // `.donut-center .dc-val` — fs-lg, weight 800, tracking -.8, tabular.
-            // The body face, because a donut's centre is a number and numbers take
-            // tabular figures from the body face only.
             figureLarge = TextStyle(
                 fontFamily = PlusJakartaSans,
                 fontWeight = FontWeight.ExtraBold,
                 fontSize = 20.sp,
                 lineHeight = 24.sp,
                 letterSpacing = (-0.8).sp,
-                fontFeatureSettings = TABULAR_FIGURES,
-            ),
-            moneyLarge = TextStyle(
-                fontFamily = PlusJakartaSans,
-                fontWeight = FontWeight.ExtraBold,
-                fontSize = 36.sp,
-                lineHeight = 40.sp,
-                letterSpacing = (-1.2).sp,
                 fontFeatureSettings = TABULAR_FIGURES,
             ),
             numpadKey = TextStyle(
@@ -240,14 +228,14 @@ val MaterialTheme.knTypography: KnTypography
  * what breaks it.
  *
  * `KnTypography.Clinic` lives in a companion object, and its styles name
- * [Fraunces] and [PlusJakartaSans] — top-level properties of *this* file. So
- * initialising the companion initialises this file. But this property reads
+ * [PlusJakartaSans] — a top-level property of *this* file. So initialising the
+ * companion initialises this file. But this property reads
  * `KnTypography.Clinic`, so initialising this file initialises the companion. The
  * two call each other, and which one is entered first decides whether the second
  * one sees a finished value or `null`.
  *
- * Entered from this file first, it works: [Fraunces] is already assigned by the
- * time this line runs, and the companion initialises cleanly. Entered from the
+ * Entered from this file first, it works: [PlusJakartaSans] is already assigned by
+ * the time this line runs, and the companion initialises cleanly. Entered from the
  * companion first, it does not: the companion is still initialising, so
  * `KnTypography.Clinic` is `null` here, and the `Typography` constructor throws
  * `NullPointerException` — `ExceptionInInitializerError` for every test that
@@ -260,15 +248,15 @@ val MaterialTheme.knTypography: KnTypography
  */
 val ClinicTypography: Typography by lazy {
     Typography(
-        displayLarge = KnTypography.Clinic.displayLarge.copy(fontFamily = Fraunces),
-        displayMedium = KnTypography.Clinic.displayMedium.copy(fontFamily = Fraunces),
-        displaySmall = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
-        headlineLarge = KnTypography.Clinic.displaySmall.copy(fontFamily = Fraunces),
-        headlineMedium = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-        headlineSmall = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-        titleLarge = KnTypography.Clinic.title.copy(fontFamily = Fraunces),
-        titleMedium = KnTypography.Clinic.bodyLarge.copy(fontFamily = PlusJakartaSans),
-        titleSmall = KnTypography.Clinic.label.copy(fontFamily = PlusJakartaSans),
+        displayLarge = KnTypography.Clinic.displayLarge,
+        displayMedium = KnTypography.Clinic.moneyLarge,
+        displaySmall = KnTypography.Clinic.displaySmall,
+        headlineLarge = KnTypography.Clinic.displaySmall,
+        headlineMedium = KnTypography.Clinic.title,
+        headlineSmall = KnTypography.Clinic.title,
+        titleLarge = KnTypography.Clinic.title,
+        titleMedium = KnTypography.Clinic.bodyLarge,
+        titleSmall = KnTypography.Clinic.label,
         bodyLarge = KnTypography.Clinic.bodyLarge,
         bodyMedium = KnTypography.Clinic.body,
         bodySmall = KnTypography.Clinic.body,

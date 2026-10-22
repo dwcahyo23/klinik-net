@@ -22,16 +22,14 @@ https://composables.com/icons/icon-libraries/lucide (MIT).
 Bundled typefaces
 -----------------
 
-The app bundles two families under app/src/main/res/font/. The prototype loads
-them from the Google Fonts CDN at runtime; an offline tablet app cannot, so the
+The app bundles one family under app/src/main/res/font/. The prototype loads
+it from the Google Fonts CDN at runtime; an offline tablet app cannot, so the
 glyphs ship in the APK.
 
   Plus Jakarta Sans  — SIL Open Font License 1.1
                        https://fonts.google.com/specimen/Plus+Jakarta+Sans
-  Fraunces           — SIL Open Font License 1.1
-                       https://fonts.google.com/specimen/Fraunces
 
-Both were obtained from the google/fonts repository and instanced to static
+It was obtained from the google/fonts repository and instanced to static
 cuts at the weights the stylesheet asks for. Variable-font support is API 26+
 and this app's minSdk is 24, so a variable file alone would render every weight
 as the default instance on API 24-25.
@@ -39,10 +37,6 @@ as the default instance on API 24-25.
     Plus Jakarta Sans
     Copyright 2020 The Plus Jakarta Sans Project Authors
     https://github.com/tokotype/PlusJakartaSans
-
-    Fraunces
-    Copyright 2018 The Fraunces Project Authors
-    https://github.com/undercasetype/Fraunces
 
     SIL OPEN FONT LICENSE Version 1.1
 

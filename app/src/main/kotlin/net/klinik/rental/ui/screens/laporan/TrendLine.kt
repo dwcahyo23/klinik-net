@@ -1,11 +1,12 @@
 package net.klinik.rental.ui.screens.laporan
 
-import androidx.compose.foundation.Canvas
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Path
 import androidx.compose.ui.graphics.StrokeCap
@@ -17,9 +18,17 @@ import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.knColors
 
 /**
- * The seven-day income trend, drawn on a [Canvas].
+ * The seven-day income trend, drawn with [Modifier.drawBehind].
  *
- * ## Why `Canvas` and not a chart library
+ * ## Why `drawBehind` and not a `Canvas`
+ *
+ * Because the epic decided not to add a chart library, and the platform already ships a
+ * drawing surface — but the surface does not have to be a `Canvas` *composable*. A
+ * `drawBehind` modifier draws in the same box as the content it decorates, so the trend
+ * cannot end up a pixel away from the card it belongs to, and it adds no layout node for
+ * the card to account for.
+ *
+ * ## Why not a chart library
  *
  * Because the epic decided it and the reason is worth keeping: the platform ships a drawing
  * surface, and a chart library would be the app's first runtime dependency for a screen that
@@ -58,49 +67,50 @@ fun TrendLine(
     val strokeColour = MaterialTheme.knColors.primaryFill
     val gridColour = MaterialTheme.knColors.border
 
-    Canvas(
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(TREND_HEIGHT)
             // The line is a picture, so it carries words rather than a click action — the
             // same rule every chart-like surface in this app follows.
             .semantics { contentDescription = description }
-            .testTag(TAG_TREND),
-    ) {
-        if (points.size < 2) {
-            // One point is not a trend, and a flat line through a single day would draw a
-            // slope that never existed.
-            return@Canvas
-        }
+            .testTag(TAG_TREND)
+            .drawBehind {
+                if (points.size < 2) {
+                    // One point is not a trend, and a flat line through a single day would draw a
+                    // slope that never existed.
+                    return@drawBehind
+                }
 
-        val largest = points.maxOrNull() ?: return@Canvas
-        val baseline = size.height
-        val step = size.width / (points.size - 1).toFloat()
+                val largest = points.maxOrNull() ?: return@drawBehind
+                val baseline = size.height
+                val step = size.width / (points.size - 1).toFloat()
 
-        // A zero total would divide the whole chart by zero, and every figure here is a
-        // rupiah amount so zero is a real week rather than a missing one.
-        val scale = if (largest <= 0L) 0f else baseline / largest
+                // A zero total would divide the whole chart by zero, and every figure here is a
+                // rupiah amount so zero is a real week rather than a missing one.
+                val scale = if (largest <= 0L) 0f else baseline / largest
 
-        val path = Path()
-        points.forEachIndexed { index, total ->
-            val x = step * index
-            val y = baseline - (total.toFloat() * scale)
-            if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
-        }
+                val path = Path()
+                points.forEachIndexed { index, total ->
+                    val x = step * index
+                    val y = baseline - (total.toFloat() * scale)
+                    if (index == 0) path.moveTo(x, y) else path.lineTo(x, y)
+                }
 
-        drawLine(
-            color = gridColour,
-            start = Offset(0f, baseline),
-            end = Offset(size.width, baseline),
-            strokeWidth = 1f,
-        )
+                drawLine(
+                    color = gridColour,
+                    start = Offset(0f, baseline),
+                    end = Offset(size.width, baseline),
+                    strokeWidth = 1f,
+                )
 
-        drawPath(
-            path = path,
-            color = strokeColour,
-            style = Stroke(width = STROKE_WIDTH, cap = StrokeCap.Round),
-        )
-    }
+                drawPath(
+                    path = path,
+                    color = strokeColour,
+                    style = Stroke(width = STROKE_WIDTH, cap = StrokeCap.Round),
+                )
+            },
+    )
 }
 
 /**

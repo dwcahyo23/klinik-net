@@ -37,16 +37,15 @@ import net.klinik.rental.data.repository.RenterRepository
 import net.klinik.rental.data.repository.ThemeMode
 import net.klinik.rental.data.repository.ThemeRepository
 import net.klinik.rental.data.repository.VehicleRepository
-import net.klinik.rental.ui.screens.beranda.BerandaViewModel
 import net.klinik.rental.ui.screens.laporan.LaporanViewModel
-import net.klinik.rental.ui.screens.kendaraan.KendaraanViewModel
+import net.klinik.rental.ui.screens.mobil.MobilViewModel
 import net.klinik.rental.ui.screens.kontrak.KontrakViewModel
 import net.klinik.rental.ui.screens.pengaturan.PengaturanViewModel
 import net.klinik.rental.ui.screens.setoran.SetoranViewModel
 import net.klinik.rental.ui.screens.penyewa.PenyewaViewModel
 import net.klinik.rental.ui.screens.tunggakan.TunggakanViewModel
 import net.klinik.rental.ui.shell.AppShell
-import net.klinik.rental.ui.shell.GlobalSearchViewModel
+import net.klinik.rental.ui.screens.dashboard.DashboardViewModel
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.strings.RStrings
 import net.klinik.rental.ui.theme.KlinikNetTheme
@@ -86,11 +85,11 @@ class MainActivity : ComponentActivity() {
      * is the acknowledged limit of that choice — the message survives the
      * destination change but stays attached to its own screen's ViewModel.
      */
-    private val kendaraanViewModel: KendaraanViewModel by viewModels {
+    private val mobilViewModel: MobilViewModel by viewModels {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                createKendaraanViewModel(applicationContext) as T
+                createMobilViewModel(applicationContext) as T
         }
     }
 
@@ -149,11 +148,11 @@ class MainActivity : ComponentActivity() {
      * and a ViewModel per screen is what keeps each one's `combine` from growing a source
      * the others have to carry.
      */
-    private val berandaViewModel: BerandaViewModel by viewModels {
+    private val dashboardViewModel: DashboardViewModel by viewModels {
         object : ViewModelProvider.Factory {
             @Suppress("UNCHECKED_CAST")
             override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                createBerandaViewModel(applicationContext) as T
+                createDashboardViewModel(applicationContext) as T
         }
     }
 
@@ -171,19 +170,6 @@ class MainActivity : ComponentActivity() {
     }
 
     /**
-     * Story 4.6's global search. Its own lifetime for the reason every other ViewModel here has
-     * one: the query must survive a rotation, and a field that emptied itself on every
-     * configuration change is a search the owner retypes each time they turn the tablet.
-     */
-    private val searchViewModel: GlobalSearchViewModel by viewModels {
-        object : ViewModelProvider.Factory {
-            @Suppress("UNCHECKED_CAST")
-            override fun <T : ViewModel> create(modelClass: Class<T>): T =
-                createGlobalSearchViewModel(applicationContext) as T
-        }
-    }
-
-/**
      * Whether the app is showing the lock rather than the shell.
      *
      * **`true` until the first read says otherwise.** The lock is on screen for the frame before
@@ -294,15 +280,14 @@ class MainActivity : ComponentActivity() {
                         )
                     } else {
                         KlinikNetApp(
-                            kendaraan = kendaraanViewModel,
+                            mobil = mobilViewModel,
                             penyewa = penyewaViewModel,
                             kontrak = kontrakViewModel,
                             pengaturan = pengaturanViewModel,
                             setoran = setoranViewModel,
                             tunggakan = tunggakanViewModel,
-                            beranda = berandaViewModel,
+                            dashboard = dashboardViewModel,
                             laporan = laporanViewModel,
-                            search = searchViewModel,
                             // Story 5.1's export, built here from the same singleton the settings
                             // ViewModel reads — the route needs it for the picker's filename, and a
                             // repository rather than a ViewModel because it holds no state.
@@ -372,9 +357,9 @@ class MainActivity : ComponentActivity() {
  * Top-level rather than a companion so the tests can build the same object graph
  * against an in-memory database without going through an Activity.
  */
-internal fun createKendaraanViewModel(context: Context): KendaraanViewModel {
+internal fun createMobilViewModel(context: Context): MobilViewModel {
     val database = KlinikDatabase.get(context)
-    return KendaraanViewModel(
+    return MobilViewModel(
         repository = VehicleRepository(database.vehicleDao(), database),
         strings = RStrings(context),
         // The detail pane's two joins: who is renting the selected car, and on what terms.
@@ -389,7 +374,7 @@ internal fun createKendaraanViewModel(context: Context): KendaraanViewModel {
     )
 }
 
-/** The renters' ViewModel over the same singleton. See [createKendaraanViewModel]. */
+/** The renters' ViewModel over the same singleton. See [createMobilViewModel]. */
 internal fun createPenyewaViewModel(context: Context): PenyewaViewModel {
     val database = KlinikDatabase.get(context)
     return PenyewaViewModel(
@@ -406,22 +391,6 @@ internal fun createPenyewaViewModel(context: Context): PenyewaViewModel {
             database,
         ),
         vehicles = VehicleRepository(database.vehicleDao(), database),
-    )
-}
-
-/**
- * Story 4.6's global search, over the two repositories it reads.
- *
- * Both are **existing** ones, and that is the design rather than a shortcut: the field searches
- * the same two lists the renters and fleet screens show, through Room's own invalidation flows.
- * A search-specific query would be a second place the matching rule lives — and a second answer
- * to "does this renter match", which is exactly what `matchesRenterQuery`'s KDoc warns about.
- */
-internal fun createGlobalSearchViewModel(context: Context): GlobalSearchViewModel {
-    val database = KlinikDatabase.get(context)
-    return GlobalSearchViewModel(
-        renterRepository = RenterRepository(database.renterDao()),
-        vehicleRepository = VehicleRepository(database.vehicleDao()),
     )
 }
 
@@ -611,9 +580,9 @@ internal fun createSetoranViewModel(context: Context): SetoranViewModel {
  * The screen has no arithmetic of its own — that is the whole of its design — so it needs
  * nothing new to read from.
  */
-internal fun createBerandaViewModel(context: Context): BerandaViewModel {
+internal fun createDashboardViewModel(context: Context): DashboardViewModel {
     val database = KlinikDatabase.get(context)
-    return BerandaViewModel(
+    return DashboardViewModel(
         payments = PaymentRepository(
             paymentDao = database.paymentDao(),
             allocationDao = database.allocationDao(),
@@ -648,7 +617,7 @@ internal fun createBerandaViewModel(context: Context): BerandaViewModel {
 /**
  * Builds the period report's ViewModel over the database singleton.
  *
- * [PaymentRepository] is built over the **same** DAO set `createBerandaViewModel` builds, and
+ * [PaymentRepository] is built over the **same** DAO set `createDashboardViewModel` builds, and
  * that is the point rather than an accident of wiring: the report's figures and the morning
  * summary's must come from the same reads, so they share the repository's shape. Two
  * repositories over one database would be harmless here but would invite the second
@@ -744,15 +713,14 @@ internal fun createTunggakanViewModel(context: Context): TunggakanViewModel {
  */
 @Composable
 private fun KlinikNetApp(
-    kendaraan: KendaraanViewModel,
+    mobil: MobilViewModel,
     penyewa: PenyewaViewModel,
     kontrak: KontrakViewModel,
     pengaturan: PengaturanViewModel,
     setoran: SetoranViewModel,
     tunggakan: TunggakanViewModel,
-    beranda: BerandaViewModel,
+    dashboard: DashboardViewModel,
     laporan: LaporanViewModel,
-    search: GlobalSearchViewModel,
     // Story 5.1's export, **not** a ViewModel.
     //
     // The export is a read plus a write, it holds no state of its own between calls, and
@@ -761,8 +729,8 @@ private fun KlinikNetApp(
     // and the one fact the route needs from it, the filename, is a pure function of a date.
     backups: BackupRepository,
 ) {
-    val kendaraanState by kendaraan.uiState.collectAsStateWithLifecycle()
-    val kendaraanSnackbar by kendaraan.snackbarMessage.collectAsStateWithLifecycle()
+    val mobilState by mobil.uiState.collectAsStateWithLifecycle()
+    val mobilSnackbar by mobil.snackbarMessage.collectAsStateWithLifecycle()
     val penyewaState by penyewa.uiState.collectAsStateWithLifecycle()
     val penyewaSnackbar by penyewa.snackbarMessage.collectAsStateWithLifecycle()
     val kontrakState by kontrak.uiState.collectAsStateWithLifecycle()
@@ -794,13 +762,11 @@ private fun KlinikNetApp(
     // Story 4.3's morning summary. A whole screen rather than a sheet, so its banner would
     // live on its own state — but it has no banner, because every figure it shows comes
     // from a read that either succeeded or is still loading, and neither is a refusal.
-    val berandaState by beranda.uiState.collectAsStateWithLifecycle()
+    val dashboardState by dashboard.uiState.collectAsStateWithLifecycle()
     // Story 4.5's two collections: the figures, and the periods the picker offers. The
     // picker is its own flow so a chip appearing does not recompose the four tiles.
     val laporanState by laporan.uiState.collectAsStateWithLifecycle()
     val laporanPeriods by laporan.periodOptions.collectAsStateWithLifecycle()
-    // Story 4.6's global search field, mounted by the shell above every destination.
-    val searchState by search.uiState.collectAsStateWithLifecycle()
 
     Surface(
         modifier = Modifier.fillMaxSize(),
@@ -809,20 +775,20 @@ private fun KlinikNetApp(
     ) {
         AppShell(
             screens = Screens(
-                kendaraan = Screens.Kendaraan(
-                    state = kendaraanState,
-                    snackbarMessage = kendaraanSnackbar,
-                    onQueryChange = kendaraan::onQueryChange,
-                    onFilterChange = kendaraan::onFilterChange,
-                    onClearQuery = kendaraan::clearQuery,
-                    onAdd = kendaraan::openAddForm,
-                    onSelect = kendaraan::select,
-                    onEdit = kendaraan::openEditForm,
-                    onCloseForm = kendaraan::closeForm,
-                    onFormChange = kendaraan::onFormChange,
-                    onSave = kendaraan::saveForm,
-                    onSnackbarDismiss = kendaraan::consumeMessage,
-                    onErrorDismiss = kendaraan::consumeError,
+                mobil = Screens.Mobil(
+                    state = mobilState,
+                    snackbarMessage = mobilSnackbar,
+                    onQueryChange = mobil::onQueryChange,
+                    onFilterChange = mobil::onFilterChange,
+                    onClearQuery = mobil::clearQuery,
+                    onAdd = mobil::openAddForm,
+                    onSelect = mobil::select,
+                    onEdit = mobil::openEditForm,
+                    onCloseForm = mobil::closeForm,
+                    onFormChange = mobil::onFormChange,
+                    onSave = mobil::saveForm,
+                    onSnackbarDismiss = mobil::consumeMessage,
+                    onErrorDismiss = mobil::consumeError,
                 ),
                 penyewa = Screens.Penyewa(
                     state = penyewaState,
@@ -998,15 +964,15 @@ private fun KlinikNetApp(
                 // the shell owns the nav controller, so the route derives them from it.
                 // Putting a navigation here would need a second nav controller, and two
                 // of them is a back stack that disagrees with itself.
-                beranda = Screens.Beranda(
-                    state = berandaState,
+                dashboard = Screens.Dashboard(
+                    state = dashboardState,
                     onDeposit = setoran::openDeposit,
                     // Story 5.5: the owner tapped the backup reminder. Nothing is written and
                     // no route is taken here — the dialog is the screen's own window and the
                     // navigation belongs to the shell. This is here so the tap is observable
                     // at all, which is the difference between "a dialog appeared" and "the
                     // app knows the owner is worried about their backup".
-                    onBackupReminderTap = beranda::onBackupReminderTapped,
+                    onBackupReminderTap = dashboard::onBackupReminderTapped,
                 ),
                 // Story 4.5's report. No navigation verb: the only control is picking a
                 // period, which is the screen's own state, so a second nav controller here
@@ -1028,14 +994,6 @@ private fun KlinikNetApp(
                     // so `NavGraph` builds it and hands it to the route directly.
                     onExportFileChosen = laporan::exportTo,
                     csvFilename = { laporan.csvFilename() },
-                ),
-                // Story 4.6's search field. No `onSelect` here: choosing a result is a
-                // navigation, and the nav controller lives in the shell — see
-                // `Screens.Search`'s KDoc.
-                search = Screens.Search(
-                    state = searchState,
-                    onQueryChange = search::onQueryChange,
-                    onClear = search::clearQuery,
                 ),
                 // The deposit screen's own wiring. Its three callbacks go to the
                 // **deposit** ViewModel — the same object the sheet uses — because the

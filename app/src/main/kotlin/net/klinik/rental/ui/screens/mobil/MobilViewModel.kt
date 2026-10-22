@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -42,10 +42,10 @@ import java.time.Clock
  * ## The three flows that are combined
  *
  * Room's vehicles, the search query, the status filter, plus the form state. All
- * are combined into one [KendaraanUiState] and `distinctUntilChanged()`d, so a
+ * are combined into one [MobilUiState] and `distinctUntilChanged()`d, so a
  * query change that does not alter the result set does not recompose the list.
  */
-class KendaraanViewModel(
+class MobilViewModel(
     private val repository: VehicleRepository,
     private val strings: RStrings,
     /**
@@ -82,7 +82,7 @@ class KendaraanViewModel(
     /**
      * Which vehicle the detail pane is showing.
      *
-     * `null` means "nothing chosen yet", and [KendaraanUiState.selectedRow] falls back to the
+     * `null` means "nothing chosen yet", and [MobilUiState.selectedRow] falls back to the
      * first visible row — the prototype's own rule (`cars.html:202`).
      */
     private val selectedVehicleId = MutableStateFlow<String?>(null)
@@ -116,7 +116,7 @@ class KendaraanViewModel(
      * one typed rather than reaching for the `vararg` overload, which would hand
      * the lambda an `Array<Any?>` and push the inference problem into the body.
      */
-    val uiState: StateFlow<KendaraanUiState> = combine(
+    val uiState: StateFlow<MobilUiState> = combine(
         combine(
             vehiclesWithLoadFlag(),
             repository.observeRentedPlates(),
@@ -154,7 +154,7 @@ class KendaraanViewModel(
         val selected = fleet.rows.firstOrNull { it.vehicle.id == selection }
             ?: fleet.rows.firstOrNull()
 
-        KendaraanUiState(
+        MobilUiState(
             rows = fleet.rows,
             query = fleet.query,
             filter = fleet.filter,
@@ -184,7 +184,7 @@ class KendaraanViewModel(
             // emitted there is genuinely nothing to show, and the default's `false`
             // would render the empty state — "your fleet is empty, add a car" —
             // for the frame between here and the first emission.
-            initialValue = KendaraanUiState(isLoading = true),
+            initialValue = MobilUiState(isLoading = true),
         )
 
     /**

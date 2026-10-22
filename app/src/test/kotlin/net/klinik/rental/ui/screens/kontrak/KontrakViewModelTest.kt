@@ -1036,7 +1036,7 @@ class KontrakViewModelTest {
      * "the vehicle reads `tersedia`" is a claim about a different screen than the one
      * that performed the write.
      *
-     * Asserted via `observeRented()`, which is exactly what `KendaraanViewModel`
+     * Asserted via `observeRented()`, which is exactly what `MobilViewModel`
      * collects. A status column updated correctly but not consulted here would leave the
      * fleet list reading `tersewa` for a car that was handed back.
      */

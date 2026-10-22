@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -46,7 +46,7 @@ import java.time.ZoneOffset
  */
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class BerandaKpiTest {
+class DashboardKpiTest {
 
     private lateinit var database: KlinikDatabase
     private lateinit var payments: PaymentRepository

@@ -116,7 +116,7 @@ class ContractRepositoryTest {
      * screen.
      *
      * Asserted through `VehicleRepository.observeRentedPlates`, which is the exact
-     * flow `KendaraanViewModel` combines into `VehicleStatus.Tersewa` — so this is
+     * flow `MobilViewModel` combines into `VehicleStatus.Tersewa` — so this is
      * the derivation the fleet screen reads, not a re-implementation of it.
      */
     @Test

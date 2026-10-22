@@ -22,7 +22,7 @@ import java.time.LocalDate
  * screen stateless — it renders what it is handed — and keeps the join in one
  * place instead of in every row composable.
  *
- * The money and the date are pre-rendered for the same reason `KendaraanScreen`'s
+ * The money and the date are pre-rendered for the same reason `MobilScreen`'s
  * rows carry `rateText`: `formatRupiah` and the date formatter are called once per
  * emission, in the ViewModel, so two screens cannot disagree about how a rate or a
  * date looks.
@@ -89,7 +89,7 @@ data class ContractRow(
  * (see `KontrakViewModel`).
  *
  * @param isLoading true while the contract flow has not emitted anything yet.
- *   See `KendaraanUiState.isLoading`: Room's first emission is an empty list, so
+ *   See `MobilUiState.isLoading`: Room's first emission is an empty list, so
  *   a screen that branched on emptiness showed "Belum ada Kontrak" during every
  *   load. The default is `false` for hand-built fixtures; `KontrakViewModel`'s
  *   `stateIn` initial value passes `true`.

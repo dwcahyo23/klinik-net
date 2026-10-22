@@ -60,3 +60,8 @@ desktop.ini
 .bmad-loop/runs/
 .bmad-loop/cache/
 .bmad-loop/policy.toml
+
+# Scratch output from the device-vs-prototype UI review
+.shots/
+screenshoot/
+.trash/

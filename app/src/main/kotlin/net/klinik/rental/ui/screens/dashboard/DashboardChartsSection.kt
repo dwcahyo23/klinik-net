@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -44,9 +44,9 @@ import net.klinik.rental.ui.theme.knTypography
  * The dashboard's charts, its period comparison, and its transaction table —
  * `dashboard.html:58-117`.
  *
- * ## Why this is a second file rather than more of [BerandaScreen]
+ * ## Why this is a second file rather than more of [DashboardScreen]
  *
- * Because `BerandaScreen` is the *morning* screen — four figures and four doors — and this is the
+ * Because `DashboardScreen` is the *morning* screen — four figures and four doors — and this is the
  * **dashboard** the prototype puts behind its own rail item. They share a route today because the
  * app opens where the prototype opens, but they are two different readings of the same data and a
  * 900-line screen would make the next one harder to find.
@@ -54,7 +54,7 @@ import net.klinik.rental.ui.theme.knTypography
  * ## Why nothing here formats a figure
  *
  * Every number arrives formatted in [DashboardCharts]. The only strings assembled here are the
- * sentences the resources already hold, which is the rule `BerandaUiState`'s KDoc gives.
+ * sentences the resources already hold, which is the rule `DashboardUiState`'s KDoc gives.
  */
 @Composable
 internal fun DashboardChartsSection(

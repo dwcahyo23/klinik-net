@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -45,7 +45,7 @@ import org.robolectric.annotation.Config
  */
 @RunWith(AndroidJUnit4::class)
 @Config(sdk = [34])
-class BerandaScreenTest {
+class DashboardScreenTest {
 
     @get:Rule
     val compose = createComposeRule()
@@ -63,13 +63,12 @@ class BerandaScreenTest {
         compose.setContent { theme { Screen(state = berandaState()) } }
 
         compose.onNodeWithTag(TAG_KPI_INCOME).assertExists()
+        compose.onNodeWithTag(TAG_KPI_CUTOFF).assertExists()
         compose.onNodeWithTag(TAG_KPI_ARREARS).assertExists()
-        compose.onNodeWithTag(TAG_KPI_FLEET).assertExists()
         compose.onNodeWithTag(TAG_KPI_RATE).assertExists()
 
         compose.onNodeWithText("Rp 750.000").assertExists()
         compose.onNodeWithText("Rp 4.250.000").assertExists()
-        compose.onNodeWithText("12 · 3 · 1").assertExists()
         compose.onNodeWithText("15%").assertExists()
     }
 
@@ -86,12 +85,12 @@ class BerandaScreenTest {
         compose.setContent { theme { Screen(state = berandaState()) } }
 
         val income = compose.onNodeWithTag(TAG_KPI_INCOME).fetchSemanticsNode().size.height
+        val cutoff = compose.onNodeWithTag(TAG_KPI_CUTOFF).fetchSemanticsNode().size.height
         val arrears = compose.onNodeWithTag(TAG_KPI_ARREARS).fetchSemanticsNode().size.height
-        val fleet = compose.onNodeWithTag(TAG_KPI_FLEET).fetchSemanticsNode().size.height
         val rate = compose.onNodeWithTag(TAG_KPI_RATE).fetchSemanticsNode().size.height
 
+        assertEquals("income and the cutoff tile are the same height", income, cutoff)
         assertEquals("income and arrears are the same height", income, arrears)
-        assertEquals("income and the fleet are the same height", income, fleet)
         assertEquals("income and the rate are the same height", income, rate)
     }
 
@@ -108,60 +107,6 @@ class BerandaScreenTest {
         compose.onNodeWithTag(TAG_KPI_INCOME).assertHeightIsAtLeast(48.dp)
     }
 
-    // ------------------------------------------------------------- the quick actions
-
-    /**
-     * The four quick actions are present, and each is a **target**.
-     *
-     * The criterion is that every action leads somewhere that exists, and the first half of
-     * that is that all four are there.
-     */
-    @Test
-    fun `the four quick actions are present and tappable`() {
-        compose.setContent { theme { Screen(state = berandaState()) } }
-
-        compose.onNodeWithTag(TAG_QUICK_ACTION_GRID).assertExists()
-        compose.onNodeWithTag(quickActionTag(QuickAction.CatatSetoran)).assertExists()
-        compose.onNodeWithTag(quickActionTag(QuickAction.TambahMobil)).assertExists()
-        compose.onNodeWithTag(quickActionTag(QuickAction.KelolaPenyewa)).assertExists()
-        compose.onNodeWithTag(quickActionTag(QuickAction.KirimPengingat)).assertExists()
-
-        compose.onNodeWithTag(quickActionTag(QuickAction.CatatSetoran)).assertHasClickAction()
-    }
-
-    /**
-     * Tapping an action reaches **that** action's handler.
-     *
-     * The click-through that `assertExists()` cannot do: a grid whose four tiles all called
-     * the same handler would pass every existence assertion, and the owner would find
-     * "Tambah Mobil" recording a deposit.
-     */
-    @Test
-    fun `tapping an action reaches its own handler`() {
-        var chosen: String? = null
-        compose.setContent {
-            theme {
-                Screen(
-                    state = berandaState(),
-                    onDeposit = { chosen = "deposit" },
-                    onAddVehicle = { chosen = "vehicle" },
-                    onManageRenters = { chosen = "renter" },
-                    onSendReminder = { chosen = "reminder" },
-                )
-            }
-        }
-
-        compose.onNodeWithTag(quickActionTag(QuickAction.TambahMobil))
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
-        assertEquals("the vehicle action", "vehicle", chosen)
-
-        compose.onNodeWithTag(quickActionTag(QuickAction.KirimPengingat))
-            .performSemanticsAction(SemanticsActions.OnClick)
-        compose.waitForIdle()
-        assertEquals("and then the reminder one", "reminder", chosen)
-    }
-
     // ------------------------------------------------------------------ the loading
 
     /**
@@ -172,7 +117,7 @@ class BerandaScreenTest {
      */
     @Test
     fun `loading draws a skeleton per tile and no figures`() {
-        compose.setContent { theme { Screen(state = BerandaUiState(isLoading = true)) } }
+        compose.setContent { theme { Screen(state = DashboardUiState(isLoading = true)) } }
 
         compose.onAllNodesWithTag(TAG_KPI_SKELETON).assertCountEquals(4)
         compose.onNodeWithText("Rp 750.000").assertDoesNotExist()
@@ -195,7 +140,7 @@ class BerandaScreenTest {
         var loading by mutableStateOf(false)
         compose.setContent {
             theme {
-                Screen(state = if (loading) BerandaUiState(isLoading = true) else berandaState())
+                Screen(state = if (loading) DashboardUiState(isLoading = true) else berandaState())
             }
         }
 
@@ -347,61 +292,6 @@ class BerandaScreenTest {
         lastExportLine = lastExportLine,
     )
 
-    // ----------------------------------------------------------------------- the hero
-
-    /**
-     * The hero draws with its badge and its two lines, **above** the tiles.
-     *
-     * `index.html:104-123` — the greeting is what the owner arrives to, and a welcome below four
-     * figures is not a welcome. Asserted by position rather than by the call site's order: a
-     * composable moved below [TAG_KPI_ROW] would still pass an existence check.
-     */
-    @Test
-    fun `the hero draws above the tiles with its own copy`() {
-        compose.setContent { theme { Screen(state = berandaState()) } }
-
-        compose.onNodeWithTag(TAG_HERO).assertExists()
-        compose.onNodeWithTag(TAG_HERO_BADGE).assertExists()
-        compose.onNodeWithText("Sewa harian,\nsetoran tiap hari.").assertExists()
-
-        val hero = compose.onNodeWithTag(TAG_HERO).fetchSemanticsNode().positionInRoot.y
-        val tiles = compose.onNodeWithTag(TAG_KPI_ROW).fetchSemanticsNode().positionInRoot.y
-        assertTrue("the hero is above the KPI row", hero < tiles)
-    }
-
-    /** The hero's deposit button reaches the **same** handler the grid's first action does. */
-    @Test
-    fun `the hero deposit button reaches its handler`() {
-        var tapped = 0
-        compose.setContent { theme { Screen(state = berandaState(), onDeposit = { tapped += 1 }) } }
-
-        compose.onNodeWithTag(TAG_HERO_DEPOSIT).performClick()
-        compose.waitForIdle()
-
-        assertEquals("one tap, one call", 1, tapped)
-    }
-
-    /**
-     * The hero's second button **moves the page**, which is the whole of what it claims.
-     *
-     * This is the test this repo's rule demands: `assertExists()` would pass against a button
-     * wired to `{}`, and a button that renders and ignores the tap is the defect the screens KDoc
-     * names three times. So the assertion is the scroll offset the button produced, not the
-     * button's presence — compare the charts' offset before and after.
-     */
-    @Test
-    fun `the dashboard button scrolls the page to the charts`() {
-        compose.setContent { theme { Screen(state = berandaState()) } }
-
-        val before = compose.onNodeWithTag(TAG_CHARTS_SECTION).fetchSemanticsNode().positionInRoot.y
-
-        compose.onNodeWithTag(TAG_HERO_DASHBOARD).performClick()
-        compose.waitForIdle()
-
-        val after = compose.onNodeWithTag(TAG_CHARTS_SECTION).fetchSemanticsNode().positionInRoot.y
-        assertTrue("the charts moved up the screen ($before → $after)", after < before)
-    }
-
     // -------------------------------------------------------------------- helpers
 
     @Composable
@@ -417,7 +307,7 @@ class BerandaScreenTest {
      */
     @Composable
     private fun Screen(
-        state: BerandaUiState,
+        state: DashboardUiState,
         onDeposit: () -> Unit = {},
         onAddVehicle: () -> Unit = {},
         onManageRenters: () -> Unit = {},
@@ -429,7 +319,7 @@ class BerandaScreenTest {
         onBackupExport: () -> Unit = {},
         onSeeAllTransactions: () -> Unit = {},
     ) {
-        BerandaScreen(
+        DashboardScreen(
             state = state,
             onDeposit = onDeposit,
             onAddVehicle = onAddVehicle,
@@ -445,11 +335,11 @@ class BerandaScreenTest {
      * A morning with figures, hand-built.
      *
      * Hand-built rather than produced by the ViewModel, because this file is about
-     * **rendering** — what the owner reads. `BerandaKpiTest` covers where the numbers come
+     * **rendering** — what the owner reads. `DashboardKpiTest` covers where the numbers come
      * from, and a fixture that went through the repository would make a formatting change
      * look like a rendering change.
      */
-    private fun berandaState() = BerandaUiState(
+    private fun berandaState() = DashboardUiState(
         incomeText = "Rp 750.000",
         arrearsText = "Rp 4.250.000",
         fleetText = "12 · 3 · 1",

@@ -31,7 +31,7 @@ import org.robolectric.annotation.Config
  *
  * `shared.css:285-289` pads `.page-body` **once**, with `var(--sp-6)` — 24dp. The app applied
  * that padding twice on all three master-detail screens: each caller pads its own body column
- * (`TunggakanScreen:186`, `KendaraanScreen:160`, `PenyewaScreen:145`) and `KnMasterDetail` then
+ * (`TunggakanScreen:186`, `MobilScreen:160`, `PenyewaScreen:145`) and `KnMasterDetail` then
  * added a second `spacing.xxl` of its own. The prototype's 24dp shipped as 48dp.
  *
  * ## Why the fix belongs in the component, and why the test is shaped the way it is
@@ -206,7 +206,7 @@ class MasterDetailGutterTest {
 
     /**
      * The caller shape under test: `KnMasterDetail` inside a body column padded `spacing.xxl`,
-     * which is what `TunggakanScreen`, `KendaraanScreen` and `PenyewaScreen` each do.
+     * which is what `TunggakanScreen`, `MobilScreen` and `PenyewaScreen` each do.
      *
      * The tagged `Column` is wrapped in a tagged root so the offsets have a known origin — a
      * measurement taken against the window rather than against this node would silently absorb
@@ -215,7 +215,7 @@ class MasterDetailGutterTest {
      *
      * This harness proves the **component** adds no padding. It cannot prove the three real
      * callers still add theirs — that is what the per-screen inset assertions in
-     * `KendaraanScreenTest`, `PenyewaScreenTest` and `TunggakanScreenTest` are for, since after
+     * `MobilScreenTest`, `PenyewaScreenTest` and `TunggakanScreenTest` are for, since after
      * the component fix the callers are the only padding layer left.
      */
     @Composable
@@ -316,7 +316,7 @@ private fun insetFrom(
         /**
          * `shared.css:285-289` — `--sp-6`, which is `knSpacing.xxl`.
          *
-         * Read from the token rather than typed as `24.dp`, because `KendaraanScreenTest`
+         * Read from the token rather than typed as `24.dp`, because `MobilScreenTest`
          * reads its expected colours the same way for the same reason: a typed literal goes on
          * passing after the token changes, which is exactly when this assertion is worth having.
          * `KnSpacing.Clinic` is the single instance both themes hand out, so this stays correct

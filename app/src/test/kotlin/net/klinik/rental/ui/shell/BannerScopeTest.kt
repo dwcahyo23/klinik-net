@@ -9,7 +9,7 @@ import androidx.compose.ui.test.hasContentDescriptionExactly
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.performClick
 import androidx.test.ext.junit.runners.AndroidJUnit4
-import net.klinik.rental.ui.screens.kendaraan.TAG_BANNER
+import net.klinik.rental.ui.screens.mobil.TAG_BANNER
 import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import org.junit.Rule
@@ -49,7 +49,7 @@ class BannerScopeTest {
 
         // The app opens on Beranda now, so the fleet is reached the way the owner
         // would reach it — through the rail. The refusal is the fleet's own.
-        tapRailItem("Kendaraan")
+        tapRailItem("Mobil")
 
         // It is up on arrival.
         compose.onAllNodesWithTag(TAG_BANNER).assertCountEquals(1)
@@ -58,7 +58,7 @@ class BannerScopeTest {
         // labels, and "Kendaraan"/"Penyewa" are also their own screens' titles, so an
         // unscoped text match would be ambiguous. The chrome is what is being tapped here.
         tapRailItem("Penyewa")
-        tapRailItem("Kendaraan")
+        tapRailItem("Mobil")
 
         compose.onAllNodesWithTag(TAG_BANNER).assertCountEquals(1)
     }
@@ -110,8 +110,8 @@ class BannerScopeTest {
      * one that was simply never cleared.
      */
     private fun refusingScreens() = Screens(
-        kendaraan = Screens.Kendaraan(
-            state = net.klinik.rental.ui.screens.kendaraan.KendaraanUiState(
+        mobil = Screens.Mobil(
+            state = net.klinik.rental.ui.screens.mobil.MobilUiState(
                 errorMessage = "B 1235 TF sudah dipakai mobil lain.",
             ),
             snackbarMessage = null,
@@ -257,8 +257,8 @@ class BannerScopeTest {
         // Story 4.3's morning summary. It draws no banner of its own — every figure it
         // shows comes from a read that either succeeded or is still loading — but the
         // wiring is stated here so the fixture stays complete.
-        beranda = Screens.Beranda(
-            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+        dashboard = Screens.Dashboard(
+            state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
             onBackupReminderTap = {},
         ),
@@ -274,13 +274,6 @@ class BannerScopeTest {
             onApplyCustomRange = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
-        ),
-        // Story 4.6's field. Idle, so it draws no overlay — this file is about where a
-        // banner is *scoped*, and the search field owns no banner of its own.
-        search = Screens.Search(
-            state = GlobalSearchUiState(),
-            onQueryChange = {},
-            onClear = {},
         ),
         // The deposit screen's wiring, stated so this fixture stays complete: a screen
         // whose callbacks were omitted would differ from production in ways this file

@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import android.content.Context
 import androidx.room.Room
@@ -29,8 +29,8 @@ import org.robolectric.annotation.Config
  *
  * ## Why this file exists at all
  *
- * `KendaraanViewModel` had no test file: every assertion about the fleet screen
- * was made against `KendaraanUiState` directly, so nothing exercised the
+ * `MobilViewModel` had no test file: every assertion about the fleet screen
+ * was made against `MobilUiState` directly, so nothing exercised the
  * `combine` that produces it. Story 2.8 added `isLoading` to that combine, and an
  * untested `combine` is where a flag goes wrong quietly — invert the
  * `onStart { emit(… to false) }` and the whole suite stays green while a cold
@@ -54,7 +54,7 @@ import org.robolectric.annotation.Config
 @OptIn(ExperimentalCoroutinesApi::class)
 @RunWith(RobolectricTestRunner::class)
 @Config(sdk = [34])
-class KendaraanViewModelTest {
+class MobilViewModelTest {
 
     private val dispatcher = StandardTestDispatcher()
 
@@ -91,7 +91,7 @@ class KendaraanViewModelTest {
      */
     @Test
     fun `isLoading is true before the first emission and false after`() = runTest(dispatcher) {
-        val viewModel = KendaraanViewModel(repository, strings)
+        val viewModel = MobilViewModel(repository, strings)
 
         assertTrue(
             "a cold open must not read as an empty fleet",
@@ -128,7 +128,7 @@ class KendaraanViewModelTest {
                 dailyRate = 250_000L,
             )
         )
-        val viewModel = KendaraanViewModel(repository, strings)
+        val viewModel = MobilViewModel(repository, strings)
 
         observing(viewModel)
         dispatcher.scheduler.advanceUntilIdle()
@@ -145,7 +145,7 @@ class KendaraanViewModelTest {
      * directly cannot observe anything. `backgroundScope` is cancelled when the
      * body finishes, so the collector cannot outlive the test.
      */
-    private fun TestScope.observing(viewModel: KendaraanViewModel) {
+    private fun TestScope.observing(viewModel: MobilViewModel) {
         backgroundScope.launch(dispatcher) { viewModel.uiState.collect { } }
     }
 }

@@ -36,7 +36,7 @@ import org.robolectric.annotation.Config
  * than three, and that tapping a period chip reaches the handler rather than merely having a
  * click action.
  *
- * The rules every test here obeys are `BerandaScreenTest`'s: `assertExists()` rather than
+ * The rules every test here obeys are `DashboardScreenTest`'s: `assertExists()` rather than
  * `assertIsDisplayed()`, because below the Robolectric fold a node measures zero and
  * "off-screen" reads identically to "present"; and one `setContent` per method.
  */

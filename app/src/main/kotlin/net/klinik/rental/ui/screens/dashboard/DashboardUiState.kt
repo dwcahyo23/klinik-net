@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import net.klinik.rental.ui.components.KnBadgeTone
 
@@ -19,7 +19,7 @@ import net.klinik.rental.ui.components.KnBadgeTone
  * one lead is a flag that eventually will. The four are the same kind of thing, and the screen
  * draws them as the same kind of thing.
  */
-data class BerandaUiState(
+data class DashboardUiState(
     /** `Rp 750.000` — the confirmed deposits dated today, in whole rupiah. */
     val incomeText: String = "",
     /** `Rp 4.250.000` — the arrears across open *and* ended contracts that still owe. */
@@ -28,6 +28,34 @@ data class BerandaUiState(
     val fleetText: String = "",
     /** `75%` — the collection rate. Never a dash: a denominator of zero reads 100%. */
     val rateText: String = "",
+    /**
+     * `3 transaksi` — the meta under the income tile (`dashboard.html:176`).
+     *
+     * The count is the period's confirmed deposits, so the figure above it can be
+     * checked: a rupiah total with no row count is a number the owner cannot reconcile
+     * against the history screen.
+     */
+    val incomeMeta: String = "",
+    /**
+     * `0 kasus kritis` — the meta under the arrears tile (`dashboard.html:181`).
+     */
+    val arrearsMeta: String = "",
+    /**
+     * `0 disewa · 0 tersedia` — the meta under the collection-rate tile
+     * (`dashboard.html:183`).
+     */
+    val rateMeta: String = "",
+    /**
+     * `Rp 4.250.000` — income in the **cutoff period**, not today
+     * (`dashboard.html:178`).
+     *
+     * A different window from [incomeText]: that one follows the period filter, this one
+     * is always the billing period the engine is charging for. The prototype shows both
+     * side by side so the owner can see today against the period it belongs to.
+     */
+    val cutoffIncomeText: String = "",
+    /** `sejak 25 Sep` — when the current cutoff period started (`dashboard.html:179`). */
+    val cutoffSinceText: String = "",
     /**
      * The fleet's three counts, kept as numbers as well as text.
      *
@@ -165,7 +193,7 @@ data class RecentTransaction(
  * ## Why the target and the collected are both carried
  *
  * Because a comparison is a **difference**, and a difference whose operands cannot be seen is a
- * number nobody can check — the same reason `BerandaUiState` carries [incomeRupiah] beside
+ * number nobody can check — the same reason `DashboardUiState` carries [incomeRupiah] beside
  * [rateText].
  */
 data class ComparisonRow(

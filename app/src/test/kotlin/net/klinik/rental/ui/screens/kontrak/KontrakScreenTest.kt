@@ -115,7 +115,7 @@ class KontrakScreenTest {
     /**
      * A refusal the form does not model *is* shown.
      *
-     * `KendaraanUiState.errorMessage` exists but `KendaraanScreen` never renders it —
+     * `MobilUiState.errorMessage` exists but `MobilScreen` never renders it —
      * dead state that made a refused write invisible. This screen's is rendered, and
      * this pins the difference: a failed write that looks like a save that landed is
      * the outcome the epic context forbids, and it cannot happen if nothing is ever

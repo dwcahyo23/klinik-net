@@ -370,7 +370,7 @@ private fun StartDateField(
  *
  * ## Why chips and not a `SegmentedButton` or a `RadioButton`
  *
- * `KendaraanScreen`'s filter row already establishes `KnChip`s in a `FlowRow` as
+ * `MobilScreen`'s filter row already establishes `KnChip`s in a `FlowRow` as
  * this app's pattern for a small mutually-exclusive set, and a chip carries the
  * `selected` state into the semantics tree so a screen reader can say which one is
  * active. `KnChip` also clears the 48dp floor on its own, which neither Material's

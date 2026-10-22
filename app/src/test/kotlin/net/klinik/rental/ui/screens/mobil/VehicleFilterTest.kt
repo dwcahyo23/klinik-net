@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import net.klinik.rental.domain.model.Vehicle
 import org.junit.Assert.assertEquals
@@ -214,11 +214,11 @@ class VehicleFilterTest {
      */
     @Test
     fun `an empty fleet is distinguished from an empty search`() {
-        val empty = KendaraanUiState()
+        val empty = MobilUiState()
         assertTrue(empty.isEmptyFleet)
         assertFalse(empty.isEmptySearch)
 
-        val searched = KendaraanUiState(rows = listOf(agya("B 1235 TF")), query = "zzzz")
+        val searched = MobilUiState(rows = listOf(agya("B 1235 TF")), query = "zzzz")
         assertFalse(searched.isEmptyFleet)
         assertTrue(searched.isEmptySearch)
         assertTrue(searched.visibleRows.isEmpty())
@@ -227,7 +227,7 @@ class VehicleFilterTest {
     /** A filtered-to-nothing list is an empty *search*, not an empty fleet. */
     @Test
     fun `filtering to nothing is an empty search not an empty fleet`() {
-        val state = KendaraanUiState(
+        val state = MobilUiState(
             rows = listOf(tersedia("B 1235 TF")),
             filter = VehicleFilter.Servis,
         )
@@ -237,8 +237,8 @@ class VehicleFilterTest {
 
     @Test
     fun `the fleet count is the number of rows`() {
-        assertEquals(0, KendaraanUiState().fleetCount)
-        assertEquals(2, KendaraanUiState(rows = listOf(agya("B 1 AA"), brio("B 2 AA"))).fleetCount)
+        assertEquals(0, MobilUiState().fleetCount)
+        assertEquals(2, MobilUiState(rows = listOf(agya("B 1 AA"), brio("B 2 AA"))).fleetCount)
     }
 
     // ------------------------------------------------------------------ helpers

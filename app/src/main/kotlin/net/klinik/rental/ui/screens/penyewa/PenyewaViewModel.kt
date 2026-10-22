@@ -46,7 +46,7 @@ import net.klinik.rental.ui.strings.RStrings
  * ## Why this screen is reachable
  *
  * Story 2.8 built the shell: `AppNavGraph` routes to this screen from
- * `Destination.Penyewa`, and it mounts the same way `KendaraanScreen` does —
+ * `Destination.Penyewa`, and it mounts the same way `MobilScreen` does —
  * a sheet over the list, not a second destination.
  */
 class PenyewaViewModel(
@@ -98,7 +98,7 @@ class PenyewaViewModel(
      * The screen state.
      *
      * Nesting two `combine` calls rather than one over four flows, for the same
-     * reason `KendaraanViewModel` nests: the typed overloads stop at five flows,
+     * reason `MobilViewModel` nests: the typed overloads stop at five flows,
      * and nesting keeps every source typed rather than reaching for the `vararg`
      * overload, which would hand the lambda an `Array<Any?>`.
      */
@@ -210,7 +210,7 @@ class PenyewaViewModel(
      * Selects the renter whose detail the pane shows.
      *
      * Tapping the same row keeps it selected — the pane is the list's other half, not a thing the
-     * owner dismisses (see `KendaraanViewModel.select`).
+     * owner dismisses (see `MobilViewModel.select`).
      */
     fun select(renterId: String) {
         selectedRenterId.value = renterId

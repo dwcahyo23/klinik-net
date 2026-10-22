@@ -59,14 +59,13 @@ import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTableCell
 import net.klinik.rental.ui.components.KnTableRow
 import net.klinik.rental.ui.components.KnTopBar
-import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
+import net.klinik.rental.ui.screens.mobil.MobilUiState
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
 import net.klinik.rental.ui.screens.pengaturan.PengaturanUiState
 import net.klinik.rental.ui.screens.penyewa.PenyewaUiState
 import net.klinik.rental.ui.screens.setoran.SetoranUiState
 import net.klinik.rental.ui.screens.tunggakan.TunggakanUiState
 import net.klinik.rental.ui.shell.AppShell
-import net.klinik.rental.ui.shell.GlobalSearchUiState
 import net.klinik.rental.ui.shell.Screens
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knTypography
@@ -668,8 +667,8 @@ class AccessibilityTest {
      */
     @Composable
     private fun navScreens() = Screens(
-        kendaraan = Screens.Kendaraan(
-            state = KendaraanUiState(),
+        mobil = Screens.Mobil(
+            state = MobilUiState(),
             snackbarMessage = null,
             onQueryChange = {},
             onFilterChange = {},
@@ -822,8 +821,8 @@ class AccessibilityTest {
         // Story 4.3's morning summary, written out for the same reason: this fixture
         // walks every interactive node the shell can draw, and the quick-action tiles are
         // four new interactive nodes on the app's new start screen.
-        beranda = Screens.Beranda(
-            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+        dashboard = Screens.Dashboard(
+            state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
             // Story 5.5's reminder. Named for the same reason as every callback above: this
             // file walks every interactive node the shell can draw, and the banner's action is
@@ -842,13 +841,6 @@ class AccessibilityTest {
             onApplyCustomRange = {},
             onExportFileChosen = {},
             csvFilename = { "laporan.csv" },
-        ),
-        // Story 4.6's field: its search input and clear button are exactly the kind of
-        // interactive node this walk exists to measure, so it is supplied rather than omitted.
-        search = Screens.Search(
-            state = GlobalSearchUiState(),
-            onQueryChange = {},
-            onClear = {},
         ),
         // The deposit screen's wiring, stated for the same reason every bundle above is:
         // this file walks every interactive node the shell can draw, so the screen's tab

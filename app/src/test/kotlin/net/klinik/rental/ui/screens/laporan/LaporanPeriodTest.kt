@@ -453,6 +453,6 @@ class LaporanPeriodTest {
 
         /** The rate rule, shared with Beranda so the two cannot drift. */
         internal fun collectionRate(income: Long, arrears: Long): Int =
-            net.klinik.rental.ui.screens.beranda.collectionRate(income, arrears)
+            net.klinik.rental.ui.screens.dashboard.collectionRate(income, arrears)
     }
 }

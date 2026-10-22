@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
@@ -9,6 +9,7 @@ import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.flow.catch
 import kotlinx.coroutines.flow.combine
 import kotlinx.coroutines.flow.distinctUntilChanged
+import kotlinx.coroutines.flow.emitAll
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.flow.flow
 import kotlinx.coroutines.flow.flowOf
@@ -18,8 +19,11 @@ import kotlinx.coroutines.flow.stateIn
 import net.klinik.rental.data.repository.ContractArrears
 import net.klinik.rental.data.repository.PaymentRepository
 import net.klinik.rental.data.repository.VehicleRepository
+import net.klinik.rental.domain.calculate.CutoffPeriod
+import net.klinik.rental.domain.calculate.RiskLevel
+import net.klinik.rental.domain.calculate.riskOf
 import net.klinik.rental.ui.format.formatRupiah
-import net.klinik.rental.ui.screens.kendaraan.VehicleStatus
+import net.klinik.rental.ui.screens.mobil.VehicleStatus
 import net.klinik.rental.ui.strings.RStrings
 import java.time.Clock
 import java.time.LocalDate
@@ -51,7 +55,7 @@ import java.time.LocalDateTime
  * ViewModel was built would freeze the morning screen on yesterday's income until the owner
  * left and came back — the same defect Story 4.1's review found in the arrears read.
  */
-class BerandaViewModel(
+class DashboardViewModel(
     private val payments: PaymentRepository,
     private val vehicleRepository: VehicleRepository,
     private val strings: RStrings,
@@ -97,6 +101,18 @@ class BerandaViewModel(
     private val backups: net.klinik.rental.data.backup.BackupRepository? = null,
     /** The hour the nudge may appear, supplied by the caller from the owner's setting. */
     private val nudgeHour: Int = net.klinik.rental.data.backup.BackupRepository.DEFAULT_NUDGE_HOUR,
+    /**
+     * The owner's saved cutoff day. Read from settings by the caller.
+     *
+     * A **parameter** rather than a second repository read inside this ViewModel: the
+     * cutoff period decides every window on this screen, and the caller already holds the
+     * value because it wired [PaymentRepository]. One read, one place.
+     *
+     * Defaults to the repository's own default so the tests that build this ViewModel
+     * without one keep compiling — and so a caller that forgets produces the same period a
+     * fresh install would, rather than an exception.
+     */
+    private val cutoffDayOverride: Int = PaymentRepository.DEFAULT_CUTOFF_DAY,
 ) : ViewModel() {
 
     /**
@@ -111,6 +127,30 @@ class BerandaViewModel(
         data object Loading : Source
         data class Loaded(val entries: List<ContractArrears>) : Source
         data object Failed : Source
+    }
+
+    /**
+     * Today, read from [clock] once per emission rather than captured at construction.
+     *
+     * Captured at construction, every window below would freeze on the day the ViewModel
+     * was built — which is the defect [observeTodaysIncome]'s own KDoc records.
+     */
+    private val today: LocalDate get() = LocalDate.now(clock)
+
+    /**
+     * Income in the **current cutoff period**, with the day the period started —
+     * the prototype's second KPI tile (`dashboard.html:178-179`).
+     *
+     * Both halves ride on one flow because they are one period: the total and its start
+     * date are the same period read twice, and a pair of flows could disagree if the owner
+     * changed the cutoff day between them.
+     */
+    private val cutoffIncome: Flow<Pair<Long, LocalDate>> = flow {
+        val period = CutoffPeriod.containing(cutoffDayOverride, today)
+        emitAll(
+            payments.observeIncomeBetween(period.start, today)
+                .map { income -> income to period.start },
+        )
     }
 
     /**
@@ -132,7 +172,7 @@ class BerandaViewModel(
      *
      * Two flows rather than one because the status is a **derivation** — a vehicle is
      * `Tersewa` because an open contract names its plate — and the derivation belongs in one
-     * place. `KendaraanViewModel` does the same two, and the plates come from the repository's
+     * place. `MobilViewModel` does the same two, and the plates come from the repository's
      * own `observeRentedPlates` rather than from a second contract query.
      */
     private val fleet: Flow<Pair<List<net.klinik.rental.domain.model.Vehicle>, Set<String>>> =
@@ -395,15 +435,20 @@ class BerandaViewModel(
      *
      * `flatMapLatest` on the arrears source keeps the failure a value rather than an
      * exception, and the nested `combine` keeps every source typed — the same reason
-     * `KendaraanViewModel` nests rather than reaching for the `vararg` overload.
+     * `MobilViewModel` nests rather than reaching for the `vararg` overload.
      */
-    val uiState: StateFlow<BerandaUiState> = combine(
-        combine(arrearsSource, payments.observeTodaysIncome(clock)) { source, income -> source to income },
+    val uiState: StateFlow<DashboardUiState> = combine(
+        combine(
+            arrearsSource,
+            payments.observeTodaysIncome(clock),
+            payments.observeTransactionCountBetween(today, today),
+        ) { source, income, transactions -> Triple(source, income, transactions) },
         fleet,
         reminderSource,
         chartSources,
-    ) { sourceAndIncome, vehiclesAndPlates, reminder, chartInputs ->
-        val (source, income) = sourceAndIncome
+        cutoffIncome,
+    ) { sourceAndIncome, vehiclesAndPlates, reminder, chartInputs, periodIncome ->
+        val (source, income, transactions) = sourceAndIncome
         val (vehicles, rentedPlates) = vehiclesAndPlates
         val split = splitFleet(vehicles, rentedPlates)
         val arrears = source.arrearsTotal()
@@ -419,14 +464,24 @@ class BerandaViewModel(
                 // The plates ride in on **this** flow's own fleet read — no second subscription.
                 vehicles = vehicles,
                 ledger = chartInputs.ledger,
-                today = LocalDate.now(clock),
+                today = today,
             )
         }
-        BerandaUiState(
+        DashboardUiState(
             incomeText = formatRupiah(income),
+            incomeMeta = strings.dashboardIncomeMeta(transactions),
             arrearsText = formatRupiah(arrears),
+            arrearsMeta = strings.dashboardArrearsMeta(source.criticalCount()),
+            rateMeta = strings.dashboardRateMeta(split.rented, split.available),
             fleetText = strings.berandaFleetSplit(split.available, split.rented, split.service),
             rateText = strings.berandaRate(collectionRate(income, arrears)),
+            // The prototype's cutoff tile is a **different window** from the income tile
+            // beside it (`dashboard.html:175-179`): this one is always the billing period the
+            // engine is charging for, whatever the period filter says. It is the figure the
+            // owner reconciles against an invoice, so it is read from the period, not from
+            // today's deposits.
+            cutoffIncomeText = formatRupiah(periodIncome.first),
+            cutoffSinceText = strings.dashboardCutoffSince(periodIncome.second),
             fleet = split,
             incomeRupiah = income,
             arrearsRupiah = arrears,
@@ -445,7 +500,7 @@ class BerandaViewModel(
         .stateIn(
             scope = viewModelScope,
             started = SharingStarted.WhileSubscribed(5_000),
-            initialValue = BerandaUiState(isLoading = true),
+            initialValue = DashboardUiState(isLoading = true),
         )
 
     /**
@@ -460,6 +515,24 @@ class BerandaViewModel(
     private fun Source.arrearsTotal(): Long = when (this) {
         Source.Loading, is Source.Failed -> 0L
         is Source.Loaded -> entries.sumOf { it.amount }
+    }
+
+    /**
+     * How many contracts are **KRITIS** — the dashboard's arrears meta
+     * (`dashboard.html:181`).
+     *
+     * Read from the **same** entries the total is summed from, not from a second arrears
+     * query. A count beside a total that came from elsewhere is a figure that can disagree
+     * with the number it describes, and this is the screen where that would be noticed.
+     *
+     * The tier comes from the domain's own [riskOf] rather than a `days >= 7` written here.
+     * That function is what the arrears screen badges with, and a second copy of the
+     * threshold is a second thing that can drift from it — the ladder is four levels wide
+     * and one literal would only have to be wrong once.
+     */
+    private fun Source.criticalCount(): Int = when (this) {
+        Source.Loading, is Source.Failed -> 0
+        is Source.Loaded -> entries.count { riskOf(it.days) == RiskLevel.KRITIS }
     }
 
 

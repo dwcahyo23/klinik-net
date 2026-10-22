@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.room.Room
 import androidx.test.core.app.ApplicationProvider
@@ -176,8 +176,8 @@ class BackupReminderTest {
     }
 
     /** Builds the ViewModel over [instant] and lets its flows settle. */
-    private fun TestScopeScope.viewModelAt(instant: Instant): BerandaViewModel {
-        val vm = BerandaViewModel(
+    private fun TestScopeScope.viewModelAt(instant: Instant): DashboardViewModel {
+        val vm = DashboardViewModel(
             payments = PaymentRepository(
                 paymentDao = database.paymentDao(),
                 allocationDao = database.allocationDao(),
@@ -329,7 +329,7 @@ class BackupReminderTest {
      * The tap reaches the ViewModel.
      *
      * A dialog appearing proves the button was pressed; it does not prove the callback chain is
-     * intact, and that chain ends here. `BerandaScreenTest` covers the dialog, this covers the
+     * intact, and that chain ends here. `DashboardScreenTest` covers the dialog, this covers the
      * wiring.
      */
     @Test

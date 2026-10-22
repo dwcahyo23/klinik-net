@@ -18,12 +18,12 @@ import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.components.SkeletonRowTag
 import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.domain.model.BusinessAccount
-import net.klinik.rental.ui.screens.kendaraan.KendaraanScreen
-import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
-import net.klinik.rental.ui.screens.kendaraan.VehicleRow
-import net.klinik.rental.ui.screens.kendaraan.VehicleStatus
-import net.klinik.rental.ui.screens.kendaraan.TAG_BANNER as TAG_BANNER_KENDARAAN
-import net.klinik.rental.ui.screens.kendaraan.TAG_EMPTY_FLEET
+import net.klinik.rental.ui.screens.mobil.MobilScreen
+import net.klinik.rental.ui.screens.mobil.MobilUiState
+import net.klinik.rental.ui.screens.mobil.VehicleRow
+import net.klinik.rental.ui.screens.mobil.VehicleStatus
+import net.klinik.rental.ui.screens.mobil.TAG_BANNER as TAG_BANNER_KENDARAAN
+import net.klinik.rental.ui.screens.mobil.TAG_EMPTY_FLEET
 import net.klinik.rental.ui.screens.kontrak.ContractRow
 import net.klinik.rental.ui.screens.kontrak.KontrakScreen
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
@@ -127,14 +127,14 @@ class FourStatesTest {
             emptyBody = "Tambahkan mobil pertama untuk mulai mencatat sewa.",
             rowText = "B 1235 TF",
             loading = {
-                KendaraanView(KendaraanUiState(isLoading = true))
+                KendaraanView(MobilUiState(isLoading = true))
             },
             empty = {
-                KendaraanView(KendaraanUiState())
+                KendaraanView(MobilUiState())
             },
             refused = {
                 KendaraanView(
-                    state = KendaraanUiState(
+                    state = MobilUiState(
                         rows = listOf(kendaraanRow()),
                         errorMessage = ERROR_COPY,
                     ),
@@ -143,7 +143,7 @@ class FourStatesTest {
             },
             confirmed = {
                 KendaraanView(
-                    state = KendaraanUiState(rows = listOf(kendaraanRow())),
+                    state = MobilUiState(rows = listOf(kendaraanRow())),
                     snackbar = CONFIRM_COPY,
                 )
             },
@@ -421,10 +421,10 @@ class FourStatesTest {
 
     @Composable
     private fun KendaraanView(
-        state: KendaraanUiState,
+        state: MobilUiState,
         snackbar: String? = null,
     ) {
-        KendaraanScreen(
+        MobilScreen(
             state = state,
             onQueryChange = {},
             onFilterChange = {},

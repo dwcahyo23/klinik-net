@@ -22,7 +22,7 @@ data class RenterRow(val renter: Renter)
  * (see `PenyewaViewModel`).
  *
  * @param isLoading true while the Room flow has not emitted anything yet.
- *   See `KendaraanUiState.isLoading` for why this cannot be `rows.isEmpty()`:
+ *   See `MobilUiState.isLoading` for why this cannot be `rows.isEmpty()`:
  *   Room's first emission is an empty list, so during every load a screen that
  *   branched on emptiness showed "Belum ada Penyewa" — an invitation to add a
  *   person the owner already added. The default is `false` because a hand-built
@@ -39,7 +39,7 @@ data class PenyewaUiState(
     /**
      * Carried and *rendered*.
      *
-     * `KendaraanUiState.errorMessage` was not drawn by its screen until Story 2.8
+     * `MobilUiState.errorMessage` was not drawn by its screen until Story 2.8
      * — dead state that made a refusal invisible. This one is rendered by the
      * screen as a snackbar, so a name that is not unique never leaves the owner
      * guessing whether the save landed.

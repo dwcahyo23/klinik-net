@@ -169,7 +169,7 @@ class PengaturanViewModel(
      *
      * An `AtomicBoolean` rather than a `MutableStateFlow<Boolean>`: this is not rendered, so
      * putting it in the state would recompose the screen on a value nothing draws. The same
-     * guard `PenyewaViewModel` and `KendaraanViewModel` use for the same reason.
+     * guard `PenyewaViewModel` and `MobilViewModel` use for the same reason.
      */
     private val saving = java.util.concurrent.atomic.AtomicBoolean(false)
 

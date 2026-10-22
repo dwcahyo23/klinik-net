@@ -1,6 +1,5 @@
 package net.klinik.rental.ui.components
 
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -24,6 +23,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
@@ -89,102 +89,109 @@ fun KnLineChart(
     val stroke = MaterialTheme.knColors.primaryFill
     val grid = MaterialTheme.knColors.border
     val targetColour = MaterialTheme.knColors.borderStrong
-    // Read **before** the `Canvas`: a `Canvas` lambda is a draw scope, not a composable one, so
-    // `MaterialTheme` cannot be read inside it — a line this easy to get wrong is why the colour
-    // is hoisted rather than reached for at each use.
+    // Read **before** the draw scope: a `drawBehind` lambda is a draw scope, not a composable one,
+    // so `MaterialTheme` cannot be read inside it — a line this easy to get wrong is why the
+    // colours are hoisted rather than reached for at each use.
     val cardColour = MaterialTheme.knColors.bgCard
 
-    Canvas(
+    // `drawBehind` rather than a `Canvas` composable: the chart is a picture drawn **on** the
+    // card, and a `Canvas` is a separate composable that has to be measured and placed beside
+    // the content. A `drawBehind` modifier draws in the same box, so the chart cannot drift a
+    // pixel away from the card it belongs to, and it cannot add a layout node the card then has
+    // to account for.
+    Box(
         modifier = modifier
             .fillMaxWidth()
             .height(LineChartHeight)
             .semantics { contentDescription = description }
-            .testTag(TAG_LINE_CHART),
-    ) {
-        if (points.size < 2) return@Canvas
+            .testTag(TAG_LINE_CHART)
+            .drawBehind {
+                if (points.size < 2) return@drawBehind
 
-        // The target lifts the ceiling even when no day reached it — otherwise a week below
-        // target would draw a line pinned to the top of its own range and read as a success.
-        val ceiling = maxOf(points.max(), target ?: 0L).toFloat()
-        val stepX = size.width / (points.size - 1).toFloat()
-        val scale = if (ceiling <= 0f) 0f else size.height / ceiling
+                // The target lifts the ceiling even when no day reached it — otherwise a week below
+                // target would draw a line pinned to the top of its own range and read as a success.
+                val ceiling = maxOf(points.max(), target ?: 0L).toFloat()
+                val stepX = size.width / (points.size - 1).toFloat()
+                val scale = if (ceiling <= 0f) 0f else size.height / ceiling
 
-        // Four gridlines, matching `--sp` dashes in the CSS (`stroke-dasharray: 3 5`).
-        repeat(4) { i ->
-            val y = size.height * (i + 1) / 5f
-            drawLine(
-                color = grid,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 1f,
-                pathEffect = PathEffect.dashPathEffect(
-                    // `stroke-dasharray: 3 5` — the prototype's own gridline dash. The
-                    // previous 6/8 read as long sparse strokes, so the background
-                    // texture competed with the data line it sits behind.
-                    floatArrayOf(3f, 5f),
-                ),
-            )
-        }
+                // Four gridlines, matching `--sp` dashes in the CSS (`stroke-dasharray: 3 5`).
+                repeat(4) { i ->
+                    val y = size.height * (i + 1) / 5f
+                    drawLine(
+                        color = grid,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = 1f,
+                        pathEffect = PathEffect.dashPathEffect(
+                            // `stroke-dasharray: 3 5` — the prototype's own gridline dash. The
+                            // previous 6/8 read as long sparse strokes, so the background
+                            // texture competed with the data line it sits behind.
+                            floatArrayOf(3f, 5f),
+                        ),
+                    )
+                }
 
-        target?.let { value ->
-            val y = size.height - (value.toFloat() * scale)
-            drawLine(
-                color = targetColour,
-                start = Offset(0f, y),
-                end = Offset(size.width, y),
-                strokeWidth = 2f,
-                pathEffect = PathEffect.dashPathEffect(
-                    // The prototype dashes the target line on the same 3/5 rhythm as the
-                    // gridlines, so it reads as part of the same ruled sheet rather
-                    // than as a second, heavier series.
-                    floatArrayOf(3f, 5f),
-                ),
-            )
-        }
+                target?.let { value ->
+                    val y = size.height - (value.toFloat() * scale)
+                    drawLine(
+                        color = targetColour,
+                        start = Offset(0f, y),
+                        end = Offset(size.width, y),
+                        strokeWidth = 2f,
+                        pathEffect = PathEffect.dashPathEffect(
+                            // The prototype dashes the target line on the same 3/5 rhythm as the
+                            // gridlines, so it reads as part of the same ruled sheet rather
+                            // than as a second, heavier series.
+                            floatArrayOf(3f, 5f),
+                        ),
+                    )
+                }
 
-        val line = Path()
-        points.forEachIndexed { index, value ->
-            val x = stepX * index
-            val y = size.height - (value.toFloat() * scale)
-            if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
-        }
+                val line = Path()
+                points.forEachIndexed { index, value ->
+                    val x = stepX * index
+                    val y = size.height - (value.toFloat() * scale)
+                    if (index == 0) line.moveTo(x, y) else line.lineTo(x, y)
+                }
 
-        // The fill closes the path along the baseline. The gradient is a horizontal wipe rather
-        // than the CSS's vertical one only because the CSS's two stops both resolve to the same
-        // transparent brand, and a vertical fade on a zero-based chart is invisible anyway.
-        val fill = Path().apply {
-            addPath(line)
-            lineTo(size.width, size.height)
-            lineTo(0f, size.height)
-            close()
-        }
-        drawPath(
-            path = fill,
-            brush = Brush.verticalGradient(
-                colors = listOf(stroke.copy(alpha = 0.22f), stroke.copy(alpha = 0f)),
-            ),
-        )
-        drawPath(
-            path = line,
-            color = stroke,
-            style = Stroke(width = 3f, cap = StrokeCap.Round),
-        )
+                // The fill closes the path along the baseline. The gradient is a horizontal wipe
+                // rather than the CSS's vertical one only because the CSS's two stops both
+                // resolve to the same transparent brand, and a vertical fade on a zero-based
+                // chart is invisible anyway.
+                val fill = Path().apply {
+                    addPath(line)
+                    lineTo(size.width, size.height)
+                    lineTo(0f, size.height)
+                    close()
+                }
+                drawPath(
+                    path = fill,
+                    brush = Brush.verticalGradient(
+                        colors = listOf(stroke.copy(alpha = 0.22f), stroke.copy(alpha = 0f)),
+                    ),
+                )
+                drawPath(
+                    path = line,
+                    color = stroke,
+                    style = Stroke(width = 3f, cap = StrokeCap.Round),
+                )
 
-        // A dot per point, the prototype's `r=4` circle with a card-coloured fill.
-        points.forEachIndexed { index, value ->
-            drawCircle(
-                color = cardColour,
-                radius = 4f,
-                center = Offset(stepX * index, size.height - (value.toFloat() * scale)),
-            )
-            drawCircle(
-                color = stroke,
-                radius = 4f,
-                center = Offset(stepX * index, size.height - (value.toFloat() * scale)),
-                style = Stroke(width = 2.5f),
-            )
-        }
-    }
+                // A dot per point, the prototype's `r=4` circle with a card-coloured fill.
+                points.forEachIndexed { index, value ->
+                    drawCircle(
+                        color = cardColour,
+                        radius = 4f,
+                        center = Offset(stepX * index, size.height - (value.toFloat() * scale)),
+                    )
+                    drawCircle(
+                        color = stroke,
+                        radius = 4f,
+                        center = Offset(stepX * index, size.height - (value.toFloat() * scale)),
+                        style = Stroke(width = 2.5f),
+                    )
+                }
+            },
+    )
 }
 
 /** `.chart-line { height: 210px }` — `shared.css:763`. */
@@ -301,11 +308,17 @@ private val BarShape = RoundedCornerShape(topStart = 8.dp, topEnd = 8.dp, bottom
 /**
  * `.donut` — a share-of-total ring with the total in the hole.
  *
- * ## Why the ring is drawn with `Canvas` arcs rather than a `Brush`
+ * ## Why a sweep gradient and not arcs
  *
- * Because a `Brush` cannot express "the third slice stops at 40%" — a sweep gradient is continuous
- * and this data is not. Arcs are the only primitive that can, and the palette is the prototype's
- * own eight-colour list (`dashboard.html:292`).
+ * Because the prototype draws this ring as a `conic-gradient` on a `border-radius: 50%`
+ * div (`dashboard.html:311`, `shared.css:777`) — a **filled circle** with a card-coloured
+ * disc laid over its middle, not a stroked ring. The old implementation drew stroked arcs
+ * on a `Canvas`, which is a different shape: a stroked ring leaves the outer edge of the
+ * stroke square where the circle is not, and it has to fake the hole with a second disc.
+ *
+ * So the ring is now a `Brush.sweepGradient` on a circle, with the same card-coloured disc
+ * over the middle that the CSS's `.donut-center` is. The gradient's stops are the slices'
+ * own arcs, in the same order and with the same 3° gap the arcs had.
  *
  * @param slices largest first; an empty list draws the sunken placeholder rather than a full ring,
  *   because a complete ring with no data reads as "everything is one thing".
@@ -342,29 +355,33 @@ fun KnDonutChart(
                         .background(sunken),
                 )
             } else {
-                Canvas(Modifier.fillMaxSize()) {
-                    var startAngle = -90f
+                // The slices' arcs as gradient stops. The sweep starts at 12 o'clock, which is
+                // what `conic-gradient` does by default and what the arcs did with their
+                // `-90f` start.
+                val stops = buildList {
+                    var start = 0f
                     slices.forEach { slice ->
                         val sweep = (slice.value.toFloat() / total.toFloat()) * 360f
-                        drawArc(
-                            color = slice.colour,
-                            startAngle = startAngle,
-                            sweepAngle = sweep - DonutSliceGap,
-                            useCenter = false,
-                            // A Float in **pixels**: inside a `Canvas` the `Stroke` takes the
-                            // raw draw width, not a `Dp`, and the two are not interchangeable.
-                            style = Stroke(
-                                width = DonutHoleFraction.let { it * size.minDimension },
-                            ),
-                        )
-                        startAngle += sweep
+                        // A stop is an `offset to colour` pair, and the transparent copies
+                        // are the slice's own boundaries — the gradient goes from this
+                        // slice's colour to nothing and back to the next slice's colour.
+                        add(start to slice.colour.copy(alpha = 0f))
+                        add(start to slice.colour)
+                        add((start + sweep - DonutSliceGap).coerceAtLeast(start) to slice.colour)
+                        add((start + sweep).coerceAtLeast(start) to slice.colour.copy(alpha = 0f))
+                        start += sweep
                     }
                 }
+                Box(
+                    Modifier
+                        .fillMaxSize()
+                        .clip(CircleShape)
+                        .background(Brush.sweepGradient(*stops.toTypedArray())),
+                )
             }
-            // The hole is composited as a plain card-coloured disc *over* the ring, rather than
-            // as a `Stroke` width — a stroke's width is a pixel count, and the CSS's `inset: 26%`
-            // is a fraction of a `Dp` box. Sizing the disc in the same units as the ring is the
-            // only way the two can agree.
+            // The hole is a card-coloured disc over the middle — the CSS's `.donut-center`
+            // is `position:absolute; inset: 26%` with the card's own background, so the
+            // ring's thickness is whatever the inset leaves.
             Box(
                 Modifier
                     .fillMaxSize()
@@ -375,11 +392,7 @@ fun KnDonutChart(
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(
                     text = centreText,
-                    // The body face, not the display face. The prototype's
-                    // `.donut-center .dc-val` is `--fs-lg` weight 800 with
-                    // `tabular-nums`, and Fraunces carries no `tnum` — so the
-                    // display face would silently drop the tabular figures off
-                    // the one number in the chart that has to line up.
+                    // `.donut-center .dc-val` is `--fs-lg` weight 800 with `tabular-nums`.
                     style = MaterialTheme.knTypography.figureLarge,
                     color = MaterialTheme.knColors.textPrimary,
                     maxLines = 1,

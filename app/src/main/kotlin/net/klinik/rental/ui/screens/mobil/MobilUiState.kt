@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.kendaraan
+package net.klinik.rental.ui.screens.mobil
 
 import net.klinik.rental.domain.model.Vehicle
 import java.time.DayOfWeek
@@ -61,7 +61,7 @@ data class VehicleRow(
  * The whole screen in one value.
  *
  * Built with `combine` + `stateIn` + `distinctUntilChanged()` over the Room flow
- * (see `KendaraanViewModel`).
+ * (see `MobilViewModel`).
  *
  * @param isLoading true while the Room flow has not emitted anything yet.
  *
@@ -94,7 +94,7 @@ data class VehicleRow(
  *   Already-resolved text rather than an exception, because the exception's whole
  *   purpose is to survive until here and pick its words.
  */
-data class KendaraanUiState(
+data class MobilUiState(
     val rows: List<VehicleRow> = emptyList(),
     val query: String = "",
     val filter: VehicleFilter = VehicleFilter.Semua,
@@ -151,7 +151,7 @@ data class KendaraanUiState(
 /**
  * The four figures in the summary row — `cars.html:147-167`.
  *
- * Every one is derived from [KendaraanUiState.rows] in the ViewModel, so the cards and the list
+ * Every one is derived from [MobilUiState.rows] in the ViewModel, so the cards and the list
  * are one read. The figures arrive pre-formatted for the reason every other money value in this
  * app does: `formatRupiah` runs once.
  *

@@ -437,21 +437,17 @@ fun KnBottomNav(
  *
  * ## The bar's right side, in the prototype's order
  *
- * `index.html:92-97` reads: the search field (capped at 280px), then the screen's own actions, then
- * the circular theme button. That order is reproduced here rather than left to callers, because
+ * `index.html:92-97` reads: the screen's own actions, then the circular theme
+ * button. That order is reproduced here rather than left to callers, because
  * eight callers would reproduce it eight ways.
  *
  * ## Whose search field it is
  *
- * **The screen's**, whenever it passes one. `cars.html`, `renters.html` and `arrears.html` each
- * put *their own* field in their own bar, and the field is the only control that can widen a list
- * the global search narrowed — so a screen that drew no field would have a query it could not
- * clear.
- *
- * [LocalTopBarSearch] is the **fallback**: the shell provides the cross-app search, and a screen
- * that supplies its own replaces it. That is why the parameter comes first — a screen that has a
- * bar of its own must win over a shell default, and the shell default must not have to know that
- * any screen does.
+ * **The screen's**, whenever it passes one. The prototype has three — `cars.html`,
+ * `renters.html` and `payments.html` each put their own field in their own bar —
+ * and this app keeps exactly those three. There is no cross-app fallback: the
+ * prototype has no global search, and a bar that showed one on every screen
+ * would be a control the owner learns to ignore.
  */
 @Composable
 fun KnTopBar(
@@ -467,7 +463,6 @@ fun KnTopBar(
     val shape = RoundedCornerShape(MaterialTheme.knRadii.md)
     val navDescription = stringResource(R.string.action_back)
     val themeControl = LocalThemeControl.current
-    val searchSlot = search ?: LocalTopBarSearch.current
 
     Surface(
         modifier = modifier
@@ -541,8 +536,8 @@ fun KnTopBar(
                     )
                 }
 
-                if (searchSlot != null) {
-                    searchSlot()
+                if (search != null) {
+                    search()
                 }
                 if (themeControl != null) {
                     ThemeToggleButton(control = themeControl)
@@ -611,17 +606,6 @@ private fun ThemeToggleButton(control: ThemeControl) {
         }
     }
 }
-
-/**
- * The shell's cross-app search, for whichever [KnTopBar] has none of its own.
- *
- * A **fallback**, not a source: `KendaraanScreen` and `PenyewaScreen` pass their own field into
- * the bar's `search` slot, because that field is the only control which can widen a list the
- * global search narrowed — a screen with only the shell's field would have a query it cannot
- * clear. `compositionLocalOf` (not static) because the shell's search state changes on every
- * keystroke and the field inside the slot must recompose with it.
- */
-val LocalTopBarSearch = compositionLocalOf<(@Composable () -> Unit)?> { null }
 
 /**
  * The theme button's tag.

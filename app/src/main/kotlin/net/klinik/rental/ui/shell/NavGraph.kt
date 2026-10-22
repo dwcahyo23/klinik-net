@@ -13,11 +13,11 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.domain.model.Vehicle
-import net.klinik.rental.ui.screens.beranda.BerandaScreen
-import net.klinik.rental.ui.screens.kendaraan.KendaraanScreen
-import net.klinik.rental.ui.screens.kendaraan.KendaraanUiState
-import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
-import net.klinik.rental.ui.screens.kendaraan.VehicleFormSheet
+import net.klinik.rental.ui.screens.dashboard.DashboardScreen
+import net.klinik.rental.ui.screens.mobil.MobilScreen
+import net.klinik.rental.ui.screens.mobil.MobilUiState
+import net.klinik.rental.ui.screens.mobil.VehicleFilter
+import net.klinik.rental.ui.screens.mobil.VehicleFormSheet
 import net.klinik.rental.ui.screens.kontrak.ContractFormState
 import net.klinik.rental.ui.screens.kontrak.KontrakScreen
 import net.klinik.rental.ui.screens.kontrak.KontrakUiState
@@ -48,7 +48,7 @@ import net.klinik.rental.ui.screens.tunggakan.TunggakanScreen
  *
  * A sheet is a *window over* a destination, not a destination of its own, and
  * dismissing one restores the owner's place in the list rather than navigating
- * away from it. `KendaraanRoute` and `PenyewaRoute` mount theirs here because
+ * away from it. `MobilRoute` and `PenyewaRoute` mount theirs here because
  * those two screens have no private sheet host; `KontrakRoute` does not, because
  * `KontrakScreen` already owns its own — see that function's KDoc for why the
  * asymmetry is load-bearing.
@@ -75,8 +75,10 @@ internal fun AppNavGraph(
         startDestination = startDestination.route,
         modifier = modifier,
     ) {
-        composable(Destination.Kendaraan.route) { KendaraanRoute(screens.kendaraan) }
+        composable(Destination.Mobil.route) { MobilRoute(screens.mobil) }
         composable(Destination.Penyewa.route) { PenyewaRoute(screens.penyewa) }
+        // Composed but **not** in the rail — the prototype reaches a renter's contracts
+        // from that renter's detail pane, not from a rail item of its own.
         composable(Destination.Kontrak.route) { KontrakRoute(screens.kontrak) }
         // The fourth, added by Story 3.1. A `Destination` entry with no `composable` here is
         // a nav item that navigates to nothing — the two are asserted together in
@@ -130,12 +132,12 @@ internal fun AppNavGraph(
         }
         // The fifth, added by Story 4.1 — and the first with **no** sheet of its own, so
         // this route composes the screen directly rather than wrapping it in a `Box` for
-        // sheets like `KendaraanRoute` and `PenyewaRoute` do.
+        // sheets like `MobilRoute` and `PenyewaRoute` do.
         composable(Destination.Tunggakan.route) { TunggakanRoute(screens.tunggakan) }
-        // The sixth, added by Story 4.3 — the morning summary the app now opens on. Like
+        // The dashboard — the app's first rail item and the screen it opens on. Like
         // `TunggakanRoute` it composes the screen directly: it has no sheet of its own, and
-        // its quick actions are **verbs** the shell performs rather than sheets it mounts.
-        composable(Destination.Beranda.route) { BerandaRoute(screens.beranda, navController) }
+        // its actions are **verbs** the shell performs rather than sheets it mounts.
+        composable(Destination.Dashboard.route) { DashboardRoute(screens.dashboard, navController) }
 
         // The seventh, added by Story 4.5 — the period report. No sheet of its own and no
         // navigation verb: its only action is picking a period, which is the screen's own
@@ -213,31 +215,31 @@ private fun LaporanRoute(wiring: Screens.Laporan, onExportCsv: () -> Unit) {
 }
 
 /**
- * The morning summary.
+ * The dashboard.
  *
  * The route exists to hand the screen its four action handlers, and nothing else: the
  * actions are **navigations or sheet opens the shell owns**, so the screen reports which
  * action was chosen and the shell decides what that means. That is the same rule every
- * other route follows, and the reason a test can drive Beranda with hand-built state and no
- * database.
+ * other route follows, and the reason a test can drive the dashboard with hand-built
+ * state and no database.
  *
  * ## Why the three navigations are derived here and not in `Screens`
  *
  * Because the nav controller lives in [AppShell], and a second one — the one
  * `MainActivity` would need to wire "Tambah Mobil" — is a back stack that disagrees with
  * itself. So the route derives them from the controller the shell already holds, and
- * `Screens.Beranda` carries only the state and the deposit sheet's own action.
+ * `Screens.Dashboard` carries only the state and the deposit sheet's own action.
  *
  * Every destination these name **exists**: the fleet, the renters and the arrears list.
  * The acceptance criterion is explicit that no quick-action tile may open a screen this app
  * does not have, and this is where that promise is kept.
  */
 @Composable
-private fun BerandaRoute(wiring: Screens.Beranda, navController: NavHostController) {
-    BerandaScreen(
+private fun DashboardRoute(wiring: Screens.Dashboard, navController: NavHostController) {
+    DashboardScreen(
         state = wiring.state,
         onDeposit = wiring.onDeposit,
-        onAddVehicle = { navController.navigateTo(Destination.Kendaraan.route) },
+        onAddVehicle = { navController.navigateTo(Destination.Mobil.route) },
         onManageRenters = { navController.navigateTo(Destination.Penyewa.route) },
         onSendReminder = { navController.navigateTo(Destination.Tunggakan.route) },
         // Story 5.5's reminder routes to **Pengaturan**, not to a picker: the export lives
@@ -344,7 +346,7 @@ private fun TunggakanRoute(wiring: Screens.Tunggakan) {
  *   stays free of the object graph.
  */
 internal class Screens(
-    val kendaraan: Kendaraan,
+    val mobil: Mobil,
     val penyewa: Penyewa,
     val kontrak: Kontrak,
     val pengaturan: Pengaturan,
@@ -381,7 +383,7 @@ internal class Screens(
      * *navigations* are derived by the route from the nav controller the shell already
      * holds, and only the deposit sheet's action belongs here.
      */
-    val beranda: Beranda,
+    val dashboard: Dashboard,
 
     /**
      * The period report's wiring. See [Laporan].
@@ -391,19 +393,6 @@ internal class Screens(
      * destination cannot exist in the chrome and not in the graph.
      */
     val laporan: Laporan,
-
-    /**
-     * The shell's global search — Story 4.6.
-     *
-     * A property of the **shell**, not of a destination: the field is mounted above whichever
-     * screen shows, so there is no screen that owns it and no route to compose. Putting it in
-     * a destination class would have said it belonged to that screen.
-     *
-     * [onSelect] carries the hit and nothing else. Turning it into a route is the shell's job,
-     * because the shell is what holds the nav controller — a wiring class that knew routes
-     * would be a second place navigation is decided.
-     */
-    val search: Search,
 
     /**
      * The deposit screen's wiring — two tabs, Input and Riwayat.
@@ -455,28 +444,9 @@ internal class Screens(
         val onReminderOpenFailed: () -> Unit,
         val pendingReminderLink: String?,
     )
-    /**
-     * The shell's global search field — Story 4.6.
-     *
-     * Two callbacks and one state, and **neither callback is defaulted**: a defaulted
-     * `onQueryChange` produces a field that takes typing and shows nothing, which reads as a
-     * broken control rather than a missing handler.
-     *
-     * There is deliberately **no** `onSelect` here. Choosing a result is a *navigation*, and
-     * the nav controller lives in [AppShell] — so the shell derives it from the result's own
-     * route, exactly as `BerandaRoute` derives its three quick actions. A second nav
-     * controller, or a route passed in from `MainActivity`, would be a back stack that
-     * disagrees with itself.
-     */
-    class Search(
-        val state: GlobalSearchUiState,
-        val onQueryChange: (String) -> Unit,
-        val onClear: () -> Unit,
-    )
-
     /** The fleet destination's wiring. */
-    class Kendaraan(
-        val state: KendaraanUiState,
+    class Mobil(
+        val state: MobilUiState,
         val snackbarMessage: String?,
         val onQueryChange: (String) -> Unit,
         val onFilterChange: (VehicleFilter) -> Unit,
@@ -485,7 +455,7 @@ internal class Screens(
         val onSelect: (String) -> Unit,
         val onEdit: (Vehicle) -> Unit,
         val onCloseForm: () -> Unit,
-        val onFormChange: ((net.klinik.rental.ui.screens.kendaraan.VehicleFormState) -> net.klinik.rental.ui.screens.kendaraan.VehicleFormState) -> Unit,
+        val onFormChange: ((net.klinik.rental.ui.screens.mobil.VehicleFormState) -> net.klinik.rental.ui.screens.mobil.VehicleFormState) -> Unit,
         val onSave: () -> Unit,
         val onSnackbarDismiss: () -> Unit,
         val onErrorDismiss: () -> Unit,
@@ -749,8 +719,8 @@ internal class Screens(
      * shell holds the nav controller — so the route derives them from it, rather than this
      * class carrying a second copy of the graph.
      */
-    class Beranda(
-        val state: net.klinik.rental.ui.screens.beranda.BerandaUiState,
+    class Dashboard(
+        val state: net.klinik.rental.ui.screens.dashboard.DashboardUiState,
         val onDeposit: () -> Unit,
         /**
          * Story 5.5: the backup reminder was tapped.
@@ -843,9 +813,9 @@ internal class Screens(
 
 /** The fleet destination: the screen, and the sheet it owns. */
 @Composable
-private fun KendaraanRoute(wiring: Screens.Kendaraan) {
+private fun MobilRoute(wiring: Screens.Mobil) {
     Box(Modifier.fillMaxSize()) {
-        KendaraanScreen(
+        MobilScreen(
             state = wiring.state,
             onQueryChange = wiring.onQueryChange,
             onFilterChange = wiring.onFilterChange,
@@ -915,7 +885,7 @@ private fun PenyewaRoute(wiring: Screens.Penyewa) {
  * the reason the exception surface is **one** sheet carrying three blocks rather than
  * a list sheet with a nested add sheet.
  *
- * `KendaraanRoute` and `PenyewaRoute` are the opposite case and keep their sheet
+ * `MobilRoute` and `PenyewaRoute` are the opposite case and keep their sheet
  * mounts: those two screens have no private sheet host, so the graph is the only
  * place that can draw one. The asymmetry is a property of the screens, not an
  * oversight here.
@@ -979,7 +949,7 @@ private fun KontrakRoute(wiring: Screens.Kontrak) {
  * The settings destination.
  *
  * Like `KontrakRoute`, this mounts **no sheet**: `PengaturanScreen` draws its own form sheet,
- * which is the shape this screen's form has. Unlike `KendaraanRoute` and `PenyewaRoute`, which
+ * which is the shape this screen's form has. Unlike `MobilRoute` and `PenyewaRoute`, which
  * keep their mounts here because their screens have no private sheet host — the asymmetry is a
  * property of the screens, not an oversight.
  */
@@ -1041,7 +1011,7 @@ private fun PengaturanRoute(
  *
  * ## Why this is a function and not three lines in `AppShell`
  *
- * It is the same wiring `KendaraanRoute` and `PenyewaRoute` do, and giving it a name means
+ * It is the same wiring `MobilRoute` and `PenyewaRoute` do, and giving it a name means
  * the shell's two branches (rail / bottom nav) stay identical. A sheet composed inside
  * the `if (isLandscape)` branch and again in the `else` is two places to forget.
  *

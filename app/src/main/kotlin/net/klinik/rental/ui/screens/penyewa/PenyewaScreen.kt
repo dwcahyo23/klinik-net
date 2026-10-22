@@ -62,7 +62,7 @@ import net.klinik.rental.ui.theme.knTypography
  * destination, which keeps the owner's scroll position and makes the bar a
  * filter rather than a navigation. Master-detail for renters is the shell's job
  * (Story 2.8's landscape layout), not this screen's — see the story's design
- * note, and `KendaraanScreen`'s matching deferral.
+ * note, and `MobilScreen`'s matching deferral.
  *
  * ## What is deliberately absent
  *
@@ -74,7 +74,7 @@ import net.klinik.rental.ui.theme.knTypography
  * are: skeleton, empty (two variants), a Danger banner over unchanged content,
  * and a Success snackbar over unchanged content.
  *
- * There is no money on this screen at all, so unlike `KendaraanScreen` there is
+ * There is no money on this screen at all, so unlike `MobilScreen` there is
  * no `formatRupiah` call in this file — money is converted in exactly one place
  * and this screen has none to convert.
  *

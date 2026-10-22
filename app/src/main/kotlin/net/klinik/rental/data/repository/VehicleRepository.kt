@@ -28,7 +28,7 @@ import java.util.UUID
  * The epic context forbids carrying a domain message in a `Result`, because a
  * `String` that has already been rendered into Indonesian cannot be re-checked,
  * re-translated or re-worded. A typed exception keeps the *fact* and lets
- * `KendaraanViewModel` choose the copy at the moment it is shown.
+ * `MobilViewModel` choose the copy at the moment it is shown.
  *
  * So this class does **not** build Indonesian text. That is the deliberate
  * omission: the moment a repository returns a message, two screens can show two

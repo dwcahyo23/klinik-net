@@ -974,6 +974,26 @@ class PaymentRepository(
         }
 
     /**
+     * How many confirmed deposits fall in [start] to [end] inclusive.
+     *
+     * The dashboard's income tile shows "N transaksi" under its rupiah total
+     * (`dashboard.html:176`), and a total with no row count is a figure the owner cannot
+     * check against the history screen beside it.
+     *
+     * ## Why this reads the **existing** grouping
+     *
+     * Because [observeIncomeByDate] already answers "what came in on which day", and it
+     * already carries each day's `count`. A second `@Query` would be a second place the
+     * `status = 'confirmed'` filter lives, and therefore a second thing that can forget that
+     * a cancelled deposit is not income — and this count is the one that says it.
+     */
+    fun observeTransactionCountBetween(start: LocalDate, end: LocalDate): Flow<Int> =
+        paymentDao.observeIncomeByDate().map { byDate ->
+            byDate.filter { !it.date.isBefore(start) && !it.date.isAfter(end) }
+                .sumOf { it.count }
+        }
+
+    /**
      * Income per day across [start] to [end] inclusive, zero-filled — Story 4.5's trend.
      *
      * ## Why the days are zero-filled here and not by the screen

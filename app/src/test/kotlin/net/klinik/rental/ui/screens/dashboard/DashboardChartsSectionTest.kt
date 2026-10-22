@@ -1,4 +1,4 @@
-package net.klinik.rental.ui.screens.beranda
+package net.klinik.rental.ui.screens.dashboard
 
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions

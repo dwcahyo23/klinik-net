@@ -138,8 +138,8 @@ class LaporanExportWiringTest {
 
     /** As in `BannerScopeTest`: every bundle stated, so a later screen is covered by default. */
     private fun testScreens(onCsvFilename: () -> String = { "laporan.csv" }): Screens = Screens(
-        kendaraan = Screens.Kendaraan(
-            state = net.klinik.rental.ui.screens.kendaraan.KendaraanUiState(),
+        mobil = Screens.Mobil(
+            state = net.klinik.rental.ui.screens.mobil.MobilUiState(),
             snackbarMessage = null,
             onQueryChange = {},
             onFilterChange = {},
@@ -261,8 +261,8 @@ class LaporanExportWiringTest {
             onReminderOpenFailed = {},
             pendingReminderLink = null,
         ),
-        beranda = Screens.Beranda(
-            state = net.klinik.rental.ui.screens.beranda.BerandaUiState(),
+        dashboard = Screens.Dashboard(
+            state = net.klinik.rental.ui.screens.dashboard.DashboardUiState(),
             onDeposit = {},
             onBackupReminderTap = {},
         ),
@@ -279,11 +279,6 @@ class LaporanExportWiringTest {
             onApplyCustomRange = {},
             onExportFileChosen = {},
             csvFilename = onCsvFilename,
-        ),
-        search = Screens.Search(
-            state = GlobalSearchUiState(),
-            onQueryChange = {},
-            onClear = {},
         ),
         setoran = Screens.Setoran(
             state = net.klinik.rental.ui.screens.setoran.SetoranScreenState(),

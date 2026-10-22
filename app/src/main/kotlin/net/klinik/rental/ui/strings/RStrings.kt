@@ -7,6 +7,7 @@ import net.klinik.rental.data.backup.BackupJsonReader
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.ui.format.formatTanggalBulanTahun
+import java.time.LocalDate
 
 /**
  * Indonesian copy for the screens that raise typed domain exceptions.
@@ -17,7 +18,7 @@ import net.klinik.rental.ui.format.formatTanggalBulanTahun
  * epic context forbids carrying a domain message in a `Result`, because a
  * `String` that is already Indonesian cannot be re-checked or re-worded. So
  * something has to turn each exception into text, and that something cannot be a
- * `@Composable` helper: [KendaraanViewModel] has no composition, and resolving
+ * `@Composable` helper: [MobilViewModel] has no composition, and resolving
  * strings there would need a `Context`.
  *
  * This is that something. The copy still lives in `res/values/strings.xml` —
@@ -1204,6 +1205,45 @@ class RStrings(private val context: Context) {
      */
     fun berandaRate(percent: Int): String =
         context.getString(R.string.beranda_rate, percent)
+
+    /**
+     * The income tile's meta — "3 transaksi" (`dashboard.html:176`).
+     *
+     * A **count** rather than a figure, because that is what the owner checks the rupiah
+     * total against: a sum with no row count is a number nobody can reconcile with the
+     * history screen beside it.
+     */
+    fun dashboardIncomeMeta(transactions: Int): String =
+        context.getString(R.string.beranda_kpi_income_meta, transactions)
+
+    /**
+     * The arrears tile's meta — "2 kasus kritis" (`dashboard.html:181`).
+     *
+     * The count of contracts at the **KRITIS** tier, not the rupiah at that tier: the tile
+     * above it already carries the money, and "how many are this bad" is the question a
+     * number attached to it actually answers.
+     */
+    fun dashboardArrearsMeta(criticalContracts: Int): String =
+        context.getString(R.string.beranda_kpi_arrears_meta, criticalContracts)
+
+    /**
+     * The rate tile's meta — "8 disewa · 1 tersedia" (`dashboard.html:183`).
+     *
+     * The fleet split the rate was computed over, so the percentage beside it has its
+     * denominator on screen.
+     */
+    fun dashboardRateMeta(rented: Int, available: Int): String =
+        context.getString(R.string.beranda_kpi_rate_meta, rented, available)
+
+    /**
+     * The cutoff tile's meta — "Sejak 25 Sep" (`dashboard.html:179`).
+     *
+     * Takes a [LocalDate] and formats it through the app's one Indonesian short-date
+     * convention (`formatTanggalBulan`) rather than a `String`, so this period's start
+     * cannot be spelled two ways.
+     */
+    fun dashboardCutoffSince(periodStart: LocalDate): String =
+        context.getString(R.string.beranda_kpi_cutoff_meta, formatTanggalBulan(periodStart))
 
     /**
      * The trend card's subtitle — "14 hari · total Rp 8.400.000".

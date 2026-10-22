@@ -8,7 +8,6 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
-import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
@@ -37,7 +36,6 @@ import net.klinik.rental.ui.components.KnButtonSize
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnCard
 import net.klinik.rental.ui.components.KnChip
-import net.klinik.rental.ui.components.KnContentMaxWidth
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnListRow
 import net.klinik.rental.ui.components.KnSkeletonList
@@ -181,15 +179,12 @@ fun PengaturanScreen(
                         },
                     )
 
-                    // ## Why the body sits in a capped, centred column
+                    // ## Why the gutter lives on this one column
                     //
-                    // The prototype sets no max-width, and the reason is in its frame:
-                    // `shared.css` only ever previewed 1280x800, where a full-width card is a
-                    // comfortable measure. On the audited 711dp tablet a full-width card puts one
-                    // sentence 700dp long on screen, and on a 1280dp landscape tablet the cards
-                    // would stretch the full window. So the body is capped at
-                    // [KnContentMaxWidth] and centred, and the gutter moves onto this one column
-                    // rather than staying on each section.
+                    // The prototype sets no max-width (`shared.css:285-289`) — its page body
+                    // is full-bleed with a 24px gutter. So the body is **not** capped: an
+                    // earlier 840dp cap stranded a wide band of empty page down each side of
+                    // the tablet, which is exactly what the prototype does not have.
                     //
                     // One owner for the gutter is the point. It used to be four: each section
                     // padded itself `spacing.lg` horizontally and wrapped its content, so the four
@@ -199,10 +194,6 @@ fun PengaturanScreen(
                     // how wide a card is allowed to be.
                     Column(
                         modifier = Modifier
-                            // `widthIn` **before** `fillMaxWidth`: in the other order the fill has
-                            // already fixed the width at the full window and the cap has nothing
-                            // left to narrow.
-                            .widthIn(max = KnContentMaxWidth)
                             .fillMaxWidth()
                             // `--sp-6`, the prototype's page gutter (`shared.css:285-289`) — one
                             // gutter for the whole body rather than four.

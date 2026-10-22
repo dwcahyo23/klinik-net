@@ -8,22 +8,23 @@ import androidx.compose.foundation.layout.WindowInsets
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.safeDrawing
+import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
-import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.getValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
 import androidx.compose.ui.platform.testTag
+import androidx.compose.ui.res.painterResource
+import androidx.compose.ui.unit.dp
 import androidx.navigation.NavHostController
 import androidx.navigation.compose.currentBackStackEntryAsState
 import androidx.navigation.compose.rememberNavController
+import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnBottomNav
 import net.klinik.rental.ui.components.KnNavRail
-import net.klinik.rental.ui.components.LocalTopBarSearch
-import net.klinik.rental.ui.screens.kendaraan.VehicleFilter
 import net.klinik.rental.ui.theme.KlinikNetTheme
 import net.klinik.rental.ui.theme.knSpacing
 
@@ -73,7 +74,7 @@ import net.klinik.rental.ui.theme.knSpacing
  * window. `ORIENTATION_FLIP` therefore holds structurally: the branch picks *chrome*, and
  * the back stack lives above it, so a rotation cannot lose the selection.
  *
- * @param screens the three destinations' collected state and actions — see
+ * @param screens the destinations' collected state and actions — see
  *   [Screens]. Passed in rather than reached for, so the shell holds no ViewModel
  *   and a test can drive the whole shell with hand-built state.
  */
@@ -92,21 +93,6 @@ internal fun AppShell(
     val items = destinationNavItems()
     val spacing = MaterialTheme.knSpacing
 
-    /**
-     * Closes the results overlay whenever the destination changes under it.
-     *
-     * Without this, choosing a rail or bottom-nav item while results are open leaves the
-     * overlay pinned over a different screen — a result list belonging to the last screen,
-     * drawn on top of this one. The overlay is a view of *where the owner was*; when that
-     * changes it has nothing to say.
-     *
-     * Declared before [navigateTo] because that lambda calls it: a local declared after its
-     * use reads as though the two were unrelated.
-     */
-    fun dismissOverlayOnNavigate() {
-        if (screens.search.state.isActive) screens.search.onClear()
-    }
-
     val navigateTo: (Int) -> Unit = { index ->
         // A null route is ignored rather than clamped. Clamping would turn a
         // programming error into silent navigation to the wrong screen, and the
@@ -119,218 +105,85 @@ internal fun AppShell(
                 launchSingleTop = true
                 restoreState = true
             }
-            // The results overlay is a view of *this* screen, so it does not travel
-            // to the next one — see `dismissOverlayOnNavigate`.
-            dismissOverlayOnNavigate()
         }
     }
 
-    // Whether the deposit FAB belongs on the screen showing — read from the back stack's
-    // **route**, the one place that knows. The rule lives beside the routing facts in
-    // `Destination.FAB_HIDDEN_ROUTES` (Beranda and Setoran), so the chrome and the table
-    // cannot disagree: a screen whose grid or tab already opens the deposit sheet carries
-    // no second door to it.
-    val isFabHidden = backStackEntry?.destination?.route in Destination.FAB_HIDDEN_ROUTES
-
-    /**
-     * Narrows the screen a result belongs to, so choosing a hit opens that screen **on that
-     * item** rather than on the full list.
-     *
-     * ## Why this writes the destination's own query
-     *
-     * Because the screens keep their own search bars, and that is deliberate: the bar is also
-     * the only control that **widens** a narrowed list again. Removing it, as the spec's task
-     * list proposed, would leave a list the owner could filter but never unfilter — and would
-     * strand the screen's `query` state with no writer.
-     *
-     * So the shell's field searches **across** the app and hands its finding to the screen that
-     * owns it; the screen's own bar then shows that query and can clear it. The two controls
-     * have different jobs rather than being duplicates.
-     *
-     * ## Why the fleet's status filter is cleared with its query
-     *
-     * Because the fleet screen applies **two** narrowing layers — the query and a status chip —
-     * and a search that cleared only one of them can produce a list with nothing in it and no
-     * visible reason. Choosing a car that is currently `Servis` while the `Tersedia` chip is
-     * active opens an empty fleet, and the owner has no way to tell that from "the search is
-     * broken". So the search resets **both** narrowers: a search says where the thing *is*, not
-     * which slice of the list it should appear in.
-     */
-    fun narrowTo(hit: SearchResult) {
-        when (hit) {
-            is SearchResult.RenterHit -> screens.penyewa.onQueryChange(hit.renter.name)
-            is SearchResult.VehicleHit -> {
-                screens.kendaraan.onQueryChange(hit.vehicle.plate)
-                screens.kendaraan.onFilterChange(VehicleFilter.Semua)
-            }
-        }
-    }
-
-    // Back is handled by the results panel itself now. A `DropdownMenu` is a popup with its own
-    // dismiss-on-Back, and its `onDismissRequest` is `onClear` — so the first press closes the
-    // results and the destination keeps the second. The `BackHandler` that used to stand here did
-    // the same job for the old in-layout overlay; keeping it would now clear the query on the first
-    // press *and* leave the popup to handle the same press, which is two handlers for one gesture.
-
-    // The deposit FAB, mounted by the **shell** rather than by any destination.
-    //
-    // Story 3.2's AC opens the deposit form from "Beranda atau speed dial", and neither
-    // exists: UX-DR17 assigned the FAB and speed dial to Epic 2, and no Epic 2 story
-    // built one, while Beranda itself is Story 4.3. So the shell carries a
-    // `fab-mini` — UX-DR17's 54dp variant for exactly the single-action case — rather
-    // than a speed dial holding one entry, which is a menu that hides the action behind
-    // a tap.
-    //
-    // Mounted here and not inside a screen because it must appear over **every** screen.
-    // When Beranda arrives it becomes the one door there and the FAB moves inside it,
-    // which is what UX-DR17 requires: *"speed dial TIDAK muncul di Beranda"*.
-    //
-    // `Box`, because a `ModalBottomSheet` must be composed beside the layout rather
-    // than inside it — and the FAB needs to float *over* the current screen, which a
-    // `Column` sibling could not do. Both are children of one `Box`, so the shell
-    // draws the graph and the sheet in the same place.
-    //
     // ## Why the insets are consumed **here** and nowhere else
     //
     // `MainActivity` calls `enableEdgeToEdge()`, which is a promise that the window
     // extends under the status and navigation bars — and a promise nobody kept. Before
-    // this line the app contained no `WindowInsets` reference at all, so the search bar
-    // was drawn at y=0 underneath the clock and the FAB sat under the gesture bar.
+    // this line the app contained no `WindowInsets` reference at all, so the top bar
+    // was drawn at y=0 underneath the clock and the content sat under the gesture bar.
     //
-    // Consumed at the outermost layout rather than per screen, for the same reason
-    // `GlobalSearchBar` is mounted here rather than in eight screens: it is then a
-    // property of the shell instead of a rule every destination has to remember, and a
-    // screen added next year inherits the clearance with it. Every screen below this
+    // Consumed at the outermost layout rather than per screen, so it is a property
+    // of the shell instead of a rule every destination has to remember, and a screen
+    // added next year inherits the clearance with it. Every screen below this
     // `Box` — including the sheets, which are separate windows and handle their own —
     // draws inside the already-inset area.
-    //
-    // `safeDrawing` rather than `systemBars` or `statusBars`: the gesture bar is an
-    // inset too, and leaving the bottom one unconsumed is the half of this bug that
-    // only shows on a device with a gesture bar.
     Box(
         modifier = modifier
             .fillMaxSize()
             .windowInsetsPadding(WindowInsets.safeDrawing),
     ) {
-        // Story 4.6's search field, **inside** whichever top bar is showing.
-        //
-        // ## Why it moved out of a row above the shell
-        //
-        // It used to be a full-width row here, which cost every screen 64dp of height and put two
-        // search fields on the two screens that already draw one. The prototype keeps a single
-        // 280px pill inside the 72dp top bar (`index.html:92-97`), and this is that pill: provided
-        // as a composition local, so the eight screens' `KnTopBar` call sites did not change and a
-        // screen rendered alone in a test draws no field.
-        //
-        // ## Why the two screens keep their own bars — two bars, one rule
-        //
-        // `PenyewaScreen` and `KendaraanScreen` still draw theirs, and the task list that said
-        // they should stop was **wrong**. A screen's own bar is the only control that can
-        // *widen* a list this one narrowed: removing it would leave a list the owner can filter
-        // but never unfilter, and would strand that screen's `query` with no writer. So selecting
-        // a result writes the destination's own query (see [narrowTo]), the destination's bar
-        // shows it, and the owner clears it there.
-        //
-        // The two are different jobs rather than duplicates — this one searches across the app,
-        // a screen's searches its own list — and they agree by construction because both call
-        // the predicates in `SearchMatch.kt`. What makes that rule shared is the **matching**,
-        // not the count of fields: three bars matching by one implementation beats one bar
-        // matching by three.
-        CompositionLocalProvider(
-            LocalTopBarSearch provides {
-                GlobalSearchBar(
-                    state = screens.search.state,
-                    onQueryChange = screens.search.onQueryChange,
-                    onClear = screens.search.onClear,
-                    // A result opens the destination that owns it, by the route the result
-                    // carries. Derived here rather than passed in, because the nav controller
-                    // lives in this function — see `Screens.Search`'s KDoc.
-                    onSelect = { hit ->
-                        navController.navigate(hit.route) {
-                            popUpTo(navController.graph.startDestinationId) { saveState = true }
-                            launchSingleTop = true
-                            restoreState = true
-                        }
-                        // The destination opens **on that item** rather than on the full list.
-                        narrowTo(hit)
-                        // And the panel closes: the owner is now looking at the screen they
-                        // asked for, and an overlay still listing results would sit over the
-                        // answer.
-                        screens.search.onClear()
-                    },
-                )
-            },
-        ) {
-            // `fillMaxSize`, not `weight`: the provider's content lambda is not a `ColumnScope`,
-            // and the outer `Box` already sizes this to the whole inset area.
-            Box(Modifier.fillMaxSize()) {
-                if (showRail) {
-                    Row(Modifier.fillMaxSize()) {
-                        KnNavRail(
-                            items = items,
-                            selectedIndex = selectedIndex,
-                            onSelect = navigateTo,
-                            // The rail is **compact** here, and this is the only call site
-                            // that says so. `KnNavRailWidthCompact` (`Navigation.kt`) has
-                            // existed since the component was written and nothing ever
-                            // passed it, so the rail drew at `--rail-w` (88dp) with its
-                            // labels and the prototype's compact rule — 72dp, no labels
-                            // (`shared.css:1030-1032`) — described a layout nothing
-                            // rendered. This branch is the only place the compact rail is
-                            // reachable, because the other branch draws the bottom nav.
-                            compact = true,
-                            modifier = Modifier.testTag(TAG_RAIL),
-                        )
-                        AppNavGraph(
-                            navController = navController,
-                            screens = screens,
-                            modifier = Modifier.weight(1f),
-                        )
-                    }
-                } else {
-                    Column(Modifier.fillMaxSize()) {
-                        AppNavGraph(
-                            navController = navController,
-                            screens = screens,
-                            modifier = Modifier.weight(1f),
-                        )
-                        KnBottomNav(
-                            items = items,
-                            selectedIndex = selectedIndex,
-                            onSelect = navigateTo,
-                            modifier = Modifier.testTag(TAG_BOTTOM_NAV),
-                        )
-                    }
+        // `fillMaxSize`, not `weight`: the provider's content lambda is not a `ColumnScope`,
+        // and the outer `Box` already sizes this to the whole inset area.
+        Box(Modifier.fillMaxSize()) {
+            if (showRail) {
+                Row(Modifier.fillMaxSize()) {
+                    KnNavRail(
+                        items = items,
+                        selectedIndex = selectedIndex,
+                        onSelect = navigateTo,
+                        // The rail is **compact** here, and this is the only call site
+                        // that says so. `KnNavRailWidthCompact` (`Navigation.kt`) has
+                        // existed since the component was written and nothing ever
+                        // passed it, so the rail drew at `--rail-w` (88dp) with its
+                        // labels and the prototype's compact rule — 72dp, no labels
+                        // (`shared.css:1030-1032`) — described a layout nothing
+                        // rendered. This branch is the only place the compact rail is
+                        // reachable, because the other branch draws the bottom nav.
+                        compact = true,
+                        // The brand mark the prototype's rail carries at its head
+                        // (`shared.js:334` — a 44x44 logo above the items). The slot
+                        // existed with nothing ever passing it, so the rail's top band
+                        // was an empty 52dp.
+                        logoSlot = {
+                            androidx.compose.foundation.Image(
+                                painter = painterResource(R.drawable.logo_mark),
+                                contentDescription = null,
+                                modifier = Modifier.size(44.dp),
+                            )
+                        },
+                        modifier = Modifier.testTag(TAG_RAIL),
+                    )
+                    AppNavGraph(
+                        navController = navController,
+                        screens = screens,
+                        modifier = Modifier.weight(1f),
+                    )
                 }
-
-                // The FAB floats over the content area, aligned to its bottom-end with the
-                // shell's own gutter. `align` rather than a nested `Box`, so it adds no layout
-                // of its own and cannot shift the graph above it.
-                //
-                // **Hidden on Beranda and Setoran.** UX-DR17 is explicit — *"speed dial TIDAK
-                // muncul di Beranda"* — and the reason is worth keeping: the grid's
-                // "Catat Setoran" tile is the only door to that action from the morning screen,
-                // and two doors to one action is how one of them goes stale. Setoran joins it
-                // when the deposit screen arrives: its Input tab is the second door, and the
-                // FAB would be a third. `DepositFab`'s KDoc has carried this promise since
-                // Story 3.2.
-                //
-                // The check is the **route**, not a flag: the route is the fact, and a flag
-                // beside it would be a second thing to keep in step — the defect this repo
-                // finds whenever a fact is encoded twice.
-                DepositFab(
-                    visible = !screens.deposito.state.isOpen && !isFabHidden,
-                    onOpen = screens.deposito.onOpen,
-                    modifier = Modifier
-                        .align(Alignment.BottomEnd)
-                        .padding(spacing.lg),
-                )
-
-                // And the sheet, last so it composes above the FAB — two windows over one
-                // state is the defect Story 2.8's review found, and a FAB showing *through*
-                // an open sheet is the same shape in a smaller size.
-                DepositHost(screens.deposito)
+            } else {
+                Column(Modifier.fillMaxSize()) {
+                    AppNavGraph(
+                        navController = navController,
+                        screens = screens,
+                        modifier = Modifier.weight(1f),
+                    )
+                    KnBottomNav(
+                        items = items,
+                        selectedIndex = selectedIndex,
+                        onSelect = navigateTo,
+                        modifier = Modifier.testTag(TAG_BOTTOM_NAV),
+                    )
+                }
             }
+
+            // The deposit sheet, mounted by the shell rather than by any destination.
+            //
+            // It is a `ModalBottomSheet`, which must be composed **beside** the layout
+            // rather than inside it — and it is a child of this same `Box`, so the shell
+            // draws the graph and the sheet in the same place.
+            DepositHost(screens.deposito)
         }
     }
 }
@@ -351,8 +204,6 @@ private fun Configuration.showsRail(): Boolean = screenWidthDp >= NAV_RAIL_BREAK
 
 /**
  * The window width at which the rail replaces the bottom nav, in dp.
- *
- * ## Where this number comes from
  *
  * It is **this app's**, not the prototype's. `shared.css:292` hides `.bottom-nav`
  * unconditionally because the prototype only ever previewed a 1280x800 frame, so it

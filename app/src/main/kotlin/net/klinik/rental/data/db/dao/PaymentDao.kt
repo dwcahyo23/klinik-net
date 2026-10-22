@@ -214,7 +214,7 @@ interface PaymentDao {
      */
     @Query(
         """
-        SELECT date, SUM(amount) AS total FROM payment
+        SELECT date, SUM(amount) AS total, COUNT(*) AS count FROM payment
         WHERE status = 'confirmed'
         GROUP BY date
         """,
@@ -261,6 +261,17 @@ interface PaymentDao {
 data class DailyIncome(
     val date: LocalDate,
     val total: Long,
+    /**
+     * How many deposits made up [total].
+     *
+     * The prototype's dashboard shows "N transaksi" under the income tile
+     * (`dashboard.html:176`), and a rupiah total with no row count is a figure the owner
+     * cannot check against the history screen. It rides on the **existing** grouping
+     * rather than a second query: the same `WHERE status = 'confirmed'` and the same
+     * `GROUP BY date` produce both columns, so the count cannot disagree with the total
+     * it belongs to.
+     */
+    val count: Int = 0,
 )
 
 /**

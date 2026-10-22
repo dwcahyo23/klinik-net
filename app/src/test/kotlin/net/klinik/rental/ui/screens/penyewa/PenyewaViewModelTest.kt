@@ -46,7 +46,7 @@ import org.robolectric.annotation.Config
  *    the stored renter rather than echoing the exception
  *  - a blank name never reaches the database at all
  *
- * Story 2.3 deferred the equivalent test at the `KendaraanViewModel` boundary for
+ * Story 2.3 deferred the equivalent test at the `MobilViewModel` boundary for
  * the same reason, and recorded it as a real gap. This story has no such deferral:
  * the ViewModel is built here, so the test is written with it.
  *

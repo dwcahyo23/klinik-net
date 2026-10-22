@@ -32,8 +32,8 @@ import java.io.File
  *
  * Because the string on the style is only half the claim. A style can carry
  * `tnum` and still not apply it, if the face it names has no such feature —
- * and that is exactly the state the KPI tile was in for a while: `displayMedium`
- * named Fraunces, Fraunces has no `tnum`, and the assertion on the string
+ * and that is exactly the state the KPI tile was in for a while: a style named
+ * the display face, that face has no `tnum`, and the assertion on the string
  * passed the whole time. So this file checks the **font**, not only the style.
  *
  * The font check is a byte scan for the `tnum` tag inside the file's GSUB
@@ -145,22 +145,20 @@ class TabularFiguresTest {
     }
 
     /**
-     * The bundled faces agree with what the styles claim.
+     * The one bundled face agrees with what the styles claim.
      *
-     * The gap this closes is not hypothetical. `displayMedium` carried the feature on
-     * Fraunces for the whole life of the design system, and Fraunces has no `tnum` — so
-     * the setting was inert on precisely the style that draws the dashboard's money
-     * figures, and an assertion on the string alone could never see it.
+     * There used to be two faces, and the check had to be a rule about **which** one carried
+     * the feature: the display face (Fraunces) has no `tnum`, so every figure style had to name
+     * the body face to get its digits to align. There is one face now, and it carries the
+     * feature at every weight — so this is no longer a rule about which file, it is the
+     * statement that the app's only typeface delivers what every figure style promises.
      *
-     * `FontFamily` does not carry a name — `fontFamily.name` is `FontFamily.Default` for
-     * every family — so the file a style resolves to cannot be read off the style. It is
-     * read off the **font resources** instead, which answers the question directly: the
-     * body faces must have the feature, because every figure style renders its numbers
-     * there, and the display face must not, because a style claiming a feature its face
-     * cannot deliver is a claim nothing can enforce.
+     * `FontFamily` does not carry a name — `fontFamily.name` is `FontFamily.Default` for every
+     * family — so the file a style resolves to cannot be read off the style. It is read off the
+     * **font resources** instead, which answers the question directly.
      */
     @Test
-    fun `the bundled faces agree with what the styles claim`() {
+    fun `the bundled face agrees with what the styles claim`() {
         listOf(
             "plus_jakarta_sans_400",
             "plus_jakarta_sans_500",
@@ -169,40 +167,9 @@ class TabularFiguresTest {
             "plus_jakarta_sans_800",
         ).forEach { file ->
             assertTrue(
-                "$file must carry '$TABULAR_FIGURES' — the body face is where every " +
-                    "figure style renders its numbers",
+                "$file must carry '$TABULAR_FIGURES' — it is the app's only face, and every " +
+                    "figure style renders its numbers there",
                 fontHasTabularFigures(fontPath(file)),
-            )
-        }
-
-        listOf("fraunces_600", "fraunces_700").forEach { file ->
-            assertTrue(
-                "$file must NOT carry '$TABULAR_FIGURES' — the display face is for " +
-                    "headings, and a style claiming a feature it cannot deliver is a lie " +
-                    "the assertion on the string alone can never see",
-                !fontHasTabularFigures(fontPath(file)),
-            )
-        }
-    }
-
-    /**
-     * The display faces are the ones that must **not** claim tabular figures.
-     *
-     * They name Fraunces, which has no `tnum` at all. A style that claimed the
-     * feature on that face would be asserting something the renderer cannot deliver —
-     * which is how `displayMedium` spent its life claiming it.
-     */
-    @Test
-    fun `the display faces do not claim a feature they cannot deliver`() {
-        listOf(
-            "displayLarge" to KnTypography.Clinic.displayLarge,
-            "displaySmall" to KnTypography.Clinic.displaySmall,
-            "title" to KnTypography.Clinic.title,
-        ).forEach { (name, style) ->
-            assertEquals(
-                "$name names a face without '$TABULAR_FIGURES', so it must not claim it",
-                null,
-                style.fontFeatureSettings,
             )
         }
     }

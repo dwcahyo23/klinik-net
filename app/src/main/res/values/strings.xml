@@ -209,7 +209,7 @@
       message must name both the fault and the fix).
     -->
     <!-- Top bar -->
-    <string name="kendaraan_title">Armada</string>
+    <string name="kendaraan_title">Mobil</string>
     <!--
       The fleet count. A plural would be a second string per count in a language
       whose plural rules differ from the CSS's, and the count is a figure rather
@@ -857,8 +857,13 @@
       first while having swallowed a parse error, so the owner re-entered data
       that was already there.
     -->
-    <string name="nav_kendaraan">Kendaraan</string>
+    <string name="nav_mobil">Mobil</string>
     <string name="nav_penyewa">Penyewa</string>
+    <!--
+      The contract screen's label. It is **not** a rail item — the prototype reaches a
+      renter's contracts from that renter's detail pane (`renters.html:247-264`) — but
+      the destination still needs a name for the screens that open it directly.
+    -->
     <string name="nav_kontrak">Kontrak</string>
     <!--
       The deposit screen's rail label. Flat like the others, for the same reason: the rail
@@ -866,6 +871,13 @@
       orientations.
     -->
     <string name="nav_setoran">Setoran</string>
+    <!--
+      The rail's first item — the prototype's own word for the page
+      (`prototype/shared.js:96`). The app used to call it "Beranda", which is also the
+      prototype's *entry* page's title (`index.html:88`); the prototype's rail opens on
+      "Dashboard", and the app's rail now does too.
+    -->
+    <string name="nav_dashboard">Dashboard</string>
     <string name="error_read_title">Data tidak bisa dibaca</string>
     <string name="error_read_body">Aplikasi dihentikan agar riwayat tidak hilang. Coba buka lagi setelah data tersimpan.</string>
     <string name="error_read_action">Coba lagi</string>
@@ -1308,8 +1320,7 @@
       whole copy set is findable from its prefix.
     -->
     <!-- The rail label and the bar title: the same word, so the item and the screen name one destination. -->
-    <string name="nav_beranda">Beranda</string>
-    <string name="beranda_title">Beranda</string>
+    <string name="beranda_title">Dashboard</string>
 
     <!--
       The four KPI labels.
@@ -1319,13 +1330,20 @@
       would not.
     -->
     <string name="beranda_kpi_income">Pendapatan hari ini</string>
-    <string name="beranda_kpi_arrears">Tunggakan aktif</string>
+    <string name="beranda_kpi_arrears">Total tunggakan</string>
     <!--
-      The fleet tile's label. "Armada" is the word the rest of the app uses for the fleet —
-      `nav_kendaraan` is "Kendaraan" for the screen, but the vehicles themselves are the
-      armada.
+      The cutoff-period tile — `dashboard.html:178`. A different window from the income
+      tile above: that one follows the period filter, this one is always the billing period
+      the engine is charging for.
     -->
-    <string name="beranda_kpi_fleet">Armada aktif</string>
+    <string name="beranda_kpi_cutoff">Periode cut off berjalan</string>
+    <string name="beranda_kpi_cutoff_meta">Sejak %1$s</string>
+    <!-- The income tile's meta: `dashboard.html:176`. -->
+    <string name="beranda_kpi_income_meta">%1$d transaksi</string>
+    <!-- The arrears tile's meta: `dashboard.html:181`. -->
+    <string name="beranda_kpi_arrears_meta">%1$d kasus kritis</string>
+    <!-- The rate tile's meta: `dashboard.html:183`. -->
+    <string name="beranda_kpi_rate_meta">%1$d disewa · %2$d tersedia</string>
     <string name="beranda_kpi_rate">Tingkat penagihan</string>
 
     <!--
