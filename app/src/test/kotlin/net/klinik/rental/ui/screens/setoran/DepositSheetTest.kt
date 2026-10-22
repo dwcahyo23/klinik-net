@@ -268,6 +268,59 @@ class DepositSheetTest {
         compose.onNodeWithTag(accountChipTag(ACCOUNT_ID)).assertAtLeast(MIN_TARGET, "account chip")
     }
 
+    /**
+     * The sheet's form has a **height**.
+     *
+     * The defect this catches is the one a `weight(1f)` inside a wrap-content `Column`
+     * causes: the weighted child is measured against the space left over in a column
+     * whose own height is decided by its children, so it gets **zero**, and the form
+     * collapses to nothing while every one of its nodes still "exists".
+     *
+     * Existence is exactly the wrong assertion here — the broken layout passes it. So
+     * this measures.
+     *
+     * `size`, not `boundsInRoot`: a `ModalBottomSheet` is a separate window, and in the
+     * test harness its root is not laid out, so the node's **root-relative** bounds are
+     * zero even when the node itself has a real height. `size` is the node's own box.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the sheet's form has a height`() {
+        compose.setContent { theme { Sheet(state = openState()) } }
+
+        val formHeight = compose.onNodeWithTag(TAG_REFERENCE)
+            .fetchSemanticsNode()
+            .size
+            .height
+        assertTrue(
+            "the reference field collapsed to ${formHeight}px — the sheet's form has no height",
+            formHeight > 0f,
+        )
+    }
+
+    /**
+     * The numpad is **whole**, not scrolled away.
+     *
+     * The pad is the sheet's primary control — it is how the amount is entered and
+     * `SIMPAN` on it is the way forward. A pad that has to be scrolled to is a pad the
+     * owner cannot use, so the action row is pinned below the scroll rather than inside
+     * it.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h2400dp")
+    fun `the numpad is laid out whole`() {
+        compose.setContent { theme { Sheet(state = openState()) } }
+
+        val padHeight = compose.onNodeWithTag(TAG_NUMPAD)
+            .fetchSemanticsNode()
+            .size
+            .height
+        assertTrue(
+            "the numpad collapsed to ${padHeight}px — it must be pinned, not scrolled",
+            padHeight > 0f,
+        )
+    }
+
     // ------------------------------------------------------ the mandatory preview
 
     /** The dialog appears when the preview is up, and not otherwise. */

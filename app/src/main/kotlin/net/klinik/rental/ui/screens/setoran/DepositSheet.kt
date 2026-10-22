@@ -5,6 +5,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -113,7 +114,21 @@ fun DepositSheet(
             .heightIn(max = DepositSheetMaxHeight),
     ) {
         Column(
-            modifier = Modifier.fillMaxWidth(),
+            // The bound, on the **outer** column.
+            //
+            // It has to be here, and it has to be a *bound* rather than a height: the
+            // scrolling column below is weighted, and a weighted child is measured
+            // against what is **left over** in its parent. A parent that wraps its
+            // content leaves nothing over, so the form collapsed to zero height — the
+            // defect `DepositSheetTest`'s "the sheet's form has a height" test caught.
+            //
+            // `fillMaxHeight` before the bound, so the parent takes the **full** height
+            // the sheet offers and the weight has something to divide. A parent that
+            // only wraps its content would leave the weighted child nothing.
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .heightIn(max = DepositSheetMaxHeight),
         ) {
         Column(
             modifier = Modifier
@@ -121,11 +136,11 @@ fun DepositSheet(
                 // The **only** scroll container in the sheet.
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                // `weight(1f)` so the scrolling form takes the space the action row leaves
-                // and no more: without it the form measures at its full natural height, the
-                // action row is pushed below the sheet, and the sheet's own cap does not
-                // help because the cap is on the parent.
-                .weight(1f),
+                // `weight(1f, fill = false)`: the form takes its **natural** height, up
+                // to what the action row below leaves. `fill = true` would make it fill
+                // the whole sheet, so a short form would open a sheet of mostly
+                // whitespace.
+                .weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             // The title changes because the sheet's whole job does: a correction

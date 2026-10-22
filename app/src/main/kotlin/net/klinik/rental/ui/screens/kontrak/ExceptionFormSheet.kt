@@ -2,6 +2,7 @@ package net.klinik.rental.ui.screens.kontrak
 
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.FlowRow
@@ -182,7 +183,7 @@ fun ExceptionFormSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .weight(1f),
+                .weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -667,7 +668,7 @@ fun EndContractSheet(
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .weight(1f),
+                .weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(

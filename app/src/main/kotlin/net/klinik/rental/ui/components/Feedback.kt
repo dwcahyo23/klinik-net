@@ -619,15 +619,15 @@ fun KnModal(
 
                     Box(
                         modifier = Modifier
-                            // `weight(1f)`, **not** `weight(1f, fill = false)`.
+                            // `weight(1f, fill = false)`: the body takes its **content**
+                            // height, up to what is left after the header and the footer.
                             //
-                            // `fill = false` measured the body at its content height, so a
-                            // form taller than the remaining space pushed the footer out of
-                            // the capped Column — which is the defect "the confirm button is
-                            // gone" reported on every sheet. Filling the weight makes the
-                            // body take exactly what the header and footer leave, and the
-                            // `verticalScroll` below scrolls *within* that.
-                            .weight(1f)
+                            // `fill = true` would make every dialog exactly as tall as the
+                            // cap — a three-line message would open a 640dp box. `fill = false`
+                            // measures the body at its content and only shrinks it when the
+                            // content is taller than the space, which is the case the scroll
+                            // is there for.
+                            .weight(1f, fill = false)
                             .verticalScroll(rememberScrollState())
                             // The prototype's `.modal-body { padding: var(--sp-6) }` —
                             // 24dp on every side. At 20dp the copy sat tight against
