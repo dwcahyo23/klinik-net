@@ -48,6 +48,8 @@ import net.klinik.rental.ui.components.KnBadge
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
+import net.klinik.rental.ui.components.KnCard
+import net.klinik.rental.ui.components.KnCardHeader
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnKpiGrid
@@ -599,23 +601,35 @@ private fun parseIsoToMillis(text: String): Long? =
     runCatching { LocalDate.parse(text).toPickerMillis() }.getOrNull()
 
 /**
- * The seven-day line, under the figures it summarises.
+ * The seven-day line, in a card.
+ *
+ * ## Why it has a card now
+ *
+ * It was a bare `TrendLine` in a `Column`, and on the device with real data that is a red
+ * polyline drawn straight onto the page — no surface, no title, no label, so it read as a
+ * stray stroke rather than as a chart. Every other figure on this screen is a card; a line
+ * that summarises them is one too.
  *
  * **Nothing when the period is quiet.** A series of seven zeroes draws a flat stroke at the
- * baseline — with no axes, no labels and no card around it, that is a bare red rule across
- * the page, which reads as a broken divider rather than as "no income". The quiet-period
- * note above already says there was none, so the line is left out.
+ * baseline, which reads as a broken divider rather than as "no income". The quiet-period note
+ * above already says there was none, so the whole card is left out.
  */
 @Composable
 private fun Trend(state: LaporanUiState) {
     if (state.isQuietPeriod || state.trend.all { it == 0L }) return
     val spacing = MaterialTheme.knSpacing
-    Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
-        TrendLine(
-            points = state.trend,
-            description = stringResource(R.string.laporan_kpi_trend) +
-                ": " + state.trendTotalText,
-        )
+    KnCard(modifier = Modifier.testTag(TAG_TREND_CARD)) {
+        Column(verticalArrangement = Arrangement.spacedBy(spacing.md)) {
+            KnCardHeader(
+                title = stringResource(R.string.laporan_kpi_trend),
+                subtitle = state.trendTotalText,
+            )
+            TrendLine(
+                points = state.trend,
+                description = stringResource(R.string.laporan_kpi_trend) +
+                    ": " + state.trendTotalText,
+            )
+        }
     }
 }
 
@@ -759,6 +773,7 @@ internal const val TAG_KPI_INCOME = "laporan-kpi-income"
 internal const val TAG_KPI_ARREARS = "laporan-kpi-arrears"
 internal const val TAG_KPI_SETTLED = "laporan-kpi-settled"
 internal const val TAG_KPI_TREND = "laporan-kpi-trend"
+internal const val TAG_TREND_CARD = "laporan-trend-card"
 internal const val TAG_RISK_BREAKDOWN = "laporan-risk"
 internal const val TAG_METRIC_SKELETON = "laporan-metric-skeleton"
 internal const val TAG_QUIET = "laporan-quiet"

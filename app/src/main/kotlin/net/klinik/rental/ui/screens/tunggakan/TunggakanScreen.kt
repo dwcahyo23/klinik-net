@@ -11,6 +11,9 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
+import androidx.compose.foundation.text.TextAutoSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -30,6 +33,8 @@ import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.tooling.preview.Preview
+import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.Clock
@@ -503,6 +508,14 @@ private fun ArrearsRowItem(
             ) {
                 // The AC's shape, already assembled by the ViewModel — no `formatRupiah`
                 // call in this file, so two screens cannot spell a rupiah two ways.
+                //
+                // **Shrunk to fit, never cut.** `KnListRow`'s trailing slot is capped at 46%
+                // of the row (`.lr-right { max-width: 46% }`), and a nine-character rupiah at
+                // `figure` size is wider than that share once the avatar and title have taken
+                // theirs — so the amount ellipsised to "Rp 2.070.…". A cut money figure is not
+                // a shorter figure, it is a different one, and this is the number the owner is
+                // about to quote in a reminder. `autoSize` scales it down until it fits, with
+                // the same floor the KPI tiles use.
                 Text(
                     text = row.figureText,
                     style = MaterialTheme.knTypography.figure,
@@ -511,7 +524,11 @@ private fun ArrearsRowItem(
                     // which is the design system's own reason for the token (AR-11).
                     fontFamily = FontFamily.Monospace,
                     maxLines = 1,
-                    overflow = TextOverflow.Ellipsis,
+                    softWrap = false,
+                    autoSize = TextAutoSize.StepBased(
+                        minFontSize = ArrearsFigureMinFontSize,
+                        maxFontSize = MaterialTheme.knTypography.figure.fontSize,
+                    ),
                 )
                 Row(
                     horizontalArrangement = Arrangement.spacedBy(spacing.xs),
@@ -672,6 +689,17 @@ internal const val TAG_ERROR = "tunggakan-error"
 
 /** The four summary cards — `arrears.html:41`. */
 internal const val TAG_SUMMARY = "tunggakan-summary"
+
+/**
+ * The smallest a row's amount may shrink to.
+ *
+ * `KnListRow`'s trailing slot is capped at 46% of the row, and a nine-character rupiah at the
+ * `figure` size is wider than that once the avatar and title have taken their share. 12sp is
+ * still legible on the tablet this ships on and is what bounds `autoSize` from below — the
+ * alternative, ellipsis, prints a *different number*, which for a figure the owner is about to
+ * quote in a reminder is worse than a small one.
+ */
+private val ArrearsFigureMinFontSize = 12.sp
 
 /** The five risk chips in the top bar, and one chip's tag. */
 internal const val TAG_RISK_CHIPS = "tunggakan-risk-chips"

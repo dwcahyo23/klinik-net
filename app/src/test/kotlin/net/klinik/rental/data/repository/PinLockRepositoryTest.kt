@@ -393,7 +393,35 @@ class PinLockRepositoryTest {
         )
     }
 
-    /** Once the owner has their own PIN, the seed does not touch it. */
+    /**
+     * Disabling, then reading, keeps the lock **off**.
+     *
+     * This is the regression the owner found on the device: turning the PIN off in settings
+     * appeared to work, and the next launch asked for it again. The cause was the first-run
+     * seed keying on the hash — `disable()` deletes the hash, so the very next read re-seeded
+     * the default PIN.
+     *
+     * `KEY_SEEDED` is what makes the two states distinguishable: "never had a PIN" (seed) and
+     * "had one and turned it off" (leave alone). Both are asserted here, because a marker that
+     * is not written on a fresh install would break the other half.
+     */
+    @Test
+    fun `disabling the pin keeps it off across reads`() = runBlocking {
+        // A fresh install seeds, which is the first half of the contract.
+        assertTrue("a fresh install is locked", lock.isEnabled())
+        assertTrue("with the shipped PIN", lock.verifyPin(PinLockRepository.FIRST_RUN_PIN))
+
+        lock.disable()
+
+        assertFalse("the owner turned it off", lock.isEnabled())
+        assertFalse("and it stays off on the next read", lock.isEnabled())
+        assertNull(
+            "with nothing re-seeded",
+            database.settingDao().findValue(PinLockRepository.KEY_PIN_HASH),
+        )
+    }
+
+    /** A PIN the owner set themselves is never overwritten by the default. */
     @Test
     fun `the first-run seed never overwrites an existing pin`() = runBlocking {
         lock.enable("9876", lock.newRecoveryCode())
@@ -464,6 +492,38 @@ class PinLockRepositoryTest {
         val exactly = lockAt(FIXED_NOW.plus(Duration.ofMinutes(5)))
 
         assertTrue(exactly.shouldLock(coldStart = false))
+    }
+
+    /**
+     * **Every** auto-lock choice the settings screen offers behaves the same way.
+     *
+     * The four durations (1, 5, 15, 30 minutes) were only ever exercised at 5, which is the
+     * default — so a bug that made the *shortest* or the *longest* stop working would have
+     * passed the suite. Each is checked just under and just over its own boundary, which is
+     * the only pair that distinguishes "this duration is honoured" from "some duration is".
+     *
+     * This is also the answer to the question the owner asked about the Android lock screen:
+     * the app's own gate is `shouldLock`, and it is measured from the timestamp `onStop`
+     * records — so a screen-off that backgrounds the Activity is the same event as switching
+     * apps, and the same duration applies. What Android's own lock does is independent and
+     * neither cancels nor triggers this.
+     */
+    @Test
+    fun `every auto-lock duration is honoured at its own boundary`() = runBlocking {
+        PinLockRepository.AUTO_LOCK_CHOICES.forEach { minutes ->
+            val fresh = lockAt(FIXED_NOW)
+            fresh.enable("1234", fresh.newRecoveryCode(), autoLockMinutes = minutes)
+            fresh.recordBackgrounded()
+
+            assertFalse(
+                "at ${minutes}min, one second under must stay unlocked",
+                lockAt(FIXED_NOW.plusSeconds(minutes * 60L - 1)).shouldLock(coldStart = false),
+            )
+            assertTrue(
+                "at ${minutes}min, one second over must lock",
+                lockAt(FIXED_NOW.plusSeconds(minutes * 60L + 1)).shouldLock(coldStart = false),
+            )
+        }
     }
 
     /**

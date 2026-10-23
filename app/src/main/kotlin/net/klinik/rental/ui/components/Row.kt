@@ -13,6 +13,7 @@ import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -146,7 +147,19 @@ fun KnListRow(
             }
             if (trailing != null) {
                 Box(
-                    modifier = Modifier.weight(ListRowTrailingWeight, fill = false),
+                    // The prototype's `.lr-right { max-width: 46% }`, and it stays a **cap**
+                    // rather than a fixed share: `fill = false` lets a narrow slot (a chevron,
+                    // a single figure) stay narrow.
+                    //
+                    // The width floor is what a *text* slot needs. Measured on the device, a
+                    // rupiah figure plus a two-word status pill came to more than 46% of the
+                    // row once the avatar and title had taken theirs, so the pill was given a
+                    // box narrower than its own label and ellipsised "Perhatian" to
+                    // "Perhatiar". A slot that cannot fit the words in it is not a cap, it is
+                    // a truncation.
+                    modifier = Modifier
+                        .weight(ListRowTrailingWeight, fill = false)
+                        .widthIn(min = ListRowTrailingMinWidth),
                     contentAlignment = Alignment.CenterEnd,
                 ) {
                     trailing()
@@ -577,5 +590,14 @@ private val ListRowLeadingSize = 44.dp
 
 /** `.lr-right { max-width: 46% }`, as a share of the row's width. */
 private const val ListRowTrailingWeight = 0.46f
+
+/**
+ * The narrowest a **text** trailing slot may be.
+ *
+ * 200dp is what Rp 2.070.000 plus a two-word status pill beside it needs; below that the
+ * pill ellipsises its own label, which is the defect this floor exists to stop. A slot holding
+ * only an icon is unaffected — it never asks for the floor.
+ */
+private val ListRowTrailingMinWidth = 200.dp
 
 private val WHITESPACE = Regex("\\s+")

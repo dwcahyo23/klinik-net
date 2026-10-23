@@ -220,7 +220,24 @@ internal fun AppShell(
                 previousRoute = currentRoute
             }
 
-            if (!(isSetoranShowing && screens.setoran.state.isShowingForm)) {
+            // **On Setoran, the screen owns the deposit — always.** It draws the form itself
+            // (the split in landscape, the stacked panel in portrait), so the sheet must
+            // never mount there.
+            //
+            // The condition used to also require `isShowingForm`, and that was the bug the
+            // owner saw: *"dari screen selain setoran, dan masuk klik setoran itu muncul
+            // bottomsheet lama input setoran, tapi bottomsheet ini beberapa detik kemudian
+            // nutup sendiri."* The two halves of `isShowingForm` are `tab == Input` **and**
+            // `form != null`, and they are set by two different effects — so there is a
+            // window where the form exists and the tab has not settled (or is still Riwayat
+            // from the last visit). In that window `isShowingForm` is false, the sheet
+            // mounts, and it is then unmounted once the tab effect catches up. That is the
+            // flash, and it is a race by construction rather than a timing quirk.
+            //
+            // Gating on the **route** alone has no race: the sheet's job is corrections
+            // opened from another screen (the Kontrak sheet's per-deposit verb), and every
+            // one of those happens on a route that is not Setoran.
+            if (!isSetoranShowing) {
                 DepositHost(screens.deposito)
             }
         }

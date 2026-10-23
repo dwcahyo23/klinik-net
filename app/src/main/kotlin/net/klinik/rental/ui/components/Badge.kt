@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.wrapContentWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -70,7 +71,13 @@ fun KnBadge(
         Row(
             modifier = Modifier
                 .padding(horizontal = MaterialTheme.knSpacing.md)
-                .padding(vertical = 5.dp),
+                .padding(vertical = 5.dp)
+                // **The row is as wide as its words.** Without this it is measured against
+                // whatever the badge was given and distributes that between the glyph and the
+                // label, which ellipsised "Perhatian" to "Perhatiar" in a narrow list row.
+                // `wrapContentWidth(unbounded = true)` asks for the natural width instead;
+                // the caller's own constraints still decide where the pill ends up.
+                .wrapContentWidth(unbounded = true),
             horizontalArrangement = Arrangement.spacedBy(5.dp, Alignment.CenterHorizontally),
             verticalAlignment = Alignment.CenterVertically,
         ) {
@@ -82,7 +89,16 @@ fun KnBadge(
                     modifier = Modifier.size(13.dp),
                 )
             }
-            Text(text = text, style = MaterialTheme.knTypography.overline, color = fg)
+            Text(
+                text = text,
+                style = MaterialTheme.knTypography.overline,
+                color = fg,
+                // **One line, always.** A badge is a status word, and "Perhatian" wrapping to
+                // "Perhatia/n" inside its pill was the owner's own finding on Tunggakan — the
+                // pill grew to two lines and stopped reading as a badge at all.
+                maxLines = 1,
+                softWrap = false,
+            )
         }
     }
 

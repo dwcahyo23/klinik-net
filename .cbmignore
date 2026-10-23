@@ -1,0 +1,21 @@
+# Agent skill artifacts — instruksi LLM, bukan kode/dokumen proyek.
+.agents/
+.agent/
+_bmad/
+.bmad-loop/
+.opencode/
+.claude/
+
+# Catatan: _bmad-output/ SENGAJA tidak di-ignore — PRD & arsitektur
+# di dalamnya berguna untuk doc<->code linking.
+
+# Tool caches / screenshot scratch
+.playwright-mcp/
+.shots/
+.trash/
+screenshoot/
+
+# Build & toolchain output
+build/
+.gradle/
+.kotlin/

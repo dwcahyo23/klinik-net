@@ -116,10 +116,27 @@ class PinLockRepository(
      * this default stops being the key the moment they touch it.
      */
     private suspend fun seedFirstRunPin() {
-        // `KEY_PIN_HASH` rather than `KEY_ENABLED`: a database that already carries a hash but
-        // lost its `pinEnabled` flag is a lock someone chose, not a fresh install.
-        if (dao.findValue(KEY_PIN_HASH) != null) return
+        // **Two guards, and both are load-bearing.**
+        //
+        // `KEY_SEEDED` answers "has this install ever had its first-run PIN?" — it is written
+        // once and never deleted, not by [disable] and not by a restore. Without it, turning
+        // the lock off re-seeded the PIN on the very next read and the lock came back, which
+        // is a control that undoes itself.
+        //
+        // `KEY_PIN_HASH` answers "does a PIN already exist?" — without it, an owner who set
+        // their own PIN *before* any read had run would have it overwritten by the default.
+        // That is the window `enable()` opens: it writes the hash, but the marker is only
+        // written by this method, so the first `isEnabled()` after a fresh `enable()` would
+        // otherwise seed straight over it.
+        if (dao.findValue(KEY_SEEDED) != null) return
+        if (dao.findValue(KEY_PIN_HASH) != null) {
+            // A PIN predates the marker — this database was written by a build before the
+            // marker existed. Record that it has been seeded so the default never lands on it.
+            dao.putSetting(SettingEntity(KEY_SEEDED, "true"))
+            return
+        }
         enable(pin = FIRST_RUN_PIN, recoveryCode = newRecoveryCode())
+        dao.putSetting(SettingEntity(KEY_SEEDED, "true"))
     }
 
     /** The auto-lock duration in minutes. Absent reads as [DEFAULT_AUTO_LOCK_MINUTES]. */
@@ -495,5 +512,14 @@ class PinLockRepository(
         const val KEY_LOCKOUT_UNTIL = "pinLockoutUntil"
         const val KEY_AUTO_LOCK_MINUTES = "autoLockMinutes"
         const val KEY_BACKGROUNDED_AT = "pinBackgroundedAt"
+
+        /**
+         * "This install has already had its first-run PIN."
+         *
+         * Deliberately **not** in `BackupJson.NEVER_EXPORTED`: it is not a secret, and a restore
+         * onto a fresh device should not resurrect the default PIN there. See
+         * [seedFirstRunPin] on why the marker exists at all.
+         */
+        const val KEY_SEEDED = "pinFirstRunSeeded"
     }
 }

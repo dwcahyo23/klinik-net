@@ -20,6 +20,7 @@ import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.foundation.text.TextAutoSize
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
@@ -35,6 +36,7 @@ import androidx.compose.ui.text.intl.Locale as ComposeLocale
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 import net.klinik.rental.ui.theme.focusRing
 import net.klinik.rental.ui.theme.knColors
 import net.klinik.rental.ui.theme.knShadow
@@ -334,19 +336,42 @@ fun KnKpiTile(
                 maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
+            // The figure — **shrunk to fit, never ellipsised.**
+            //
+            // `maxLines = 1` + `Ellipsis` is right for a caption and wrong for the one number
+            // the owner opened the screen for: on the device, `Rp 46.350.000` rendered as
+            // `Rp 46.…` and `Rp 6.150.000` as `Rp 6.1…`, which is not a shortened figure but a
+            // different, smaller one. The owner's rule is exact: *"tipografi Rp ini harusnya
+            // bisa dibaca full agar user tahu ohh ini loh pendapatan aku hari ini."*
+            //
+            // `Text`'s `autoSize` scales the type down until the line fits, between the style's
+            // own size and `KpiValueMinFontSize`. It is bounded at both ends on purpose: the
+            // floor is what keeps a hundred-million figure from becoming unreadable small, and
+            // the style's size is what keeps a four-digit figure from growing to fill the card.
             Text(
                 text = value,
                 style = MaterialTheme.knTypography.moneyLarge,
                 color = kn.textPrimary,
                 maxLines = 1,
-                overflow = TextOverflow.Ellipsis,
+                // The floor, not the ceiling — `autoSize` shrinks toward this and stops.
+                autoSize = TextAutoSize.StepBased(
+                    minFontSize = KpiValueMinFontSize,
+                    maxFontSize = MaterialTheme.knTypography.moneyLarge.fontSize,
+                ),
+                softWrap = false,
             )
             if (meta != null) {
                 Text(
                     text = meta,
                     style = MaterialTheme.knTypography.body,
                     color = metaTint ?: kn.textTertiary,
-                    maxLines = 1,
+                    // **Two lines.** "5 penyewa dari 5 kontrak" is a sentence, not a figure —
+                    // `autoSize` would shrink it to fit one line and make a caption the same
+                    // size as its own label. Wrapping is the honest answer for prose, and the
+                    // row's height already reserves two lines for the label above it, so the
+                    // tiles stay level.
+                    minLines = 2,
+                    maxLines = 2,
                     overflow = TextOverflow.Ellipsis,
                 )
             }
@@ -430,7 +455,10 @@ fun KnKpiTileSkeleton(
             // and the tile is taller for it. A skeleton that reserved only label and value
             // would be 43dp short of the tile it stands in for, and the row would jump the
             // moment the figures landed — the defect this function's whole design is against.
-            bar(widthFraction = 0.65f, style = typography.body)
+            //
+            // Two lines, matching the tile's own `minLines = 2` — a one-line bar here is
+            // exactly the "43dp short" defect again, one line's worth.
+            bar(widthFraction = 0.65f, style = typography.body, lines = 2)
         }
     }
 }
@@ -530,3 +558,12 @@ fun KnKpiGrid(
 
 /** `minmax(230px, 1fr)` from `shared.css:399`. */
 private val KpiMinTileWidth = 230.dp
+
+/**
+ * The smallest a KPI figure may shrink to.
+ *
+ * 20sp still reads as a figure at arm's length, and it is what bounds `autoSize` from
+ * below: without a floor a nine-digit rupiah value would keep shrinking until it fit, and
+ * a figure too small to read has the same problem as one that is cut off.
+ */
+private val KpiValueMinFontSize = 20.sp
