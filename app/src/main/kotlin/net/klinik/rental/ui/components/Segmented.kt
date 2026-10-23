@@ -6,7 +6,6 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.defaultMinSize
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -108,8 +107,11 @@ private fun KnSegmentedStop(
     Surface(
         onClick = onClick,
         modifier = Modifier
-            // `min-height: 46px` in the CSS, and the 48dp floor above it.
-            .defaultMinSize(minHeight = MaterialTheme.minTouchTarget)
+            // `min-height: 46px` in the CSS, and the app's own 48dp floor above it. The
+            // floor modifier rather than a bare `defaultMinSize`, so the stop clears it on
+            // **both** axes the way every other control here does — a short label on a
+            // narrow stop would otherwise be under it across.
+            .minTouchTarget()
             .focusRing(focused, MaterialTheme.knRadii.full)
             .semantics { this.selected = selected }
             // `--el-1` on the selected stop only: an unselected stop is flat inside the
@@ -123,7 +125,14 @@ private fun KnSegmentedStop(
             ),
         shape = shape,
         color = if (selected) kn.bgCard else androidx.compose.ui.graphics.Color.Transparent,
-        contentColor = if (selected) kn.primaryFill else kn.textTertiary,
+        // `kn.onBrand`, not `kn.primaryFill`.
+        //
+        // `primaryFill` is a **fill** token — `Color.kt` documents it as the fill behind
+        // white label text, shifted so white on it reaches 4.62:1. Used as *text* on the
+        // card surface it measures about 4.2:1 in light and 3.9:1 in dark, both below the
+        // 4.5:1 floor this app enforces everywhere else. `onBrand` is the pair that means
+        // "brand-coloured ink on a card", which is what the CSS's `--brand-600` is.
+        contentColor = if (selected) kn.onBrand else kn.textTertiary,
         interactionSource = interaction,
     ) {
         Box(
@@ -134,7 +143,7 @@ private fun KnSegmentedStop(
                 text = label,
                 // `--fs-sm` weight 700 (`shared.css:526`).
                 style = MaterialTheme.knTypography.label,
-                color = if (selected) kn.primaryFill else kn.textTertiary,
+                color = if (selected) kn.onBrand else kn.textTertiary,
                 maxLines = 1,
             )
         }

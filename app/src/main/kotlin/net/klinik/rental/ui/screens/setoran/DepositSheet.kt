@@ -208,10 +208,46 @@ fun DepositSheet(
     // separate window above rather than inside the sheet's own column — a `KnModal`
     // nested in a `ModalBottomSheet`'s content would be two windows in one composable,
     // which is the shape Story 2.8's review found as its only `high`.
-    //
-    // Both handlers are **required**, not defaulted. A default would be a confirm that
-    // silently does nothing, and the owner would tap "Ya, simpan" and watch nothing
-    // happen with a deposit they believe they took.
+    DepositPreviewDialog(
+        state = state,
+        onConfirmPreview = onConfirmPreview,
+        onDismissPreview = onDismissPreview,
+    )
+}
+
+/**
+ * The deposit's mandatory preview, as a dialog.
+ *
+ * ## Why this is its own composable
+ *
+ * Because the form has **two** presentations — the bottom sheet and the prototype's
+ * two-pane split — and the preview is the step that actually **writes** the deposit.
+ *
+ * When the preview lived only inside the sheet, the split had no way to save: the pad's
+ * `SIMPAN` computed a preview that nothing displayed, and the write behind it was gated
+ * on the preview's confirm. The owner could enter an amount in the split and never
+ * record it — a control that reaches nothing, which is the defect this repo keeps
+ * shipping.
+ *
+ * So the dialog is mounted by **both** presentations, and the write path is the same
+ * one either way.
+ *
+ * ## Why the dialog is mounted outside its host
+ *
+ * Because a `KnModal` nested inside a `ModalBottomSheet`'s content would be two windows
+ * in one composable — the shape Story 2.8's review found as its only `high`. It is a
+ * separate window above the sheet, or above the page in the split.
+ *
+ * Both handlers are **required**, not defaulted. A default would be a confirm that
+ * silently does nothing, and the owner would tap "Ya, simpan" and watch nothing
+ * happen with a deposit they believe they took.
+ */
+@Composable
+internal fun DepositPreviewDialog(
+    state: SetoranUiState,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
+) {
     state.preview?.let { preview ->
         KnModal(
             visible = true,

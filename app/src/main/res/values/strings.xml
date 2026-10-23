@@ -1347,13 +1347,14 @@
     <string name="beranda_kpi_rate">Tingkat penagihan</string>
 
     <!--
-      The dashboard's period filter — `dashboard.html:29-34`. The prototype's segmented
-      control, four stops, and the same words it uses.
+      The dashboard's period filter — `dashboard.html:29-34`. Three stops, not the
+      prototype's four: see `DashboardPeriod`'s KDoc on why "Custom" is absent (it needs a
+      date card this screen does not have, and a stop that shows today's income under the
+      label "Custom" is a control that lies).
     -->
     <string name="dashboard_period_today">Hari ini</string>
     <string name="dashboard_period_week">Minggu</string>
     <string name="dashboard_period_cutoff">Cut off</string>
-    <string name="dashboard_period_custom">Custom</string>
 
     <!--
       The fleet split, as three counts in one line: "12 · 3 · 1".

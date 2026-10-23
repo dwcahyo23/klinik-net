@@ -109,6 +109,8 @@ fun SetoranScreen(
     onDepositFormChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSaveDeposit: (Long) -> Unit,
     onCloseDeposit: () -> Unit,
+    onConfirmPreviewDeposit: () -> Unit,
+    onDismissPreviewDeposit: () -> Unit,
     onRequestDepositCancel: (contractId: String, renterName: String, paymentId: String) -> Unit,
     onRequestDepositEdit: (paymentId: String) -> Unit,
     onDismissError: () -> Unit,
@@ -161,6 +163,8 @@ fun SetoranScreen(
                     onChange = onDepositFormChange,
                     onSave = onSaveDeposit,
                     onClose = onCloseDeposit,
+                    onConfirmPreview = onConfirmPreviewDeposit,
+                    onDismissPreview = onDismissPreviewDeposit,
                     modifier = Modifier.weight(1f),
                 )
 
@@ -206,6 +210,8 @@ private fun InputTab(
     onChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSave: (Long) -> Unit,
     onClose: () -> Unit,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val form = deposit.form
@@ -238,6 +244,8 @@ private fun InputTab(
         onChange = onChange,
         onSave = onSave,
         onClose = onClose,
+        onConfirmPreview = onConfirmPreview,
+        onDismissPreview = onDismissPreview,
         modifier = modifier,
     )
 }

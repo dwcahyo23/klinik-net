@@ -110,19 +110,23 @@ class DashboardScreenTest {
     // --------------------------------------------------------- the period filter
 
     /**
-     * The period filter is in the top bar, with all four of the prototype's stops.
+     * The period filter is in the top bar, with the three stops the app can honour.
      *
-     * `dashboard.html:29-34` — *Hari ini / Minggu / Cut off / Custom*, a segmented
-     * control in the bar's actions slot.
+     * `dashboard.html:29-34` has four — *Hari ini / Minggu / Cut off / Custom*. The app
+     * has three: "Custom" needs the from/to date card the prototype shows
+     * (`dashboard.html:41-55`), and a stop that silently shows today's income under the
+     * label "Custom" is a control that lies. See `DashboardPeriod`'s KDoc.
      */
     @Test
-    fun `the period filter offers the prototype's four stops`() {
+    fun `the period filter offers the stops the app can honour`() {
         compose.setContent { theme { Screen(state = berandaState()) } }
 
         compose.onNodeWithTag(TAG_PERIOD_FILTER).assertExists()
-        listOf("Hari ini", "Minggu", "Cut off", "Custom").forEach { label ->
+        listOf("Hari ini", "Minggu", "Cut off").forEach { label ->
             compose.onNodeWithText(label).assertExists()
         }
+        // And the one it cannot honour is absent rather than present and lying.
+        compose.onNodeWithText("Custom").assertDoesNotExist()
     }
 
     /**

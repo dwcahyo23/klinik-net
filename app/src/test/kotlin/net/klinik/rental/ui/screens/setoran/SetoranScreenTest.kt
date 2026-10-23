@@ -125,6 +125,39 @@ class SetoranScreenTest {
         compose.onNodeWithTag(TAG_NUMPAD).assertDoesNotExist()
     }
 
+    /**
+     * The split shows the **preview dialog** — the step that writes the deposit.
+     *
+     * The defect this catches is the one the split shipped with: the pad's `SIMPAN`
+     * computes a preview, the write is gated on that preview's confirm, and the dialog
+     * that confirms it lived only inside the bottom sheet — which the shell suppresses
+     * precisely when the split is showing. The owner could enter an amount and never
+     * record it.
+     *
+     * Asserted on the dialog's own tag, so a split that draws the pad without the dialog
+     * fails here rather than on a device.
+     */
+    @Test
+    @Config(sdk = [34], qualifiers = "w1280dp-h800dp-land")
+    fun `the split shows the preview dialog when a preview exists`() {
+        compose.setContent {
+            theme {
+                Screen(
+                    deposit = SetoranUiState(
+                        form = DepositFormState(date = java.time.LocalDate.of(2026, 10, 17)),
+                        preview = DepositPreviewUi(
+                            arrearsLine = "Tunggakan Rp 0",
+                            closesLine = "Menutup 0 hari",
+                            creditLine = null,
+                        ),
+                    ),
+                )
+            }
+        }
+
+        compose.onNodeWithTag(TAG_PREVIEW).assertExists()
+    }
+
     /** Tapping the other chip moves the selection — the tab row is a control, not a label. */
     @Test
     fun `selecting the Riwayat chip switches the tab`() {        var selected: SetoranTab? = null
@@ -576,6 +609,8 @@ class SetoranScreenTest {
         onDepositFormChange: ((DepositFormState) -> DepositFormState) -> Unit = { it },
         onSaveDeposit: (Long) -> Unit = {},
         onCloseDeposit: () -> Unit = {},
+        onConfirmPreviewDeposit: () -> Unit = {},
+        onDismissPreviewDeposit: () -> Unit = {},
     ) {
         SetoranScreen(
             state = state,
@@ -585,6 +620,8 @@ class SetoranScreenTest {
             onDepositFormChange = onDepositFormChange,
             onSaveDeposit = onSaveDeposit,
             onCloseDeposit = onCloseDeposit,
+            onConfirmPreviewDeposit = onConfirmPreviewDeposit,
+            onDismissPreviewDeposit = onDismissPreviewDeposit,
             onRequestDepositCancel = onRequestDepositCancel,
             onRequestDepositEdit = onRequestDepositEdit,
             onDismissError = onDismissError,

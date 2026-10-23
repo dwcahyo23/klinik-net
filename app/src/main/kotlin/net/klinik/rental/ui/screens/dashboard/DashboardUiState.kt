@@ -9,41 +9,44 @@ import java.time.LocalDate
 /**
  * Which period the dashboard's income tile reads at.
  *
- * `dashboard.html:29-34` — the prototype's segmented control, four stops:
- * *Hari ini / Minggu / Cut off / Custom*.
+ * The prototype's segmented control has four stops (`dashboard.html:29-34`):
+ * *Hari ini / Minggu / Cut off / Custom*. The app has **three**, and the fourth is
+ * deliberately absent.
  *
- * An enum rather than a Boolean because there are four, and a Boolean can only say two.
- * [Custom] is a fourth state rather than a fifth control: it names the *shape* of the
- * range rather than a range of its own, because the range itself is two dates the owner
- * types.
+ * ## Why there is no `Custom`
+ *
+ * Because a stop that cannot do what it says is a control that lies. The prototype's
+ * "Custom" opens a from/to date card (`dashboard.html:41-55`); this app has no such card
+ * on the dashboard, so a "Custom" stop would silently show *today's* income while the
+ * control said "Custom". The report screen has the real one (`ReportMode.Custom`, with
+ * two date fields and an apply button); the dashboard's filter is for the three windows
+ * that need no input.
+ *
+ * Adding it back means adding the date card with it — the stop and the card are one
+ * feature.
  */
 enum class DashboardPeriod {
     /** Today — the deposits dated today. */
     Today,
 
-    /** The last seven days. */
+    /** The last seven days, today inclusive. */
     Week,
 
     /** The billing period the engine is charging for. */
     Cutoff,
-
-    /** A range the owner typed. */
-    Custom,
     ;
 
     /**
      * This stop's label.
      *
-     * A resource rather than a literal, so the same four words the prototype's control
-     * shows are the ones this app shows.
+     * A resource rather than a literal, so the same words the prototype's control shows
+     * are the ones this app shows.
      */
     fun labelRes(): Int = when (this) {
         Today -> R.string.dashboard_period_today
         Week -> R.string.dashboard_period_week
         Cutoff -> R.string.dashboard_period_cutoff
-        Custom -> R.string.dashboard_period_custom
     }
-    ;
 
     /**
      * The first day of this period, given [today].
@@ -57,9 +60,6 @@ enum class DashboardPeriod {
             // days, and a window that starts six days back is six days long.
             Week -> today.minusDays(6)
             Cutoff -> CutoffPeriod.containing(cutoffDay, today).start
-            // The custom range's own start, which the owner typed. `today` is the
-            // fallback because a range that has not been typed yet is not a range.
-            Custom -> today
         }
 
     /**
@@ -71,7 +71,6 @@ enum class DashboardPeriod {
         when (this) {
             Today, Week -> today
             Cutoff -> CutoffPeriod.containing(cutoffDay, today).end
-            Custom -> today
         }
 }
 

@@ -201,6 +201,19 @@ class DashboardViewModel(
     )
 
     /**
+     * The income tile's four inputs, kept together so `combine` stays typed.
+     *
+     * `combine` has a five-argument overload; this is the sixth input, and the vararg form
+     * would hand every value back as `Any?`.
+     */
+    private data class PeriodFigures(
+        val source: Source,
+        val income: Long,
+        val transactions: Int,
+        val period: DashboardPeriod,
+    )
+
+    /**
      * The recent-transactions table's three reads, joined here rather than by a `@Query`.
      *
      * The rule every reader in this app follows: a join is a property of the *screen*, so it
@@ -483,13 +496,23 @@ class DashboardViewModel(
                     selected.end(today, day),
                 )
             },
-        ) { source, income, transactions -> Triple(source, income, transactions) },
+            // The period is an input in its own right as well as a switch: the screen
+            // draws which stop is selected, and a side-read of `period.value` inside the
+            // lambda would be a value that happened to be right rather than one the
+            // emission carries.
+            period,
+        ) { source, income, transactions, selected ->
+            PeriodFigures(source, income, transactions, selected)
+        },
         fleet,
         reminderSource,
         chartSources,
         cutoffIncome,
     ) { sourceAndIncome, vehiclesAndPlates, reminder, chartInputs, periodIncome ->
-        val (source, income, transactions) = sourceAndIncome
+        val source = sourceAndIncome.source
+        val income = sourceAndIncome.income
+        val transactions = sourceAndIncome.transactions
+        val selectedPeriod = sourceAndIncome.period
         val (vehicles, rentedPlates) = vehiclesAndPlates
         val split = splitFleet(vehicles, rentedPlates)
         val arrears = source.arrearsTotal()
@@ -509,6 +532,10 @@ class DashboardViewModel(
             )
         }
         DashboardUiState(
+            // The selected period, so the segmented control's highlight follows the
+            // figure it filtered. Without this the owner taps "Minggu", the income
+            // changes, and the control still says "Hari ini".
+            period = selectedPeriod,
             incomeText = formatRupiah(income),
             incomeMeta = strings.dashboardIncomeMeta(transactions),
             arrearsText = formatRupiah(arrears),

@@ -73,6 +73,8 @@ internal fun SetoranSplitLayout(
     onChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSave: (Long) -> Unit,
     onClose: () -> Unit,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -104,6 +106,16 @@ internal fun SetoranSplitLayout(
             DepositFormFields(
                 state = state,
                 onChange = onChange,
+            )
+
+            // The way out. The prototype's split has no "Batal" of its own — the owner
+            // leaves by switching tabs — but a form the owner opened must be closable,
+            // and the sheet's escape hatch is the same act.
+            KnButton(
+                label = stringResource(R.string.deposito_cancel),
+                onClick = onClose,
+                variant = KnButtonVariant.Ghost,
+                modifier = Modifier.testTag(TAG_DEPOSIT_CANCEL),
             )
         }
 
@@ -142,6 +154,21 @@ internal fun SetoranSplitLayout(
             )
         }
     }
+
+    // The mandatory preview, over the split.
+    //
+    // Without it the split cannot **save**: the pad's `SIMPAN` computes a preview that
+    // nothing displays, and the write behind it is gated on the preview's confirm. The
+    // owner could enter an amount here and never record it — a control that reaches
+    // nothing, which is the defect this repo has shipped three times.
+    //
+    // Mounted **outside** the `Row`, so it composes in its own window above the page
+    // rather than inside the layout.
+    DepositPreviewDialog(
+        state = state,
+        onConfirmPreview = onConfirmPreview,
+        onDismissPreview = onDismissPreview,
+    )
 }
 
 /**
@@ -175,6 +202,8 @@ internal fun SetoranStackedLayout(
     onChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSave: (Long) -> Unit,
     onClose: () -> Unit,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     val spacing = MaterialTheme.knSpacing
@@ -211,10 +240,28 @@ internal fun SetoranStackedLayout(
         }
 
         // The pad, full width under the form. `shared.css:696-700`.
+        //
+        // The border colour is read **here**, outside the draw scope: a `drawBehind` lambda
+        // is a draw scope, not a composable one, so `MaterialTheme` cannot be read inside it.
+        val borderColour = MaterialTheme.knColors.border
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .background(MaterialTheme.knColors.bgCard),
+                .background(MaterialTheme.knColors.bgCard)
+                // The **top** border and the shadow the prototype's portrait panel
+                // carries (`shared.css:697-700`): `border-top: 1px solid
+                // var(--border)` and `box-shadow: 0 -8px 24px rgba(38,34,32,.08)`.
+                // Without them the pad is a white block butted against the form, which is
+                // the "panel of white inside a white page" the split's own left border
+                // exists to prevent.
+                .drawBehind {
+                    drawLine(
+                        color = borderColour,
+                        start = Offset(0f, 0f),
+                        end = Offset(size.width, 0f),
+                        strokeWidth = 1f,
+                    )
+                },
         ) {
             KnNumPad(
                 value = form.amountDigits,
@@ -224,6 +271,15 @@ internal fun SetoranStackedLayout(
             )
         }
     }
+
+    // The mandatory preview, over the stacked panel. The same reason as the split's:
+    // without it the pad's `SIMPAN` computes a preview nothing shows, and the deposit
+    // is never written.
+    DepositPreviewDialog(
+        state = state,
+        onConfirmPreview = onConfirmPreview,
+        onDismissPreview = onDismissPreview,
+    )
 }
 
 /**
@@ -241,6 +297,8 @@ internal const val SPLIT_LAYOUT_MIN_WIDTH_DP = 600
  * @param onChange the form's own reducer.
  * @param onSave the numpad's Save.
  * @param onClose leaves the form.
+ * @param onConfirmPreview the preview dialog's confirm — the write.
+ * @param onDismissPreview the preview dialog's dismiss.
  */
 @Composable
 internal fun SetoranInputLayout(
@@ -248,6 +306,8 @@ internal fun SetoranInputLayout(
     onChange: ((DepositFormState) -> DepositFormState) -> Unit,
     onSave: (Long) -> Unit,
     onClose: () -> Unit,
+    onConfirmPreview: () -> Unit,
+    onDismissPreview: () -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BoxWithConstraints(modifier) {
@@ -257,6 +317,8 @@ internal fun SetoranInputLayout(
                 onChange = onChange,
                 onSave = onSave,
                 onClose = onClose,
+                onConfirmPreview = onConfirmPreview,
+                onDismissPreview = onDismissPreview,
             )
         } else {
             SetoranStackedLayout(
@@ -264,6 +326,8 @@ internal fun SetoranInputLayout(
                 onChange = onChange,
                 onSave = onSave,
                 onClose = onClose,
+                onConfirmPreview = onConfirmPreview,
+                onDismissPreview = onDismissPreview,
             )
         }
     }

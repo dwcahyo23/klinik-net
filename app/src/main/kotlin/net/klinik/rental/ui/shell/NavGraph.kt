@@ -190,6 +190,11 @@ private fun SetoranRoute(wiring: Screens.Setoran, deposito: Screens.Deposito) {
         onDepositFormChange = deposito.onFormChange,
         onSaveDeposit = deposito.onSave,
         onCloseDeposit = deposito.onClose,
+        // The preview's two. Without them the split's `SIMPAN` computes a preview nothing
+        // displays, and the deposit is never written — the pad would be a control that
+        // reaches nothing.
+        onConfirmPreviewDeposit = deposito.onConfirmPreview,
+        onDismissPreviewDeposit = deposito.onDismissPreview,
         onRequestDepositCancel = wiring.onRequestDepositCancel,
         onRequestDepositEdit = wiring.onRequestDepositEdit,
         onDismissError = wiring.onDismissError,
