@@ -436,9 +436,24 @@ fun IdentityFormState.setIdentityAddress(address: String): IdentityFormState = c
     address = address,
 )
 
-/** Applies a phone edit. No error slot, for the same reason. */
+/**
+ * Applies a phone edit, **masked to what a phone number can contain**.
+ *
+ * ## Why this masks instead of storing the raw keystrokes
+ *
+ * Because `KeyboardType.Phone` puts `*`, `#`, `,` and `;` on the keyboard — the DTMF and pause
+ * characters a dialler needs — and none of them belong in a phone number printed on a reminder
+ * message. The owner reported the consequence directly: *"ada keyboard android aneh ketika
+ * masukan telepon usaha ada tombol jeda Tunggu N."*
+ *
+ * The mask keeps digits, a leading `+`, spaces and hyphens: `+62 812-8899-7722` survives
+ * intact, and a stray `,` or `#` from a mis-tap is dropped as it arrives rather than stored and
+ * sent to a renter.
+ */
 fun IdentityFormState.setIdentityPhone(phone: String): IdentityFormState = copy(
-    phone = phone,
+    phone = phone.filterIndexed { index, ch ->
+        ch in '0'..'9' || ch == ' ' || ch == '-' || (ch == '+' && index == 0)
+    }.take(MaxPhoneLength),
 )
 
 /**
@@ -450,6 +465,9 @@ fun IdentityFormState.setIdentityPhone(phone: String): IdentityFormState = copy(
  */
 val IdentityFormState.canSaveIdentity: Boolean
     get() = name.isNotBlank()
+
+/** Long enough for +62 812-8899-7722 and every other written form. */
+private const val MaxPhoneLength = 24
 
 /**
  * Builds the identity this form describes, or `null` when the name is blank.

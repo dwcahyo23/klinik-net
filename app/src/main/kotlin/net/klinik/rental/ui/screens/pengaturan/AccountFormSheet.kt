@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -90,18 +91,18 @@ fun AccountFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_ACCOUNT_SHEET)
-            // The cap belongs on the **sheet**. On the content column it became the scroll
-            // viewport instead of a bound, so the action row past it was laid out and never
-            // reachable.
-            .heightIn(max = AccountSheetMaxHeight),
+        // **No `heightIn` here** — capping the sheet's own modifier sizes its window to
+        // the cap and leaves it floating above the bottom edge. The cap belongs on the
+        // content column, which wraps up to it.
+        modifier = modifier.testTag(TAG_ACCOUNT_SHEET),
     ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
-                .heightIn(max = AccountSheetMaxHeight),
+                .heightIn(max = AccountSheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
         ) {
         Column(
             modifier = Modifier

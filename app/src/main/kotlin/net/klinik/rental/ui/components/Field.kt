@@ -26,6 +26,7 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
+import androidx.compose.ui.platform.LocalFocusManager
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
@@ -140,10 +141,21 @@ fun KnField(
     maxLines: Int = if (singleLine) 1 else Int.MAX_VALUE,
     enabled: Boolean = true,
     /**
-     * Invoked by the keyboard's action key.
+     * Invoked by the keyboard's action key, **after the keyboard is closed**.
      *
-     * `null` leaves `imeAction` at `Default`, so the field does not advertise a
-     * submission it cannot perform.
+     * Defaulted to `null`, which now means "this field has nothing to submit, but the action key
+     * should still dismiss the keyboard".
+     *
+     * ## Why every field gets a live action key
+     *
+     * Because the owner reported the opposite: *"di keyboard android ada tombol centang saya
+     * klik tidak menutup keyboard / close keyboard, aku kira ini adalah tombol ketika saya sudah
+     * menginput."* With `imeAction = Default` the IME shows a return key that only inserts a
+     * newline — on a `singleLine` field that is a no-op — so the one obvious way to finish
+     * typing did nothing at all.
+     *
+     * So: a `Done` action that clears focus, always; and [onSubmit] runs first when a caller has
+     * something to do with the value.
      */
     onSubmit: (() -> Unit)? = null,
 ) {
@@ -153,6 +165,8 @@ fun KnField(
     // otherwise render an empty error row with its icon.
     val hasError = !error.isNullOrBlank()
     val shape = RoundedCornerShape(MaterialTheme.knRadii.md)
+    // The IME's action key clears focus through this, which is what closes the keyboard.
+    val focusManager = LocalFocusManager.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
 
@@ -242,28 +256,26 @@ fun KnField(
                     interactionSource = interaction,
                     keyboardOptions = KeyboardOptions(
                         keyboardType = keyboardType,
-                        // The IME action follows the field's keyboard type: a
-                        // numeric field wants Done, a text field wants the
-                        // caller to say what the key means.
-                        imeAction = if (onSubmit != null) {
-                            if (keyboardType == KeyboardType.Number ||
-                                keyboardType == KeyboardType.Decimal ||
-                                keyboardType == KeyboardType.Phone
-                            ) {
-                                ImeAction.Done
-                            } else {
-                                ImeAction.Search
-                            }
-                        } else {
-                            ImeAction.Default
-                        },
+                        // **Always `Done`.** A `Default` action gives the IME a return key,
+                        // which on a single-line field does nothing — so the one obvious way
+                        // to say "I have finished typing" was inert. `Done` is what closes
+                        // the keyboard, and a multi-line field keeps the newline because
+                        // `singleLine = false` makes the IME show Enter regardless.
+                        imeAction = if (singleLine) ImeAction.Done else ImeAction.Default,
                     ),
-                    // Without this the IME's action key is inert: the owner taps
-                    // "search" on the keyboard and nothing happens, which reads
-                    // as a broken field rather than as a missing handler.
+                    // The keyboard's action key. Focus is cleared **first**, so the keyboard
+                    // closes even when the caller's handler does nothing or fails — a form
+                    // that stays covered by the IME after a refused value is a form the owner
+                    // cannot see the error on.
                     keyboardActions = KeyboardActions(
-                        onSearch = { onSubmit?.invoke() },
-                        onDone = { onSubmit?.invoke() },
+                        onDone = {
+                            focusManager.clearFocus()
+                            onSubmit?.invoke()
+                        },
+                        onSearch = {
+                            focusManager.clearFocus()
+                            onSubmit?.invoke()
+                        },
                     ),
                     // The floor goes on the input itself rather than on the Box
                     // that wraps it: the Box sizes to the text, and the
@@ -343,6 +355,8 @@ fun KnIconButton(
 ) {
     val kn = MaterialTheme.knColors
     val resolved = tint ?: kn.textSecondary
+    // The IME's action key clears focus through this, which is what closes the keyboard.
+    val focusManager = LocalFocusManager.current
     val interaction = remember { MutableInteractionSource() }
     val focused by interaction.collectIsFocusedAsState()
 

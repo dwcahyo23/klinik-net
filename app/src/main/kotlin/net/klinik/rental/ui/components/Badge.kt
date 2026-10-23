@@ -98,7 +98,22 @@ fun KnBadge(
             color = bg,
             contentColor = fg,
             interactionSource = interaction,
-        ) { Box(Modifier.defaultMinSize(minHeight = 26.dp)) { content() } }
+        ) {
+            // The 48dp floor is a **hit area**, not a visual box: the pill stays 26dp tall
+            // and the extra space is the padding around it. Centring the content in that
+            // floor is what keeps the label on the pill's own line — a top-aligned `Box` put
+            // the text at the top of the 48dp and it read as "too high".
+            //
+            // **No `fillMaxSize`/`fillMaxHeight` here.** `Surface` propagates its minimum
+            // constraints to its content, so this `Box` is already 48dp tall; asking it to
+            // fill made it claim *all* the height a parent `Column` offered, which pushed
+            // the next control to zero — `AccessibilityTest`'s dark-theme row caught it as
+            // "dark Chip … Actual height is 0.0.dp".
+            Box(
+                modifier = Modifier.defaultMinSize(minHeight = 26.dp),
+                contentAlignment = Alignment.Center,
+            ) { content() }
+        }
     } else {
         Box(
             modifier = modifier

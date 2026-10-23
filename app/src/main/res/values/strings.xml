@@ -124,7 +124,7 @@
       it on needs to know what it protects against.
     -->
     <string name="pengaturan_security_section">Keamanan</string>
-    <string name="pengaturan_security_section_body">PIN meminta kode 4 angka setiap aplikasi dibuka. Ini penghalang layar, bukan enkripsi data.</string>
+    <string name="pengaturan_security_section_body">PIN meminta kode 4 angka setiap aplikasi dibuka.</string>
     <string name="pengaturan_pin_switch">Kunci aplikasi dengan PIN</string>
     <string name="pengaturan_autolock_label">Kunci otomatis setelah</string>
     <string name="pengaturan_autolock_option">%1$d menit</string>
@@ -147,6 +147,11 @@
     <string name="pengaturan_cutoff_section">Tanggal tagihan</string>
     <string name="pengaturan_cutoff_section_body">Menentukan hari pertama periode tagihan. Mengubahnya menggeser periode, bukan mengubah catatan setoran.</string>
     <string name="pengaturan_cutoff_current">Tanggal cutoff sekarang: %1$d</string>
+    <!-- The stepper's two halves, and the period card beside them. -->
+    <string name="pengaturan_cutoff_earlier">Turunkan tanggal cutoff</string>
+    <string name="pengaturan_cutoff_later">Naikkan tanggal cutoff</string>
+    <string name="pengaturan_cutoff_period_label">Periode hasil pengaturan</string>
+    <string name="pengaturan_cutoff_period_body">Periode berikutnya dihitung otomatis</string>
     <string name="pengaturan_cutoff_preview_title">Perkiraan dampak</string>
     <string name="pengaturan_cutoff_no_contracts">Tidak ada kontrak yang tunggakannya berubah.</string>
     <string name="pengaturan_cutoff_one_contract">1 kontrak berubah tunggakannya.</string>
@@ -313,7 +318,7 @@
       do rather than only what is wrong.
     -->
     <string name="kendaraan_plate_hint">Huruf dan angka, misalnya B 1235 TF</string>
-    <string name="kendaraan_rate_hint">Ketik di keypad angka di bawah</string>
+    <string name="kendaraan_rate_hint">Tarif sewa per hari, dalam rupiah</string>
     <string name="kendaraan_save">Simpan Kendaraan</string>
     <string name="kendaraan_cancel">Batal</string>
 

@@ -557,8 +557,15 @@ fun KnModal(
         ) {
             Surface(
                 modifier = modifier
-                    .fillMaxWidth()
+                    // **The cap is outside the fill, not inside it.** `widthIn` before
+                    // `fillMaxWidth` constrains what the fill may fill, so the dialog is
+                    // 620dp wide. In the other order `fillMaxWidth` reports the *incoming*
+                    // width as its own size and the cap is applied to the content inside a
+                    // full-width dialog — which is what the owner saw: a 620dp-wide PIN
+                    // setup card stretched across the whole 2560px screen, so the twelve
+                    // keys were the only thing holding it open.
                     .widthIn(max = ModalMaxWidth)
+                    .fillMaxWidth()
                     // The height cap lives on the **Column inside** this Surface, not here.
                     //
                     // Capping the Surface capped the whole dialog, and because the footer is
@@ -796,6 +803,18 @@ private fun PinDigitRow(
 /**
  * `.pin-key` — 84dp disc, `--el-1`, [net.klinik.rental.ui.theme.KnTypography.pinKey].
  *
+ * ## Why the disc carries a **border**
+ *
+ * The CSS gives `.pin-key` a card-coloured fill and a soft shadow, which is legible on the
+ * lock screen's `--bg-page` (a warm grey). Inside [KnModal] the surrounding surface is also
+ * card-white, so the fill and the background were the same colour and only the digits
+ * showed — twelve numbers floating on a blank panel, which is what the owner called
+ * *"form PIN uinya masih jelek"*.
+ *
+ * A 1.5dp edge fixes it on any surface, and it is the same treatment `.numpad-key` already
+ * uses — so the PIN grid and the amount pad now read as the same kind of control rather than
+ * as one with edges and one without.
+ *
  * 84dp is far above the 48dp floor, so [minTouchTarget] is belt-and-braces. It is
  * applied anyway because the assertion is on *every* interactive node, and a key
  * that only holds because its CSS is generous is one constant change away from
@@ -817,6 +836,7 @@ private fun KnPinKey(label: String, onClick: () -> Unit) {
         shape = CircleShapeToken,
         color = kn.bgCard,
         contentColor = kn.textPrimary,
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, kn.border),
         interactionSource = interaction,
     ) {
         Box(contentAlignment = Alignment.Center) {
@@ -851,6 +871,9 @@ private fun KnPinDeleteKey(label: String, onClick: () -> Unit) {
         shape = CircleShapeToken,
         color = kn.bgCard,
         contentColor = kn.textSecondary,
+        // The same edge its ten siblings carry — see `KnPinKey` on why the fill alone
+        // disappeared inside a card-coloured dialog.
+        border = androidx.compose.foundation.BorderStroke(1.5.dp, kn.border),
         interactionSource = interaction,
     ) {
         Box(
@@ -982,6 +1005,17 @@ internal const val SkeletonRowTag = "skeleton-row"
  * was *not* load-bearing for their content ("one field plus two buttons"). Four copies of a figure
  * that none of them justified is four places to change the day a tall sheet really does need a
  * different bound — and the sheet that needs it can pass its own [Modifier.heightIn] instead.
+ *
+ * ## Why it is a **ceiling** and not the sheet's height
+ *
+ * Because a `ModalBottomSheet` sizes itself to its content and anchors to the bottom of the
+ * window. A cap on the **sheet's own modifier** sizes the sheet's *window* to the cap, and a
+ * window that is shorter than the space it was given does not float down to the bottom edge — it
+ * sits where it was placed, with the page visible underneath it. That is the "melayang" the owner
+ * reported: the account sheet hung in the middle of the landscape screen.
+ *
+ * So the cap belongs on the **content** column: the sheet is then as tall as its content, up to
+ * the ceiling, and always anchored to the bottom.
  *
  * The figure itself is a ceiling, not a decision about any one sheet: `ModalBottomSheet` already
  * constrains itself to the window, and this only stops a very tall sheet on a very tall tablet from

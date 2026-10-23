@@ -27,6 +27,8 @@ import org.junit.After
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
 import org.junit.Assert.assertNotEquals
+import org.junit.Assert.assertNotNull
+import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Before
 import org.junit.Test
@@ -245,15 +247,25 @@ class BackupLockInterplayTest {
     // ---------------------------------------------------------------- unlocked
 
     /**
-     * `VERIFY_UNLOCKED` — the restored app is **not locked**.
+     * `VERIFY_UNLOCKED` — a restored app has **no lock the owner did not choose**.
      *
-     * A positive assertion, not the absence of a hash. `assertNull(settings["pinHash"])` and
-     * `assertFalse(isEnabled())` are different claims, and only the second is the one the owner's
-     * morning depends on: a restore that left a stale `pinEnabled = true` with no hash satisfies
-     * the first and bricks the second.
+     * The property this must keep is narrow, and it is about the **file**, not about the
+     * repository: a restore must not carry a stale `pinEnabled = true` with no hash, because
+     * that is a lock nobody can open.
+     *
+     * ## Why this asserts on the settings table rather than on `isEnabled()`
+     *
+     * Because `isEnabled()` now **seeds** the first-run PIN on a database that has never held one
+     * — a fresh install ships locked, which is what the owner asked for (*"ketika app pertama
+     * dibuka tidak lock screen pin langsung by pass"*) and what the prototype does
+     * (`data.js:11`). A restored database *is* such a database, so `isEnabled()` reports `true`
+     * for a reason that has nothing to do with the restore.
+     *
+     * The claim worth keeping is therefore: **nothing in the file** carried a lock setting
+     * across. That is what a bad filter or a stale file would break.
      */
     @Test
-    fun `the restored app is not locked`() = runBlocking {
+    fun `the restored app carries no lock settings from the file`() = runBlocking {
         lock.enable("1234", lock.newRecoveryCode())
         assertTrue("the fixture must start locked", lock.isEnabled())
 
@@ -264,18 +276,22 @@ class BackupLockInterplayTest {
             KlinikDatabase::class.java,
         ).build()
         try {
-            val restoredLock = PinLockRepository(
-                dao = restored.settingDao(),
-                clock = clock,
-                database = restored,
-                iterations = 1_000,
-            )
+            val restoredDao = restored.settingDao()
             restorerOver(restored).apply(restorerOver(restored).parse(file, AS_OF))
 
-            assertFalse(
-                "the owner must get in — a lock with no hash is a lock nobody can open",
-                restoredLock.isEnabled(),
+            // Not `isEnabled()` — see the KDoc. What must not survive is the **flag**, which
+            // is what would have made the restored app ask for a PIN nobody set.
+            assertNull(
+                "no lock flag crossed the file",
+                restoredDao.findValue(PinLockRepository.KEY_ENABLED),
             )
+            assertNull(
+                "and no hash to go with it",
+                restoredDao.findValue(PinLockRepository.KEY_PIN_HASH),
+            )
+            listOf("businessName", "cutoffDay").forEach { key ->
+                assertNotNull("but \"$key\" did", restoredDao.findValue(key))
+            }
         } finally {
             restored.close()
         }

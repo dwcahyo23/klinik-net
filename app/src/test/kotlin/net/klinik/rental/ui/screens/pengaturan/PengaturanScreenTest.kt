@@ -667,8 +667,10 @@ class PengaturanScreenTest {
         compose.onNodeWithTag(TAG_CUTOFF_SECTION).assertExists()
         compose.onNodeWithTag(TAG_CUTOFF_CURRENT).assertExists()
         compose.onNodeWithText("Tanggal cutoff sekarang: 25").assertExists()
-        compose.onNodeWithTag(cutoffDayTag(1)).assertExists()
-        compose.onNodeWithTag(cutoffDayTag(28)).assertExists()
+        // The stepper's two halves are tagged with the day each **moves to**, so the button on
+        // the left offers 24 and the one on the right 25 — see `CutoffSection`.
+        compose.onNodeWithTag(cutoffDayTag(24)).assertExists()
+        compose.onNodeWithTag(cutoffDayTag(26)).assertExists()
     }
 
     /** Picking a day reaches the handler — which computes a preview, never writes. */
@@ -685,12 +687,12 @@ class PengaturanScreenTest {
         }
 
         // Scrolled to first, and that is not a workaround: this screen now carries four cards,
-        // and the cutoff card's 28 chips sit below the fold on the default viewport. An owner
-        // scrolls to it; so does the test.
-        compose.onNodeWithTag(cutoffDayTag(15)).performScrollTo().performClick()
+        // and the cutoff card sits below the fold on the default viewport. An owner scrolls to
+        // it; so does the test. The right-hand stepper key moves 25 -> 26.
+        compose.onNodeWithTag(cutoffDayTag(26)).performScrollTo().performClick()
         compose.waitForIdle()
 
-        assertEquals(15, picked)
+        assertEquals(26, picked)
     }
 
     /**
@@ -711,7 +713,7 @@ class PengaturanScreenTest {
             }
         }
 
-        compose.onNodeWithTag(cutoffDayTag(15)).performScrollTo().performClick()
+        compose.onNodeWithTag(cutoffDayTag(26)).performScrollTo().performClick()
         compose.waitForIdle()
 
         // The dialog's presence is the **computed** preview's business. What this asserts is

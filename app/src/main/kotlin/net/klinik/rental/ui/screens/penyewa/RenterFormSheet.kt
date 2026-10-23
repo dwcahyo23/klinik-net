@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -80,20 +81,18 @@ fun RenterFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_SHEET)
-            // The cap belongs on the sheet. On the content column it became the *scroll
-            // viewport*, so anything past it was laid out but unreachable — and the action
-            // row, being the last child, was the first thing to go.
-            .heightIn(max = SheetMaxHeight),
+        // **No `heightIn` here** — capping the sheet's own modifier sizes its window to
+        // the cap and leaves it floating above the bottom edge. The cap belongs on the
+        // content column, which wraps up to it.
+        modifier = modifier.testTag(TAG_SHEET),
     ) {
-        // The outer column is bounded so the weighted scroll container inside has
-        // something to divide; a wrapping parent leaves it nothing.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
-                .heightIn(max = SheetMaxHeight),
+                .heightIn(max = SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
         ) {
             Column(
                 modifier = Modifier

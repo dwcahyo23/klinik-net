@@ -12,8 +12,10 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.defaultMinSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.wrapContentHeight
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.BasicTextField
@@ -107,7 +109,17 @@ fun KnSearchBar(
             tint = kn.textTertiary,
             modifier = Modifier.size(20.dp),
         )
-        Box(Modifier.weight(1f)) {
+        // `minTouchTarget` on the **Box**, and the field inside it wraps to its text.
+        //
+        // The floor has to be on the box, not on the field: `wrapContentHeight` makes the field
+        // measure at its line height (35dp), so a floor *inside* it is ignored — which is what
+        // shrank the tappable node below 48dp when the centring was first added.
+        Box(
+            modifier = Modifier
+                .weight(1f)
+                .defaultMinSize(minHeight = MaterialTheme.minTouchTarget),
+            contentAlignment = Alignment.CenterStart,
+        ) {
             if (query.isEmpty()) {
                 Text(
                     text = placeholder,
@@ -133,14 +145,27 @@ fun KnSearchBar(
                 // var(--tap-min)` (shared.css line 557) rather than relying on
                 // the wrapper's. Without it the tappable input is one text line
                 // tall inside a 48dp bar — the padding is not the target.
+                //
+                // ## Why `fillMaxHeight` on the field
+                //
+                // `BasicTextField` lays its text out from the **top** of whatever height it is
+                // given, so inside a 48dp box the caret, the typed text and the tap target all
+                // sat at the top — the owner's report: *"ketika saya klik search untuk input
+                // text atau pointer inputnya tidak center."*
+                //
+                // `fillMaxHeight` makes the field take the box's full 48dp (so the tap target
+                // keeps the floor the test measures) and `BasicTextField`'s own default
+                // `LineHeightStyle` centres the single line inside that height. The earlier
+                // `wrapContentHeight` centred the *text* but shrank the node to 35dp, which
+                // failed the floor — the two have to be one thing, and this is the one.
                 modifier = Modifier
                     .fillMaxWidth()
+                    .fillMaxHeight()
                     // The bar's own name, in the input's own semantics. Without
                     // it a screen reader announces an unlabelled search box and
                     // then the placeholder, which is the *value* hint rather than
                     // the field's name.
-                    .semantics { contentDescription = placeholder }
-                    .defaultMinSize(minHeight = MaterialTheme.minTouchTarget),
+                    .semantics { contentDescription = placeholder },
             )
         }
         if (query.isNotEmpty()) {

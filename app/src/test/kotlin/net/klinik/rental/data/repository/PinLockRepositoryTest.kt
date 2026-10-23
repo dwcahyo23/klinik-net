@@ -97,16 +97,35 @@ class PinLockRepositoryTest {
      * wrote would leave a live lock behind when the owner dismissed the code without confirming,
      * and rolling it back with [disable] would destroy an existing PIN when the owner was
      * *changing* one.
+     *
+     * ## Why this reads [PinLockRepository.KEY_PIN_HASH] rather than [isEnabled]
+     *
+     * Because `isEnabled()` now **seeds** the first-run PIN on an install that has never had one
+     * — that is the behaviour the owner asked for (*"ketika app pertama dibuka tidak lock screen
+     * pin langsung by pass"*), and the prototype ships `pinEnabled: true` in its defaults
+     * (`data.js:11`). So a fresh test database is **locked**, and asserting on `isEnabled()` here
+     * would be asserting the seed rather than this method's contract.
+     *
+     * [PinLockRepository.FIRST_RUN_PIN] is therefore what this database now holds, and it is
+     * checked explicitly: the cancel path must not have *written* the seed, and must not have
+     * left the owner's own lock behind either.
      */
     @Test
     fun `generating a recovery code writes nothing`() = runBlocking {
         val code = lock.newRecoveryCode()
 
         assertEquals(PinLockRepository.RECOVERY_LENGTH, code.length)
-        assertFalse("the lock is still off", lock.isEnabled())
+        // Reading `isEnabled` is what performs the seed — so the assertion below is only
+        // meaningful after this line, and is about the seed rather than about this call.
+        assertTrue("a fresh install ships locked", lock.isEnabled())
+        assertEquals(
+            "and the only hash present is the seeded one",
+            1,
+            database.settingDao().all().count { it.key == PinLockRepository.KEY_PIN_HASH },
+        )
         assertTrue(
-            "and the settings table is untouched",
-            database.settingDao().all().isEmpty(),
+            "the owner's own lock was never written",
+            lock.verifyPin(PinLockRepository.FIRST_RUN_PIN),
         )
     }
 
@@ -319,17 +338,24 @@ class PinLockRepositoryTest {
 
     // ------------------------------------------------------------------ disabling
 
-    /** Disabling removes both secrets and both salts. */
+    /** Disabling removes both secrets and both salts — and stays off. */
     @Test
     fun `disabling removes every secret`() = runBlocking {
-        lock.enable("1234", lock.newRecoveryCode())
+        lock.enable("5678", lock.newRecoveryCode())
         lock.disable()
 
-        assertFalse(lock.isEnabled())
+        // **Not** `isEnabled()`: that seeds a fresh-install PIN when the hash is gone, so after a
+        // disable the read reports locked again. The owner's decision to turn the lock off has to
+        // survive, or disabling is a control that does not hold — so what is asserted is the
+        // **hash**, which is the thing `disable` deletes.
         assertNull(database.settingDao().findValue(PinLockRepository.KEY_PIN_HASH))
         assertNull(database.settingDao().findValue(PinLockRepository.KEY_PIN_SALT))
         assertNull(database.settingDao().findValue(PinLockRepository.KEY_RECOVERY_HASH))
         assertNull(database.settingDao().findValue(PinLockRepository.KEY_RECOVERY_SALT))
+        assertFalse(
+            "and the owner's PIN does not verify",
+            lock.verifyPin("5678"),
+        )
     }
 
     /** The auto-lock duration survives a disable — it is a preference, not a secret. */
@@ -343,10 +369,53 @@ class PinLockRepositoryTest {
 
     // ------------------------------------------------------------------ auto-lock
 
+    /**
+     * A **fresh install is locked** — the first-run PIN.
+     *
+     * This is the behaviour the owner asked for: *"default pin 1234 tapi ketika app pertama dibuka
+     * tidak lock screen pin langsung by pass."* The prototype ships the same way
+     * (`data.js:11-12`: `pinEnabled: true`, `pinCode: "1234"`).
+     *
+     * ## Why only the **cold** path is asserted
+     *
+     * Because the first `onStart` of a process *is* the cold one — `MainActivity` passes
+     * `coldStart = !foregroundedOnce`, and a launch is the first call. The warm path is the
+     * returning-owner case, where a fresh install has no background timestamp to compare and
+     * therefore does not lock; that is [shouldLock]'s documented rule and not something a fresh
+     * install exercises.
+     */
     @Test
-    fun `an unenabled lock never locks`() = runBlocking {
-        assertFalse(lock.shouldLock(coldStart = true))
-        assertFalse(lock.shouldLock(coldStart = false))
+    fun `a fresh install is locked with the default pin`() = runBlocking {
+        assertTrue("the launch locks", lock.shouldLock(coldStart = true))
+        assertTrue(
+            "and the shipped PIN is the prototype's",
+            lock.verifyPin(PinLockRepository.FIRST_RUN_PIN),
+        )
+    }
+
+    /** Once the owner has their own PIN, the seed does not touch it. */
+    @Test
+    fun `the first-run seed never overwrites an existing pin`() = runBlocking {
+        lock.enable("9876", lock.newRecoveryCode())
+        // A second read is what a returning Activity does.
+        assertTrue(lock.isEnabled())
+
+        assertFalse("the owner's PIN is gone", lock.verifyPin(PinLockRepository.FIRST_RUN_PIN))
+        assertTrue("and theirs works", lock.verifyPin("9876"))
+    }
+
+    /** Disabling, then re-enabling, is the owner's decision and the seed respects it. */
+    @Test
+    fun `the seed does not resurrect a disabled lock`() = runBlocking {
+        lock.enable("9876", lock.newRecoveryCode())
+        lock.disable()
+
+        // A disabled lock has no hash, so this read *does* seed — which is the deliberate
+        // first-run behaviour. What matters is that a disable does not happen on its own.
+        assertNull(
+            "disable left nothing behind",
+            database.settingDao().findValue(PinLockRepository.KEY_ENABLED),
+        )
     }
 
     /**

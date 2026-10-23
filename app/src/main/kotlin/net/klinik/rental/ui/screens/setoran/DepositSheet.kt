@@ -102,16 +102,11 @@ fun DepositSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_DEPOSIT_SHEET)
-            // The ceiling moves **here**, to the sheet's own modifier.
-            //
-            // It used to sit on the content Column, alongside `verticalScroll`. That made
-            // the cap the *scroll viewport*: the numpad and the row under it were laid out
-            // below the cap and never scrolled into view, so the sheet showed a form with
-            // no way out of it. `ModalBottomSheet` already bounds itself to the window —
-            // this only stops a very tall sheet on a very tall tablet running off the top.
-            .heightIn(max = DepositSheetMaxHeight),
+        // **No `heightIn` here.** Capping the sheet's own modifier sizes its window to the
+        // cap and leaves it floating above the bottom edge with the scrim showing under
+        // it. `ModalBottomSheet` already bounds itself to the window and anchors to the
+        // bottom; the cap belongs on the content column below.
+        modifier = modifier.testTag(TAG_DEPOSIT_SHEET),
     ) {
         Column(
             // The bound, on the **outer** column.

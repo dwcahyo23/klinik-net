@@ -285,10 +285,16 @@ fun TunggakanScreen(
 /**
  * `arrears.html:112-136` — the four figures above the panes.
  *
- * The first card is **accented** (`kpi-accent`), and unlike every other KPI row in this app:
- * total arrears is the one figure the owner opened this screen for, and the prototype says so
- * with a brand edge. `Beranda` and `Laporan` refuse an accent because their four figures are the
- * same kind of thing; here one of them is the question and three are its breakdown.
+ * ## Why the first card is **not** accented
+ *
+ * The prototype gives total arrears a brand edge (`kpi-accent`), and this screen used to
+ * reproduce it. The owner asked for it to go: *"garis border ini di hapus saja agar sama seperti
+ * card lain seperti card Kritis Perhatian Ringan."* Four cards in a row, one of them wearing an
+ * edge, reads as four cards of which one is a different kind — and the total's own red icon and
+ * red meta already say what the edge was saying.
+ *
+ * The accent machinery stays in `KnCard` for a caller that wants it; this screen simply does not
+ * ask for one.
  */
 @Composable
 private fun ArrearsSummaryRow(summary: ArrearsSummary) {
@@ -307,8 +313,6 @@ private fun ArrearsSummaryRow(summary: ArrearsSummary) {
                 iconTint = MaterialTheme.knColors.semantic.danger,
                 metaTint = MaterialTheme.knColors.semantic.danger,
                 iconLayout = KnKpiIconLayout.Corner,
-                // The one accent in the app. See this function's KDoc.
-                accent = true,
             ) },
             { KnKpiTile(
                 label = stringResource(R.string.tunggakan_summary_critical),

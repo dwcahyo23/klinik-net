@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -170,14 +171,18 @@ fun ExceptionFormSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_EXCEPTION_SHEET)
-            // The ceiling belongs on the sheet, not the scrolling content — on the content it
-            // became the scroll viewport and the action row below it was unreachable.
-            // See `ContractFormSheet`'s sheet for the full explanation.
-            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+        // **No `heightIn` here** — capping the sheet's own modifier sizes its window to the
+        // cap and leaves it floating above the bottom edge. See `ContractFormSheet`.
+        modifier = modifier.testTag(TAG_EXCEPTION_SHEET),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
@@ -657,12 +662,18 @@ fun EndContractSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_END_SHEET)
-            // On the sheet, not the content — see the exception sheet above.
-            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+        // **No `heightIn` here** — capping the sheet's own modifier sizes its window to the
+        // cap and leaves it floating above the bottom edge. See `ContractFormSheet`.
+        modifier = modifier.testTag(TAG_END_SHEET),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

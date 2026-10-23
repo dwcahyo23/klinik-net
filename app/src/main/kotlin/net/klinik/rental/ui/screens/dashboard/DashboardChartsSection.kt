@@ -7,7 +7,10 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.IntrinsicSize
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.RoundedCornerShape
@@ -74,23 +77,56 @@ internal fun DashboardChartsSection(
         // weekly bars, then the donut beside the period comparison. The app drew all five
         // one per line, which is a page four screens long where the prototype's is two.
         //
-        // The floors are the prototype's own (`min-width: 420px` and `340px` for the first
-        // row, `330px` and `380px` for the second), so a window narrower than the sum of
-        // the pair's floors stacks them instead of squeezing them.
-        @OptIn(ExperimentalLayoutApi::class)
-        FlowRow(
-            modifier = Modifier.fillMaxWidth(),
-            horizontalArrangement = Arrangement.spacedBy(spacing.lg),
-            verticalArrangement = Arrangement.spacedBy(spacing.lg),
-            maxItemsInEachRow = 2,
-        ) {
-            TrendCard(charts, Modifier.weight(1f))
-            WeeklyCard(charts, Modifier.weight(1f))
-            DonutCard(charts, Modifier.weight(1f))
-            ComparisonCard(charts, Modifier.weight(1f))
-        }
+        // **Each row's two cards are the same height**, which is the prototype's own
+        // `align-items: stretch` on `.row` (`dashboard.html:61, 86`). The owner reported
+        // the trend card and the target card as different heights, and the donut and the
+        // comparison card as different heights: a row of two cards whose bottom edges do
+        // not line up reads as a mistake, whichever card is the "right" one. The pairs
+        // have different content — one has a legend row and a badge, the other has
+        // neither — so their natural heights differ, and the fix is to let each row's
+        // height be the taller of its two and stretch the shorter card to match.
+        //
+        // `Row` rather than `FlowRow`: a `FlowRow` measures each child against an
+        // unbounded height, so it cannot stretch two children to a common height at all.
+        // Two `Row`s, each `IntrinsicSize.Min`, is the shape that can.
+        ChartPair(
+            first = { TrendCard(charts, Modifier.fillMaxHeight()) },
+            second = { WeeklyCard(charts, Modifier.fillMaxHeight()) },
+        )
+        ChartPair(
+            first = { DonutCard(charts, Modifier.fillMaxHeight()) },
+            second = { ComparisonCard(charts, Modifier.fillMaxHeight()) },
+        )
 
         RecentTable(rows = charts.recent, onSeeAll = onSeeAllTransactions)
+    }
+}
+
+/**
+ * Two cards side by side, **the same height**.
+ *
+ * `IntrinsicSize.Min` on the row is what does it: the row's height becomes the *taller* of the
+ * two children's natural heights, and each child is told to `fillMaxHeight()`, so the shorter
+ * card stretches to match rather than leaving a gap under its content.
+ *
+ * Without the intrinsic height the row would take the tallest child's height anyway — but the
+ * shorter child would still be measured at its own height and sit at the top of the row, with
+ * the row's background behind it and no card. The stretch is what turns that gap into a card.
+ */
+@Composable
+private fun ChartPair(
+    first: @Composable () -> Unit,
+    second: @Composable () -> Unit,
+) {
+    val spacing = MaterialTheme.knSpacing
+    Row(
+        modifier = Modifier
+            .fillMaxWidth()
+            .height(IntrinsicSize.Min),
+        horizontalArrangement = Arrangement.spacedBy(spacing.lg),
+    ) {
+        Box(Modifier.weight(1f).fillMaxHeight()) { first() }
+        Box(Modifier.weight(1f).fillMaxHeight()) { second() }
     }
 }
 

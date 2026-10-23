@@ -3,6 +3,9 @@ package net.klinik.rental.ui.screens.setoran
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.semantics.SemanticsActions
 import androidx.compose.ui.test.assertCountEquals
+import androidx.compose.ui.test.hasAnyAncestor
+import androidx.compose.ui.test.hasTestTag
+import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.assertTextEquals
 import androidx.compose.ui.test.junit4.createComposeRule
 import androidx.compose.ui.test.onAllNodesWithTag
@@ -334,14 +337,31 @@ class SetoranScreenTest {
         }
 
         compose.onNodeWithTag(TAG_SETORAN_SUMMARY).assertExists()
-        compose.onNodeWithText("Total transaksi").assertExists()
+        // The label is asserted through the tile's own tag, not as a screen-wide text match:
+        // `KnKpiTile` uppercases its label for display ("TOTAL TRANSAKSI"), so the literal
+        // below would only ever match the pre-transform string, which is not what is drawn.
+        //
         // Tagged rather than matched by text: "Dibatalkan" is also the filter chip's name
         // and the status column's word, so a screen-wide text assertion would match one of
         // those instead of the figure.
-        compose.onNodeWithTag(setoranSummaryTag("cancelled")).assertTextEquals("1")
-        compose.onNodeWithTag(setoranSummaryTag("active")).assertTextEquals("2")
-        compose.onNodeWithTag(setoranSummaryTag("total")).assertTextEquals("3")
-        compose.onNodeWithTag(setoranSummaryTag("today")).assertTextEquals("Rp 500.000")
+        //
+        // Matched on the **unmerged** tree, and scoped to the tile's tag: `KnCard` draws a
+        // plain `Surface`, which does not merge its children, so the tagged node carries no
+        // text of its own — the figure is a descendant. Before the strip became cards the tag
+        // was on the value `Text` itself; now it names the card, which is the more useful
+        // thing to address.
+        assertFigure(tag = setoranSummaryTag("cancelled"), value = "1")
+        assertFigure(tag = setoranSummaryTag("active"), value = "2")
+        assertFigure(tag = setoranSummaryTag("total"), value = "3")
+        assertFigure(tag = setoranSummaryTag("today"), value = "Rp 500.000")
+    }
+
+    /** The figure a summary card draws, found inside that card's own tag. */
+    private fun assertFigure(tag: String, value: String) {
+        compose.onNode(
+            hasText(value) and hasAnyAncestor(hasTestTag(tag)),
+            useUnmergedTree = true,
+        ).assertExists()
     }
 
     /**

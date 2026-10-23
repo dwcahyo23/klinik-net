@@ -22,12 +22,18 @@ import androidx.compose.ui.platform.testTag
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import com.composables.icons.lucide.CircleAlert
+import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.CircleX
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.NotebookPen
 import com.composables.icons.lucide.Pencil
 import net.klinik.rental.R
 import net.klinik.rental.ui.components.KnBadge
+import com.composables.icons.lucide.TrendingUp
+import com.composables.icons.lucide.Wallet
+import net.klinik.rental.ui.components.KnKpiGrid
+import net.klinik.rental.ui.components.KnKpiTile
+import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
@@ -136,13 +142,20 @@ fun SetoranScreen(
             // not, and there is no "Catat Setoran" button: three doors to one action is how
             // two of them go stale, and the screen had two of them before this.
             //
-            // Keyed on the **tab** alone. Keying on the form as well would re-run whenever
-            // the form changed, and the guard inside would then be the only thing standing
-            // between a recomposition and a second `openDeposit` — which resets the amount
-            // the owner has typed.
+            // ## Why the form is also **closed** when the owner leaves Input
+            //
+            // Because the shell mounts the deposit **sheet** whenever the form exists and the
+            // tab is not Input (`isShowingForm = tab == Input && form != null`). Leaving a
+            // form open and switching to Riwayat therefore satisfied neither half of that
+            // condition, so the sheet appeared over the history list — the owner's report:
+            // *"ketika klik Riwayat Transaksi malah buka bottom sheet Catat setoran."*
+            //
+            // Closing on the way out is also what the tab means: the form is that tab's
+            // content, not a window over the screen. Coming back opens a fresh one.
             LaunchedEffect(state.selectedTab) {
-                if (state.selectedTab == SetoranTab.Input && deposit.form == null) {
-                    onOpenDepositInput()
+                when (state.selectedTab) {
+                    SetoranTab.Input -> if (deposit.form == null) onOpenDepositInput()
+                    SetoranTab.Riwayat -> if (deposit.form != null) onCloseDeposit()
                 }
             }
             // The screen's title and its two tabs live in the **top bar**, matching
@@ -567,74 +580,74 @@ internal fun setoranSummaryTag(figure: String): String = "setoran-summary-$figur
 
 
 /**
- * The strip of four plain figures. No chart, no KPI hierarchy — four numbers that answer
- * "how much came in, and what did I undo".
+ * The four figures above the table — **KPI cards**, like every other figure in the app.
+ *
+ * ## Why cards now
+ *
+ * They were a bare label-over-value strip, and the owner rejected it: *"total transaksi aktif
+ * dibatalkan diterima itu belum bentuk card kpi seperti yang lain."* Every other summary in
+ * this app is a `KnKpiTile` in a `KnKpiGrid` — Dashboard's four, Tunggakan's four, Laporan's
+ * four, Mobil's four — so a fourth screen drawing the same kind of thing as unboxed text read
+ * as a different species of figure. The strip also had no background, so it dissolved into the
+ * page between the tabs and the search box.
+ *
+ * `KnKpiGrid` is the shared component for exactly this, so the four cards sit on the same
+ * four-across row, with the same padding, gap and typography as the rest of the app.
+ *
+ * @param summary the four figures, already formatted — the ViewModel derives them from the
+ *   same emission as the rows, so the cards cannot disagree with the list beneath them.
  */
 @Composable
 private fun DepositSummaryStrip(
     summary: DepositSummaryUi,
     modifier: Modifier = Modifier,
 ) {
-    val spacing = MaterialTheme.knSpacing
-
-    @OptIn(ExperimentalLayoutApi::class)
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(spacing.md),
-        verticalArrangement = Arrangement.spacedBy(spacing.xs),
-    ) {
-        DepositSummaryFigure(
-            label = stringResource(R.string.setoran_summary_total),
-            value = summary.total.toString(),
-            tag = setoranSummaryTag("total"),
-        )
-        DepositSummaryFigure(
-            label = stringResource(R.string.setoran_summary_active),
-            value = summary.active.toString(),
-            tag = setoranSummaryTag("active"),
-        )
-        DepositSummaryFigure(
-            label = stringResource(R.string.setoran_summary_cancelled),
-            value = summary.cancelled.toString(),
-            tag = setoranSummaryTag("cancelled"),
-        )
-        // The one figure that is money rather than a count — already formatted, so no
-        // second spelling of a rupiah figure exists on this screen.
-        DepositSummaryFigure(
-            label = stringResource(R.string.setoran_summary_received_today),
-            value = summary.receivedTodayText,
-            tag = setoranSummaryTag("today"),
-        )
-    }
-}
-
-/**
- * One label-over-value pair in the strip.
- *
- * The tag is on the **value**, not the pair: "Dibatalkan" and "Aktif" are also the filter
- * chips' names and the status column's words, so a test that wants to know what this figure
- * says needs a node that says it — the pair's box would read as empty.
- */
-@Composable
-private fun DepositSummaryFigure(
-    label: String,
-    value: String,
-    tag: String,
-) {
-    Column(horizontalAlignment = Alignment.Start) {
-        Text(
-            text = label,
-            style = MaterialTheme.knTypography.label,
-            color = MaterialTheme.knColors.textSecondary,
-        )
-        Text(
-            text = value,
-            style = MaterialTheme.knTypography.figure,
-            color = MaterialTheme.knColors.textPrimary,
-            fontFamily = FontFamily.Monospace,
-            modifier = Modifier.testTag(tag),
-        )
-    }
+    KnKpiGrid(
+        modifier = modifier.testTag(TAG_SETORAN_SUMMARY),
+        tiles = listOf(
+            {
+                KnKpiTile(
+                    label = stringResource(R.string.setoran_summary_total),
+                    value = summary.total.toString(),
+                    icon = Lucide.Wallet,
+                    iconLayout = KnKpiIconLayout.Corner,
+                    modifier = Modifier.testTag(setoranSummaryTag("total")),
+                )
+            },
+            {
+                KnKpiTile(
+                    label = stringResource(R.string.setoran_summary_active),
+                    value = summary.active.toString(),
+                    icon = Lucide.CircleCheck,
+                    iconTint = MaterialTheme.knColors.semantic.success,
+                    iconLayout = KnKpiIconLayout.Corner,
+                    modifier = Modifier.testTag(setoranSummaryTag("active")),
+                )
+            },
+            {
+                KnKpiTile(
+                    label = stringResource(R.string.setoran_summary_cancelled),
+                    value = summary.cancelled.toString(),
+                    icon = Lucide.CircleX,
+                    iconTint = MaterialTheme.knColors.semantic.danger,
+                    iconLayout = KnKpiIconLayout.Corner,
+                    modifier = Modifier.testTag(setoranSummaryTag("cancelled")),
+                )
+            },
+            {
+                // The one figure that is money rather than a count — already formatted, so no
+                // second spelling of a rupiah figure exists on this screen.
+                KnKpiTile(
+                    label = stringResource(R.string.setoran_summary_received_today),
+                    value = summary.receivedTodayText,
+                    icon = Lucide.TrendingUp,
+                    iconTint = MaterialTheme.knColors.semantic.info,
+                    iconLayout = KnKpiIconLayout.Corner,
+                    modifier = Modifier.testTag(setoranSummaryTag("today")),
+                )
+            },
+        ),
+    )
 }
 
 /** A tab's display string, from the enum — one place maps the tab to its copy. */

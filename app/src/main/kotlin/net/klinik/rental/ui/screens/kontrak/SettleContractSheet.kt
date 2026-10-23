@@ -9,6 +9,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.ui.Alignment
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -89,12 +90,18 @@ fun SettleContractSheet(
     ModalBottomSheet(
         onDismissRequest = onClose,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_SETTLE_SHEET)
-            // On the sheet, not the content — see `ContractFormSheet`'s sheet.
-            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+        // **No `heightIn` here** — capping the sheet's own modifier sizes its window to the
+        // cap and leaves it floating above the bottom edge. See `ContractFormSheet`.
+        modifier = modifier.testTag(TAG_SETTLE_SHEET),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()

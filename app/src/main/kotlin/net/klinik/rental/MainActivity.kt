@@ -335,8 +335,19 @@ class MainActivity : ComponentActivity() {
         // The read is on the main thread's coroutine scope rather than a ViewModel's, because the
         // lock gate is the Activity's — a ViewModel scoped to a destination would be destroyed
         // when the owner navigates, taking the gate with it.
+        //
+        // **Only ever raised here, never lowered.** The owner's report: *"ketika saya keluar
+        // aplikasi dan buka lagi ternyata langsung buka ke dashboard, seperti ada stuck ketika
+        // salah pin."* That was this line assigning unconditionally. A lock screen that is
+        // already up, left for less than the auto-lock window, and returned to compares a
+        // timestamp that has not elapsed — so `shouldLock` said "no" and the assignment **cleared
+        // a lock the owner had not satisfied**. The wrong PIN was never accepted; the gate simply
+        // reopened because the app had been away for under five minutes.
+        //
+        // The only thing that may clear the lock is a correct PIN — `onUnlocked` below, which is
+        // the one place `locked` is set to `false`.
         lifecycleScope.launch {
-            locked.value = pinLock.shouldLock(coldStart = coldStart)
+            if (pinLock.shouldLock(coldStart = coldStart)) locked.value = true
         }
     }
 

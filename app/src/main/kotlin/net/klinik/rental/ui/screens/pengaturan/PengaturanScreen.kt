@@ -2,6 +2,13 @@ package net.klinik.rental.ui.screens.pengaturan
 
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.background
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.Icon
+import androidx.compose.ui.graphics.vector.ImageVector
+import net.klinik.rental.ui.components.KnIconButton
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
@@ -13,6 +20,10 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
+import androidx.compose.foundation.layout.size
+import androidx.compose.ui.text.style.TextOverflow
+import androidx.compose.ui.unit.dp
+import net.klinik.rental.ui.theme.knRadii
 import androidx.compose.runtime.Composable
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -21,7 +32,10 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.tooling.preview.Preview
+import com.composables.icons.lucide.CalendarDays
 import com.composables.icons.lucide.Download
+import com.composables.icons.lucide.Minus
+import com.composables.icons.lucide.Plus
 import com.composables.icons.lucide.Landmark
 import com.composables.icons.lucide.Lock
 import com.composables.icons.lucide.Upload
@@ -710,31 +724,107 @@ private fun CutoffSection(
                 style = MaterialTheme.knTypography.body,
                 color = MaterialTheme.knColors.textSecondary,
             )
-            Text(
-                text = stringResource(R.string.pengaturan_cutoff_current, state.day),
-                style = MaterialTheme.knTypography.title,
-                color = MaterialTheme.knColors.textPrimary,
-                modifier = Modifier.testTag(TAG_CUTOFF_CURRENT),
-            )
-            // `null` here would be a static list, and a static list is a second copy of the
-            // 1..28 rule that `CutoffPeriod` owns. The card reads the range it must offer from
-            // the same constants the validation uses, so the two cannot disagree.
-            FlowRow(
-                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
-                verticalArrangement = Arrangement.spacedBy(spacing.sm),
+
+            // **Two compact rows, not 28 circles.**
+            //
+            // The 28 `KnChip`s this replaces were the app's own idea, and the owner rejected it:
+            // *"perbaiki ui tanggal tagihan karena saya kurang suka."* Twenty-eight 48dp targets
+            // wrapped 17-then-11 across two rows of a settings card, which is a wall of identical
+            // circles for one number, and the split at 17 made the last eleven look like an
+            // afterthought.
+            //
+            // The prototype's own answer is a **select** (`settings.html:65-67`, a 180px
+            // `<select>`) beside a period preview. There is no dropdown in this app's design
+            // system, so the two halves are drawn with what there is: a stepper for the pick and
+            // the period card for the consequence.
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(top = spacing.xs),
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.lg),
             ) {
-                (CutoffPeriod.MIN_CUTOFF_DAY..CutoffPeriod.MAX_CUTOFF_DAY).forEach { day ->
-                    KnChip(
-                        text = day.toString(),
-                        selected = day == state.day,
-                        onClick = { onPickDay(day) },
-                        modifier = Modifier.testTag(cutoffDayTag(day)),
+                // The pick. A stepper rather than a `<select>` because the app has no dropdown
+                // and 28 options in one is a list the owner has to scroll to find a number in.
+                Row(
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                    modifier = Modifier.testTag(TAG_CUTOFF_STEPPER),
+                ) {
+                    KnIconButton(
+                        icon = Lucide.Minus,
+                        contentDescription = stringResource(R.string.pengaturan_cutoff_earlier),
+                        // Nothing below the floor: the day is 1–28 by `CutoffPeriod`'s own
+                        // constants, and the stepper offers no value outside that range.
+                        enabled = state.day > CutoffPeriod.MIN_CUTOFF_DAY,
+                        onClick = { onPickDay(state.day - 1) },
+                        modifier = Modifier.testTag(cutoffDayTag(state.day - 1)),
                     )
+                    Text(
+                        text = stringResource(R.string.pengaturan_cutoff_current, state.day),
+                        style = MaterialTheme.knTypography.title,
+                        color = MaterialTheme.knColors.textPrimary,
+                        // A fixed width so the number does not shift the card when it goes from
+                        // one digit to two — a moving figure next to a fixed button pair reads
+                        // as the layout jumping.
+                        modifier = Modifier
+                            .width(CutoffDayValueWidth)
+                            .testTag(TAG_CUTOFF_CURRENT),
+                    )
+                    KnIconButton(
+                        icon = Lucide.Plus,
+                        contentDescription = stringResource(R.string.pengaturan_cutoff_later),
+                        enabled = state.day < CutoffPeriod.MAX_CUTOFF_DAY,
+                        onClick = { onPickDay(state.day + 1) },
+                        modifier = Modifier.testTag(cutoffDayTag(state.day + 1)),
+                    )
+                }
+
+                // The consequence, in the sunken card the prototype puts it in
+                // (`settings.html:69-80`). `weight(1f)` so it takes the rest of the row at any
+                // width rather than the card deciding how much room the stepper deserves.
+                Row(
+                    modifier = Modifier
+                        .weight(1f)
+                        .background(
+                            MaterialTheme.knColors.bgSunken,
+                            RoundedCornerShape(MaterialTheme.knRadii.md),
+                        )
+                        .padding(spacing.md),
+                    verticalAlignment = Alignment.CenterVertically,
+                    horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                ) {
+                    Icon(
+                        imageVector = Lucide.CalendarDays,
+                        contentDescription = null,
+                        tint = MaterialTheme.knColors.primaryFill,
+                        modifier = Modifier.size(CutoffPreviewIconSize),
+                    )
+                    Column(modifier = Modifier.weight(1f)) {
+                        Text(
+                            text = stringResource(R.string.pengaturan_cutoff_period_label),
+                            style = MaterialTheme.knTypography.label,
+                            color = MaterialTheme.knColors.textPrimary,
+                        )
+                        Text(
+                            text = stringResource(R.string.pengaturan_cutoff_period_body),
+                            style = MaterialTheme.knTypography.overline,
+                            color = MaterialTheme.knColors.textTertiary,
+                            maxLines = 2,
+                            overflow = TextOverflow.Ellipsis,
+                        )
+                    }
                 }
             }
         }
     }
 }
+
+/** The number in the stepper's middle, wide enough for two digits without shifting. */
+private val CutoffDayValueWidth = 148.dp
+
+/** `.si-icon`-sized: the calendar beside the period preview (`settings.html:73`). */
+private val CutoffPreviewIconSize = 20.dp
 
 /** One account: the bank as the title, the number beneath it. */
 @Composable
@@ -821,6 +911,7 @@ internal fun autoLockTag(minutes: Int): String = "pengaturan-autolock-$minutes"
 /** Story 5.4's card. Keyed on the day so a chip cannot be confused with its neighbours. */
 internal const val TAG_CUTOFF_SECTION = "pengaturan-cutoff-section"
 internal const val TAG_CUTOFF_CURRENT = "pengaturan-cutoff-current"
+internal const val TAG_CUTOFF_STEPPER = "pengaturan-cutoff-stepper"
 internal fun cutoffDayTag(day: Int): String = "pengaturan-cutoff-day-$day"
 internal const val TAG_CUTOFF_ERROR = "pengaturan-cutoff-error"
 internal const val TAG_IDENTITY_NAME = "pengaturan-identity-name"

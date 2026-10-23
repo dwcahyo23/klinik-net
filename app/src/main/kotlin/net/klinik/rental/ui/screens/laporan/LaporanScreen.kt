@@ -11,10 +11,19 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
+import androidx.compose.material3.DatePicker
+import androidx.compose.material3.DatePickerDialog
+import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.TextButton
+import androidx.compose.material3.rememberDatePickerState
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -22,6 +31,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
+import com.composables.icons.lucide.CalendarDays
 import com.composables.icons.lucide.CircleAlert
 import com.composables.icons.lucide.CircleCheck
 import com.composables.icons.lucide.Clock
@@ -31,6 +41,7 @@ import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.TrendingUp
 import com.composables.icons.lucide.UserCheck
 import com.composables.icons.lucide.Wallet
+import java.time.LocalDate
 import net.klinik.rental.R
 import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.ui.components.KnBadge
@@ -40,6 +51,8 @@ import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnKpiGrid
+import net.klinik.rental.ui.format.pickerMillisToDate
+import net.klinik.rental.ui.format.toPickerMillis
 import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnKpiTile
 import net.klinik.rental.ui.components.KnKpiTileSkeleton
@@ -281,27 +294,32 @@ private fun PeriodPicker(
 
             // The two date fields, only in custom mode. A date field that is not part of the
             // current mode is a field the owner will fill and expect to change nothing.
+            //
+            // **Pickers, not text fields.** The owner asked for it directly: *"pada laporan
+            // untuk input custom tanggal kenapa tidak pakai date picker saja."* The two
+            // `KnField`s this replaces asked the owner to type `yyyy-MM-dd` from memory on a
+            // tablet, and every mistyped digit was a refusal on "Terapkan" rather than
+            // anything they could see. `DatePickerDialog` is the same control the contract
+            // sheet's start date already uses — the platform's calendar, in the device's
+            // locale, with the device's month lengths.
             state.customRange?.let { range ->
                 Row(
                     modifier = Modifier.fillMaxWidth(),
                     horizontalArrangement = Arrangement.spacedBy(spacing.md),
                     verticalAlignment = Alignment.Top,
                 ) {
-                    KnField(
+                    CustomRangeDateField(
                         label = stringResource(R.string.laporan_custom_from),
                         value = range.fromText,
-                        onValueChange = onCustomFromChange,
-                        placeholder = stringResource(R.string.laporan_custom_placeholder),
-                        error = range.error,
+                        onPick = onCustomFromChange,
                         modifier = Modifier
                             .weight(1f)
                             .testTag(TAG_CUSTOM_FROM),
                     )
-                    KnField(
+                    CustomRangeDateField(
                         label = stringResource(R.string.laporan_custom_to),
                         value = range.toText,
-                        onValueChange = onCustomToChange,
-                        placeholder = stringResource(R.string.laporan_custom_placeholder),
+                        onPick = onCustomToChange,
                         modifier = Modifier
                             .weight(1f)
                             .testTag(TAG_CUSTOM_TO),
@@ -311,6 +329,14 @@ private fun PeriodPicker(
                         onClick = onApplyCustomRange,
                         variant = KnButtonVariant.Primary,
                         modifier = Modifier.testTag(TAG_CUSTOM_APPLY),
+                    )
+                }
+                range.error?.let { message ->
+                    Text(
+                        text = message,
+                        style = MaterialTheme.knTypography.body,
+                        color = MaterialTheme.knColors.errorText,
+                        modifier = Modifier.testTag(TAG_CUSTOM_ERROR),
                     )
                 }
             }
@@ -494,6 +520,85 @@ private fun Metrics(state: LaporanUiState) {
 }
 
 /**
+ * One end of the custom range: a disabled field that opens the platform calendar.
+ *
+ * ## Why the field is disabled
+ *
+ * The date arrives from the dialog, never from typing — the same shape as the contract sheet's
+ * start date. That is also what makes the *stored* text one format: `CustomRangeUi.fromText` is
+ * `yyyy-MM-dd` because [formatIsoDate] writes it, not because the owner remembered to.
+ *
+ * @param value the current text, `""` when unset.
+ * @param onPick receives the picked date **as ISO text**, which is what the ViewModel already
+ *   parses on "Terapkan" — the picker does not change that contract, it only changes who writes
+ *   the text.
+ */
+@OptIn(ExperimentalMaterial3Api::class)
+@Composable
+private fun CustomRangeDateField(
+    label: String,
+    value: String,
+    onPick: (String) -> Unit,
+    modifier: Modifier = Modifier,
+) {
+    var open by remember { mutableStateOf(false) }
+    val hint = stringResource(R.string.laporan_custom_placeholder)
+
+    KnField(
+        label = label,
+        value = value,
+        onValueChange = {},
+        placeholder = hint,
+        enabled = false,
+        trailingIcon = Lucide.CalendarDays,
+        trailingContentDescription = hint,
+        onTrailingIconClick = { open = true },
+        modifier = modifier,
+    )
+
+    if (open) {
+        // Seeded from what is already chosen, so reopening lands on the current date rather
+        // than snapping back to today.
+        val pickerState = rememberDatePickerState(
+            initialSelectedDateMillis = value.takeIf { it.isNotBlank() }?.let(::parseIsoToMillis),
+        )
+        DatePickerDialog(
+            onDismissRequest = { open = false },
+            confirmButton = {
+                TextButton(
+                    onClick = {
+                        // The UTC round-trip lives in `ui.format`'s `pickerMillisToDate` — the
+                        // same helper the three contract sheets use, so the day cannot move.
+                        pickerMillisToDate(pickerState.selectedDateMillis)?.let { date ->
+                            onPick(date.toString())
+                        }
+                        open = false
+                    },
+                ) {
+                    Text(stringResource(R.string.kontrak_date_confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { open = false }) {
+                    Text(stringResource(R.string.kontrak_date_dismiss))
+                }
+            },
+        ) {
+            DatePicker(state = pickerState)
+        }
+    }
+}
+
+/**
+ * `yyyy-MM-dd` -> epoch millis, or `null` for anything that is not one.
+ *
+ * Only used to seed the picker, so a value it cannot read simply opens the calendar on today —
+ * which is the right answer for a field the owner has not filled.
+ */
+private fun parseIsoToMillis(text: String): Long? =
+    runCatching { LocalDate.parse(text).toPickerMillis() }.getOrNull()
+
+/**
  * The seven-day line, under the figures it summarises.
  *
  * **Nothing when the period is quiet.** A series of seven zeroes draws a flat stroke at the
@@ -645,6 +750,7 @@ internal const val TAG_PERIOD_HISTORY = "laporan-period-history"
 internal const val TAG_CUSTOM_FROM = "laporan-custom-from"
 internal const val TAG_CUSTOM_TO = "laporan-custom-to"
 internal const val TAG_CUSTOM_APPLY = "laporan-custom-apply"
+internal const val TAG_CUSTOM_ERROR = "laporan-custom-error"
 internal const val TAG_BREAKDOWN = "laporan-breakdown"
 internal const val TAG_BREAKDOWN_HEADER = "laporan-breakdown-header"
 internal const val TAG_EXPORT_CSV = "laporan-export-csv"

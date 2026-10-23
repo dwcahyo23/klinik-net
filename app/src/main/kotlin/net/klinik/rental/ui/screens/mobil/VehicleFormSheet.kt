@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
 import androidx.compose.foundation.rememberScrollState
@@ -26,7 +27,6 @@ import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnCheckbox
 import net.klinik.rental.ui.components.KnField
-import net.klinik.rental.ui.components.KnNumPad
 import net.klinik.rental.ui.theme.knSpacing
 
 /**
@@ -79,24 +79,22 @@ fun VehicleFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_SHEET)
-            // The ceiling belongs on the **sheet**, not on its content — see the note on
-            // the content column below. `ModalBottomSheet` already bounds itself to the
-            // window; this only stops a very tall sheet running off the top of a tall tablet.
-            .heightIn(max = SheetMaxHeight),
+        // **No `heightIn` here.** A cap on the sheet's own modifier sizes the sheet's
+        // window to the cap and leaves it floating above the bottom edge with the scrim
+        // showing underneath. `ModalBottomSheet` already bounds itself to the window and
+        // anchors to the bottom; the cap belongs on the content, below.
+        modifier = modifier.testTag(TAG_SHEET),
     ) {
-        // Two columns, and the split is the fix.
-        //
-        // The outer one is **bounded**: `fillMaxHeight` gives it everything the sheet
-        // offers, and `heightIn` caps that. It must be bounded rather than wrapped,
-        // because the inner column is weighted and a weighted child is measured against
-        // what its parent has **left over** — a wrapping parent leaves nothing over.
+        // The outer column is a **bound**, not a fill: `heightIn(max = …)` wraps the
+        // content up to the cap. `fillMaxHeight()` here would make the sheet claim the
+        // whole window for a two-field form.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .fillMaxHeight()
-                .heightIn(max = SheetMaxHeight),
+                .heightIn(max = SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
         ) {
             Column(
                 modifier = Modifier
@@ -168,36 +166,33 @@ fun VehicleFormSheet(
                 modifier = Modifier.testTag(TAG_FIELD_COLOR),
             )
 
+            // The rate, typed on the **system numeric keyboard**.
+            //
+            // It was a `KnNumPad` — a 4×3 grid of 66dp keys — and that made this sheet tall
+            // enough to need scrolling for seven short fields. The owner's instruction:
+            // *"untuk bottomsheet tambah mobil untuk input tarif harian jangan pakai numpad,
+            // pakai input number keyboard android saya agar bottomsheet tidak panjang atau
+            // scroll scroll, numpad hanya ada di screen setoran."*
+            //
+            // So the custom numpad is now Setoran's alone. Every other numeric entry in the
+            // app — this rate, a year, an account number, a phone number — uses the platform
+            // keyboard, which the owner already knows and which costs the sheet no height
+            // when it is closed.
             KnField(
                 label = stringResource(R.string.kendaraan_field_rate),
                 value = state.rateDigits,
-                onValueChange = { value ->
-                    // Echoed straight back: `KnNumPad` normalises whatever it is
-                    // given and re-syncs from `value`, so a caller that clamped
-                    // or reformatted would see its own digits discarded.
-                    onChange { it.copy(rateDigits = value, rateError = null) }
+                // Digits only, normalised as they arrive: the field shows what will be
+                // stored, so a pasted "250.000" becomes 250000 rather than a value the
+                // parser has to guess at.
+                onValueChange = { raw ->
+                    val digits = raw.filter { it in '0'..'9' }.take(MaxRateDigits)
+                    onChange { it.copy(rateDigits = digits, rateError = null) }
                 },
                 hint = stringResource(R.string.kendaraan_rate_hint),
                 error = state.rateError,
-                // A static affix, not an input: the digits come from the numpad.
                 leading = stringResource(R.string.kendaraan_rate_affix),
-                enabled = false,
+                keyboardType = KeyboardType.Number,
                 modifier = Modifier.testTag(TAG_FIELD_RATE),
-            )
-
-            // The numpad itself. `onSave` here only *commits the rate digits* —
-            // it does not submit the form. A single Save key cannot mean two
-            // things, and "I finished the rate" is a different intent from "I
-            // finished the whole car".
-            KnNumPad(
-                value = state.rateDigits,
-                onValueChange = { digits ->
-                    onChange { it.copy(rateDigits = digits, rateError = null) }
-                },
-                onSave = { amount ->
-                    onChange { it.copy(rateDigits = amount.toString(), rateError = null) }
-                },
-                modifier = Modifier.testTag(TAG_NUMPAD),
             )
 
             // The manual service marker, set by the owner rather than derived:
@@ -254,6 +249,9 @@ fun VehicleFormSheet(
  * Save button off the top. The sheet's own scroll container handles the rest.
  */
 private val SheetMaxHeight = 720.dp
+
+/** The longest rate the field accepts, in digits: Rp 999.999.999. */
+private const val MaxRateDigits = 9
 
 internal const val TAG_SHEET = "vehicle-form-sheet"
 internal const val TAG_FIELD_PLATE = "vehicle-field-plate"

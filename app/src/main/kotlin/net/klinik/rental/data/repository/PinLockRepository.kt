@@ -68,8 +68,59 @@ class PinLockRepository(
 
     // ------------------------------------------------------------------ state
 
-    /** Whether a PIN has been set and confirmed. Absent reads as `false`. */
-    suspend fun isEnabled(): Boolean = dao.findValue(KEY_ENABLED) == "true"
+    /**
+     * Whether a PIN has been set and confirmed, seeding the first-run PIN on a fresh install.
+     *
+     * ## Why a fresh install is **locked**, not open
+     *
+     * Because the prototype ships that way — `data.js:11-12` carries `pinEnabled: true` and
+     * `pinCode: "1234"` in its defaults, and `index.html:44` is the PIN screen, not an
+     * optional panel. The owner put it plainly: *"default pin 1234 tapi ketika app pertama dibuka
+     * tidak lock screen pin langsung by pass."*
+     *
+     * Absent used to read as "no PIN", which meant a fresh install opened straight onto the
+     * dashboard — a books app that opens onto the books. That is not what the lock is for, and
+     * it is not what the prototype does.
+     *
+     * ## Why the seed is idempotent
+     *
+     * Because it runs on **every** read. [seedFirstRunPin] writes only when no PIN has been set,
+     * so the second call is a no-op — and an owner who later turns the lock **off** in settings
+     * does not get a lock back the next time the Activity reads this.
+     */
+    suspend fun isEnabled(): Boolean {
+        seedFirstRunPin()
+        return dao.findValue(KEY_ENABLED) == "true"
+    }
+
+    /**
+     * Writes the prototype's default PIN on an install that has never had one.
+     *
+     * ## Why `1234`, and what it is
+     *
+     * It is the prototype's own default and the owner's stated expectation, so it is what ships.
+     * It is **not** a security claim: a 4-digit PIN is exhaustible in 10,000 tries whatever the
+     * hash, and the PRD says so in terms (*"PIN adalah penghalang layar, bukan keamanan"*). The
+     * attempt limit and the 30-second lockout are the control that matters, and both are here.
+     *
+     * ## Why a real hash, not the plaintext
+     *
+     * NFR-5 forbids the PIN being readable in storage, in logs, or in an export. So the seed goes
+     * through [enable] — the same path the owner's own PIN takes — rather than writing `pinCode`.
+     * The recovery code is generated and **not** stored, because there is nobody to write it down:
+     * the owner is going to change this PIN in settings, and until they do the prototype's own
+     * escape hatch is a fresh recovery code from `resetWithRecoveryCode`. Writing one down and
+     * never showing it would be a secret with no reader.
+     *
+     * The owner changing the PIN in settings replaces the salts and the hash through [enable], so
+     * this default stops being the key the moment they touch it.
+     */
+    private suspend fun seedFirstRunPin() {
+        // `KEY_PIN_HASH` rather than `KEY_ENABLED`: a database that already carries a hash but
+        // lost its `pinEnabled` flag is a lock someone chose, not a fresh install.
+        if (dao.findValue(KEY_PIN_HASH) != null) return
+        enable(pin = FIRST_RUN_PIN, recoveryCode = newRecoveryCode())
+    }
 
     /** The auto-lock duration in minutes. Absent reads as [DEFAULT_AUTO_LOCK_MINUTES]. */
     suspend fun autoLockMinutes(): Int =
@@ -209,6 +260,12 @@ class PinLockRepository(
      */
     suspend fun verifyPin(pin: String): Boolean {
         if (lockedOutUntil() != null) return false
+
+        // The seed, before the hash is read: on a fresh install the lock screen is shown by
+        // `shouldLock` (which seeded), but `verifyPin` is a public entry point and a caller that
+        // reached it first on an unseeded database would compare against no hash and refuse every
+        // PIN — including the right one.
+        seedFirstRunPin()
 
         val salt = dao.findValue(KEY_PIN_SALT) ?: return false
         val stored = dao.findValue(KEY_PIN_HASH) ?: return false
@@ -378,6 +435,15 @@ class PinLockRepository(
 
         /** FR-17's default. */
         const val DEFAULT_AUTO_LOCK_MINUTES = 5
+
+        /**
+         * The PIN a **fresh install** ships with — the prototype's own default (`data.js:12`).
+         *
+         * A first-run convenience, not a secret: the owner changes it in settings, and a 4-digit
+         * PIN is exhaustible in 10,000 tries whatever the hash. It is stored hashed, like every
+         * other PIN — see [seedFirstRunPin].
+         */
+        const val FIRST_RUN_PIN = "1234"
 
         /** The recovery code's length. The PRD's minimum, which is also what it is generated at. */
         const val RECOVERY_LENGTH = 20

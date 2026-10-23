@@ -59,8 +59,20 @@ class VehicleFormTest {
      * reachable*, which is exactly what `assertExists` plus the click-action
      * assertions below establish.
      */
+    /**
+     * The form renders its fields, and the rate is a **typed field**.
+     *
+     * The rate used to be a `KnNumPad` — a 4×3 grid of 66dp keys — and the owner had it
+     * removed: *"untuk bottomsheet tambah mobil untuk input tarif harian jangan pakai numpad,
+     * pakai input number keyboard android."* The custom numpad is Setoran's alone now, so this
+     * asserts the opposite of what it used to: the field exists, and the pad does **not**.
+     *
+     * Structural assertions (`assertExists`) rather than displayed-checks: the sheet scrolls,
+     * and a node laid out past the Robolectric window's bottom edge measures zero — off-screen,
+     * not missing.
+     */
     @Test
-    fun `the form renders its fields and the numpad`() {
+    fun `the form renders its fields and no numpad`() {
         compose.setContent { theme { Sheet(state = VehicleFormState()) } }
 
         compose.onNodeWithTag(TAG_FIELD_PLATE).assertExists()
@@ -71,7 +83,8 @@ class VehicleFormTest {
         compose.onNodeWithTag(TAG_FIELD_COLOR).assertExists()
         compose.onNodeWithTag(TAG_FIELD_NOTES).assertExists()
         compose.onNodeWithTag(TAG_SERVIS).assertExists().assertHasClickAction()
-        compose.onNodeWithTag(TAG_NUMPAD).assertExists()
+        // The pad is gone — see this test's KDoc.
+        compose.onNodeWithTag(TAG_NUMPAD).assertDoesNotExist()
         compose.onNodeWithTag(TAG_SAVE).assertExists().assertHasClickAction()
         compose.onNodeWithTag(TAG_CANCEL).assertExists().assertHasClickAction()
     }

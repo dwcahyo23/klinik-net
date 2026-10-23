@@ -8,6 +8,7 @@ import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.imePadding
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -132,15 +133,20 @@ fun ContractFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier
-            .testTag(TAG_SHEET)
-            // The ceiling belongs on the **sheet**, not on the scrolling content. Applied to
-            // the content it became the scroll viewport instead of a bound — the fields
-            // below it were laid out past the cap and the Save row could not be reached,
-            // so the form was a dead end. See `KnModal`'s body for the same fix in the dialog.
-            .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight),
+        // **No `heightIn` here.** Capping the sheet's own modifier sizes its window to the
+        // cap and leaves it floating above the bottom edge with the scrim showing under it.
+        // `ModalBottomSheet` already bounds itself to the window and anchors to the
+        // bottom; the cap belongs on the content column below.
+        modifier = modifier.testTag(TAG_SHEET),
     ) {
-        Column(modifier = Modifier.fillMaxWidth()) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .heightIn(max = net.klinik.rental.ui.components.SheetMaxHeight)
+                // The keyboard. djustResize shrinks the window; this keeps the sheet's action
+                // row above the IME rather than under it.
+                .imePadding(),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
