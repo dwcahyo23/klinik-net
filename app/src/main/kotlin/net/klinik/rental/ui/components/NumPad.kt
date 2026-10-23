@@ -232,7 +232,11 @@ fun KnNumPad(
                             NumPadSaveResult.Rejected -> rejectSave()
                         }
                     },
-                    modifier = Modifier.weight(1f),
+                    // `grid-area: 4 / 3 / 5 / 5` — the save key spans the third digit
+                    // column **and** the function column, so it is very nearly half the
+                    // row (≈203px of 400px). At `weight(1f)` against the zero key's 3f it
+                    // got a quarter, and "Simpan" ellipsised to "Simp".
+                    modifier = Modifier.weight(3f),
                 )
             }
         }

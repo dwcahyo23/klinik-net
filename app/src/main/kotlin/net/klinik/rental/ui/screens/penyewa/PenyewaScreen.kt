@@ -35,7 +35,9 @@ import net.klinik.rental.R
 import net.klinik.rental.domain.model.Renter
 import net.klinik.rental.ui.components.KnAvatar
 import net.klinik.rental.ui.components.KnAvatarSize
+import net.klinik.rental.ui.components.KnAddFab
 import net.klinik.rental.ui.components.KnBadge
+import net.klinik.rental.ui.components.KnAddFab
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
@@ -127,14 +129,10 @@ fun PenyewaScreen(
                                 .testTag(TAG_SEARCH),
                         )
                     },
-                    actions = {
-                        KnButton(
-                            label = stringResource(R.string.penyewa_add),
-                            onClick = onAdd,
-                            icon = Lucide.Plus,
-                            modifier = Modifier.testTag(TAG_ADD_ACTION),
-                        )
-                    },
+                    // **No add button in the bar.** It was here *and* inside the empty
+                    // state, so the screen had two doors to one action while the list was
+                    // empty and none once it had a row. The floating button below is the
+                    // screen's only add control, in every state.
                 )
 
                 // The page body — `shared.css:285-289`. No KPI row: `renters.html` has none.
@@ -188,6 +186,19 @@ fun PenyewaScreen(
                     )
                 }
             }
+
+            // The screen's **only** add control, present in every state. See
+            // `MobilScreen`'s for the same reasoning: the bar's button and the empty
+            // state's button disagreed about when they existed.
+            KnAddFab(
+                label = stringResource(R.string.penyewa_add),
+                icon = Lucide.Plus,
+                onClick = onAdd,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(spacing.xxl)
+                    .testTag(TAG_ADD_ACTION),
+            )
 
             // One snackbar, never two.
             //
@@ -425,14 +436,8 @@ private fun PenyewaEmptyList(onAdd: () -> Unit, modifier: Modifier = Modifier) {
         title = stringResource(R.string.penyewa_empty_title),
         body = stringResource(R.string.penyewa_empty_body),
         icon = Lucide.UserPlus,
-        action = {
-            KnButton(
-                label = stringResource(R.string.penyewa_add),
-                onClick = onAdd,
-                icon = Lucide.UserPlus,
-                modifier = Modifier.testTag(TAG_ADD),
-            )
-        },
+        // **No action button.** The floating button is the one door to adding a renter,
+        // and it is drawn in every state — see `MobilScreen`'s for the full reasoning.
         modifier = modifier
             .fillMaxSize()
             .testTag(TAG_EMPTY_LIST),
@@ -453,14 +458,7 @@ private fun PenyewaEmptySearch(
         title = stringResource(R.string.penyewa_empty_search_title),
         body = stringResource(R.string.penyewa_empty_search_body, query),
         icon = Lucide.SearchX,
-        action = {
-            KnButton(
-                label = stringResource(R.string.penyewa_add),
-                onClick = onAdd,
-                variant = KnButtonVariant.Secondary,
-                modifier = Modifier.testTag(TAG_ADD),
-            )
-        },
+        // No action button — see `PenyewaEmptyList`.
         modifier = modifier
             .fillMaxSize()
             .testTag(TAG_EMPTY_SEARCH),

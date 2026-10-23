@@ -4,10 +4,13 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material3.ExperimentalMaterial3Api
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.ModalBottomSheet
 import androidx.compose.material3.rememberModalBottomSheetState
@@ -76,15 +79,39 @@ fun VehicleFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_SHEET),
+        modifier = modifier
+            .testTag(TAG_SHEET)
+            // The ceiling belongs on the **sheet**, not on its content — see the note on
+            // the content column below. `ModalBottomSheet` already bounds itself to the
+            // window; this only stops a very tall sheet running off the top of a tall tablet.
+            .heightIn(max = SheetMaxHeight),
     ) {
+        // Two columns, and the split is the fix.
+        //
+        // The outer one is **bounded**: `fillMaxHeight` gives it everything the sheet
+        // offers, and `heightIn` caps that. It must be bounded rather than wrapped,
+        // because the inner column is weighted and a weighted child is measured against
+        // what its parent has **left over** — a wrapping parent leaves nothing over.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .padding(horizontal = spacing.lg)
+                .fillMaxHeight()
                 .heightIn(max = SheetMaxHeight),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    // The sheet's **only** scroll container. Without it the form was
+                    // clipped at the cap with the numpad's bottom rows and both action
+                    // buttons below the cut — the sheet showed a form with no way out of
+                    // it, which is the bug the owner reported as "Tambah mobil masih error".
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.lg)
+                    // Natural height, up to what the pinned action row leaves. `fill = true`
+                    // would open a sheet of mostly whitespace for a short form.
+                    .weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
             KnField(
                 label = stringResource(R.string.kendaraan_field_plate),
                 value = state.plate,
@@ -190,9 +217,15 @@ fun VehicleFormSheet(
                 onValueChange = { value -> onChange { it.copy(notes = value) } },
                 modifier = Modifier.testTag(TAG_FIELD_NOTES),
             )
+            } // end of the scrolling column
 
+            // The action row is a **sibling** of the scroll container, not its last child.
+            // Inside it, the buttons scrolled with the form and sat below the cap, so they
+            // were never on screen. Pinned here they are reachable at any form length.
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
                 maxItemsInEachRow = 2,
             ) {

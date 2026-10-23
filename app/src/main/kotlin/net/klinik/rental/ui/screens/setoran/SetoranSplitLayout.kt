@@ -107,16 +107,10 @@ internal fun SetoranSplitLayout(
                 state = state,
                 onChange = onChange,
             )
-
-            // The way out. The prototype's split has no "Batal" of its own — the owner
-            // leaves by switching tabs — but a form the owner opened must be closable,
-            // and the sheet's escape hatch is the same act.
-            KnButton(
-                label = stringResource(R.string.deposito_cancel),
-                onClick = onClose,
-                variant = KnButtonVariant.Ghost,
-                modifier = Modifier.testTag(TAG_DEPOSIT_CANCEL),
-            )
+            // **No "Batal".** The form is this tab's content, not a window over it: there is
+            // nothing to cancel back to. The tab's own chip is how the owner leaves, and
+            // closing the form here would leave the tab showing an empty skeleton with no
+            // control to refill it.
         }
 
         // ---- the numpad column.
@@ -230,13 +224,7 @@ internal fun SetoranStackedLayout(
                 state = state,
                 onChange = onChange,
             )
-
-            KnButton(
-                label = stringResource(R.string.deposito_cancel),
-                onClick = onClose,
-                variant = KnButtonVariant.Ghost,
-                modifier = Modifier.testTag(TAG_DEPOSIT_CANCEL),
-            )
+            // **No "Batal"** — see the split layout's note: the form is the tab's content.
         }
 
         // The pad, full width under the form. `shared.css:696-700`.

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -79,16 +80,29 @@ fun RenterFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_SHEET),
+        modifier = modifier
+            .testTag(TAG_SHEET)
+            // The cap belongs on the sheet. On the content column it became the *scroll
+            // viewport*, so anything past it was laid out but unreachable — and the action
+            // row, being the last child, was the first thing to go.
+            .heightIn(max = SheetMaxHeight),
     ) {
+        // The outer column is bounded so the weighted scroll container inside has
+        // something to divide; a wrapping parent leaves it nothing.
         Column(
             modifier = Modifier
                 .fillMaxWidth()
-                .verticalScroll(rememberScrollState())
-                .padding(horizontal = spacing.lg)
+                .fillMaxHeight()
                 .heightIn(max = SheetMaxHeight),
-            verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
+            Column(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .verticalScroll(rememberScrollState())
+                    .padding(horizontal = spacing.lg)
+                    .weight(1f, fill = false),
+                verticalArrangement = Arrangement.spacedBy(spacing.md),
+            ) {
             KnField(
                 label = stringResource(R.string.penyewa_field_name),
                 value = state.name,
@@ -163,9 +177,14 @@ fun RenterFormSheet(
                 selected = state.avatar,
                 onSelect = { key -> onChange { it.copy(avatar = key) } },
             )
+            } // end of the scrolling column
 
+            // Pinned **outside** the scroll container: as its last child the buttons
+            // scrolled away with the form and sat below the cap.
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
                 maxItemsInEachRow = 2,
             ) {

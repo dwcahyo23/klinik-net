@@ -1,6 +1,7 @@
 package net.klinik.rental.ui.screens.setoran
 
 import androidx.compose.foundation.layout.Arrangement
+import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
@@ -14,6 +15,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.testTag
@@ -33,6 +35,7 @@ import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnEmptyState
 import net.klinik.rental.ui.components.KnSearchBar
+import net.klinik.rental.ui.components.KnSkeletonList
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.components.KnTableHeaderRow
 import net.klinik.rental.ui.components.KnTableCell
@@ -127,6 +130,21 @@ fun SetoranScreen(
         contentColor = MaterialTheme.knColors.textPrimary,
     ) {
         Column(Modifier.fillMaxSize()) {
+            // The Input tab **is** the form, so arriving on it starts a deposit.
+            //
+            // This is the **only** place that opens one from this screen. The tab chip does
+            // not, and there is no "Catat Setoran" button: three doors to one action is how
+            // two of them go stale, and the screen had two of them before this.
+            //
+            // Keyed on the **tab** alone. Keying on the form as well would re-run whenever
+            // the form changed, and the guard inside would then be the only thing standing
+            // between a recomposition and a second `openDeposit` — which resets the amount
+            // the owner has typed.
+            LaunchedEffect(state.selectedTab) {
+                if (state.selectedTab == SetoranTab.Input && deposit.form == null) {
+                    onOpenDepositInput()
+                }
+            }
             // The screen's title and its two tabs live in the **top bar**, matching
             // `payments.html:23-35`: the tabs are `.chips` inside `.top-bar-actions`, not a row
             // under a bare heading. Two reasons it matters beyond fidelity — the bar is where the
@@ -147,6 +165,10 @@ fun SetoranScreen(
                             KnChip(
                                 text = stringResource(tab.labelRes()),
                                 selected = tab == state.selectedTab,
+                                // The chip only **selects** the tab. Opening the deposit is
+                                // the `LaunchedEffect` above — one door, not two. A chip
+                                // that opened as well would call `openDeposit` a second
+                                // time on a re-tap and discard the amount already typed.
                                 onClick = { onSelectTab(tab) },
                                 modifier = Modifier.testTag(setoranTabTag(tab)),
                             )
@@ -216,26 +238,22 @@ private fun InputTab(
 ) {
     val form = deposit.form
     if (form == null) {
-        // No form open: the tab's invitation. Once the owner starts a deposit the form
-        // takes the tab over entirely — the prototype's `.input-split` is the tab, and it
-        // holds the pad from the first digit.
-        KnEmptyState(
-            title = stringResource(R.string.setoran_input_title),
-            // Says what happens next, so the tab is an instruction rather than a stub.
-            body = stringResource(R.string.setoran_input_body),
-            icon = Lucide.NotebookPen,
+        // The tab is selected but no form is open yet — the state between the tab becoming
+        // current and the form's own read landing. It is a brief moment, so this draws the
+        // same skeleton the other screens use rather than an invitation.
+        //
+        // **No button.** The tab *is* the form: selecting it opens a deposit, and a
+        // "Catat Setoran" button here would be a second door to the action the tab already
+        // performed. That was the duplication reported from the device — the screen had
+        // "Input Setoran" in the bar and "Catat Setoran" in the middle, both reaching the
+        // same handler.
+        Box(
             modifier = modifier
-                .fillMaxWidth()
+                .fillMaxSize()
                 .testTag(TAG_SETORAN_INPUT_TAB),
-            action = {
-                KnButton(
-                    label = stringResource(R.string.deposito_action),
-                    onClick = onOpen,
-                    variant = KnButtonVariant.Primary,
-                    modifier = Modifier.testTag(TAG_SETORAN_INPUT_ACTION),
-                )
-            },
-        )
+        ) {
+            KnSkeletonList(modifier = Modifier.padding(MaterialTheme.knSpacing.xxl))
+        }
         return
     }
 

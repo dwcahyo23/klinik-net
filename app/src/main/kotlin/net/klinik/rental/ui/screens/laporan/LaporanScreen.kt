@@ -23,7 +23,10 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.tooling.preview.Preview
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.CircleAlert
+import com.composables.icons.lucide.CircleCheck
+import com.composables.icons.lucide.Clock
 import com.composables.icons.lucide.Download
+import com.composables.icons.lucide.Info
 import com.composables.icons.lucide.Lucide
 import com.composables.icons.lucide.TrendingUp
 import com.composables.icons.lucide.UserCheck
@@ -36,6 +39,7 @@ import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonVariant
 import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
+import net.klinik.rental.ui.components.KnKpiGrid
 import net.klinik.rental.ui.components.KnKpiIconLayout
 import net.klinik.rental.ui.components.KnKpiTile
 import net.klinik.rental.ui.components.KnKpiTileSkeleton
@@ -489,9 +493,17 @@ private fun Metrics(state: LaporanUiState) {
     }
 }
 
-/** The seven-day line, under the figures it summarises. */
+/**
+ * The seven-day line, under the figures it summarises.
+ *
+ * **Nothing when the period is quiet.** A series of seven zeroes draws a flat stroke at the
+ * baseline — with no axes, no labels and no card around it, that is a bare red rule across
+ * the page, which reads as a broken divider rather than as "no income". The quiet-period
+ * note above already says there was none, so the line is left out.
+ */
 @Composable
 private fun Trend(state: LaporanUiState) {
+    if (state.isQuietPeriod || state.trend.all { it == 0L }) return
     val spacing = MaterialTheme.knSpacing
     Column(verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
         TrendLine(
@@ -503,58 +515,48 @@ private fun Trend(state: LaporanUiState) {
 }
 
 /**
- * The four ladder levels as four numbers.
+ * The four ladder levels as four KPI cards.
  *
- * The count and its colour sit together so neither carries the claim alone: colour alone would
- * leave a screen-reader user with four identical tones, and the number alone would lose the
- * one glance that says "three of mine are critical".
+ * ## Why cards and not a list of rows
+ *
+ * Because they are **figures**, and every other figure on this screen is a card. As a bare
+ * list they read as an appendix to the page rather than as four counts the owner compares,
+ * and the colours — the one thing that makes the ladder legible — were reduced to the ink
+ * on four numerals.
+ *
+ * `KnKpiGrid` puts them in the same four-across row the screen's other figures use, so the
+ * ladder lines up under them instead of breaking the page's rhythm.
+ *
+ * The count and its colour sit together so neither carries the claim alone: colour alone
+ * would leave a screen-reader user with four identical tones, and the number alone would
+ * lose the one glance that says "three of mine are critical".
  */
 @Composable
 private fun RiskBreakdown(state: LaporanUiState) {
-    val spacing = MaterialTheme.knSpacing
     val rows = state.risk
+    val icons = listOf(
+        Lucide.CircleCheck,
+        Lucide.Info,
+        Lucide.Clock,
+        Lucide.CircleAlert,
+    )
 
-    Column(
-        modifier = Modifier
-            .fillMaxWidth()
-            .testTag(TAG_RISK_BREAKDOWN),
-        verticalArrangement = Arrangement.spacedBy(spacing.sm),
-    ) {
-        Text(
-            text = stringResource(R.string.laporan_risk_title),
-            style = MaterialTheme.knTypography.label,
-            color = MaterialTheme.knColors.textSecondary,
-        )
-        rows.forEach { row ->
-            RiskNumber(row = row, modifier = Modifier.testTag(riskTag(row)))
-        }
-    }
-}
-
-/** One level: its colour, its name and its count. */
-@Composable
-private fun RiskNumber(row: RiskRow, modifier: Modifier = Modifier) {
-    val spacing = MaterialTheme.knSpacing
-    Row(
-        modifier = modifier
-            .fillMaxWidth()
-            .padding(vertical = spacing.xs),
-        horizontalArrangement = Arrangement.SpaceBetween,
-        verticalAlignment = Alignment.CenterVertically,
-    ) {
-        Text(
-            text = row.label,
-            style = MaterialTheme.knTypography.body,
-            color = MaterialTheme.knColors.textSecondary,
-        )
-        Text(
-            text = row.count.toString(),
-            style = MaterialTheme.knTypography.figure,
-            color = toneColour(row.tone),
-            textAlign = TextAlign.End,
-            modifier = Modifier.testTag(riskCountTag(row)),
-        )
-    }
+    KnKpiGrid(
+        modifier = Modifier.testTag(TAG_RISK_BREAKDOWN),
+        tiles = rows.mapIndexed { index, row ->
+            {
+                KnKpiTile(
+                    label = row.label,
+                    value = row.count.toString(),
+                    icon = icons.getOrNull(index) ?: Lucide.CircleAlert,
+                    iconTint = toneColour(row.tone),
+                    metaTint = toneColour(row.tone),
+                    iconLayout = KnKpiIconLayout.Corner,
+                    modifier = Modifier.testTag(riskTag(row)),
+                )
+            }
+        },
+    )
 }
 
 /**

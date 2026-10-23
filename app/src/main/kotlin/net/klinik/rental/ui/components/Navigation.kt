@@ -19,6 +19,7 @@ import androidx.compose.foundation.layout.offset
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.layout.widthIn
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.verticalScroll
@@ -507,7 +508,17 @@ fun KnTopBar(
                 }
 
                 Column(
-                    modifier = Modifier.weight(1f),
+                    // `weight(1f)` **plus a floor**, so the title keeps a readable share
+                    // when the actions slot is wide.
+                    //
+                    // Without the floor a `weight(1f)` child is measured against whatever
+                    // the unweighted siblings leave — and the Tunggakan screen's five filter
+                    // chips left so little that the title rendered "Tungga…" on the device.
+                    // The floor is the title's own measure, not a share, so the actions row
+                    // is what gives way.
+                    modifier = Modifier
+                        .weight(1f)
+                        .widthIn(min = TopBarTitleMinWidth),
                 ) {
                     Text(
                         text = title,
@@ -553,6 +564,16 @@ fun KnTopBar(
         }
     }
 }
+
+/**
+ * The narrowest a top bar's title column may be.
+ *
+ * Wide enough for the longest screen name the app has — "Pengaturan" — at the title style's
+ * 20sp, with room for the ellipsis a longer name would still get. A `weight(1f)` column
+ * with no floor gave way to the Tunggakan screen's five filter chips and rendered
+ * "Tungga…" on the device.
+ */
+private val TopBarTitleMinWidth = 140.dp
 
 /** `.rail-item svg { width: 24px }`. Buttons in the bar measure 27dp — see [ThemeToggleButton]. */
 private val RailIconSize = 24.dp

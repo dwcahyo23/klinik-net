@@ -94,22 +94,6 @@ fun KnCard(
     val base = modifier
         .fillMaxWidth()
         .knShadow(elevation, shape)
-        .then(
-            if (accent) {
-                // The colour is read **here**, outside the draw scope: a `drawBehind` lambda
-                // is a draw scope, not a composable one, so `MaterialTheme` cannot be read
-                // inside it.
-                val accentColour = kn.primaryFill
-                Modifier.drawBehind {
-                    drawRect(
-                        color = accentColour,
-                        size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height),
-                    )
-                }
-            } else {
-                Modifier
-            },
-        )
     val border = if (outlined) androidx.compose.foundation.BorderStroke(1.dp, kn.border) else null
 
     if (onClick != null) {
@@ -129,7 +113,7 @@ fun KnCard(
             contentColor = kn.textPrimary,
             border = border,
             interactionSource = interaction,
-            content = { CardContent(padding, icon, iconTint, content) },
+            content = { CardContent(padding, icon, iconTint, accent, content) },
         )
     } else {
         Surface(
@@ -138,7 +122,7 @@ fun KnCard(
             color = kn.bgCard,
             contentColor = kn.textPrimary,
             border = border,
-            content = { CardContent(padding, icon, iconTint, content) },
+            content = { CardContent(padding, icon, iconTint, accent, content) },
         )
     }
 }
@@ -151,15 +135,43 @@ fun KnCard(
  * prototype's is (`position:absolute; top:16px; right:16px`, `shared.css:421-426`)
  * and because a glyph in the flow would push the content sideways instead of
  * sitting over the card's corner.
+ *
+ * ## Why the accent bar is drawn **here** and not on the card's own modifier
+ *
+ * Because the `Surface` clips to its shape, and the bar has to be inside that clip. Drawn
+ * on the outer modifier the bar was a plain rectangle at the card's left edge, taller and
+ * squarer than the card's 20dp corners — so it showed as a red sliver above the top
+ * corner and below the bottom one, on every accented card. Measured on the device: the
+ * "Total Tunggakan" card had red at both ends.
  */
 @Composable
 private fun CardContent(
     padding: Dp,
     icon: ImageVector?,
     iconTint: Color?,
+    accent: Boolean,
     content: @Composable () -> Unit,
 ) {
-    Box(Modifier.fillMaxWidth()) {
+    val accentColour = MaterialTheme.knColors.primaryFill
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .then(
+                if (accent) {
+                    Modifier.drawBehind {
+                        drawRect(
+                            color = accentColour,
+                            // The full height of the **content** box, which the Surface
+                            // clips to the card's rounded shape — so the bar ends where the
+                            // card does.
+                            size = androidx.compose.ui.geometry.Size(5.dp.toPx(), size.height),
+                        )
+                    }
+                } else {
+                    Modifier
+                },
+            ),
+    ) {
         Box(Modifier.padding(padding)) { content() }
         if (icon != null) {
             KpiIcon(
@@ -294,7 +306,7 @@ fun KnKpiTile(
                 // colliding — the same rule the value and the meta already follow.
                 Modifier
                     .fillMaxWidth()
-                    .padding(end = KpiCornerIconSize + KpiCornerIconGap)
+                    .padding(end = KpiCornerTextInset)
             } else {
                 Modifier
             },
@@ -307,7 +319,19 @@ fun KnKpiTile(
                 text = label.uppercase(locale),
                 style = MaterialTheme.knTypography.overline,
                 color = kn.textTertiary,
-                maxLines = 1,
+                // **Two** lines, with the second always reserved.
+                //
+                // The prototype's `.kpi-label` is `--fs-xs` = 12px, so "PERIODE CUT OFF
+                // BERJALAN" fits beside the corner glyph on one line. This app's 14sp
+                // floor makes the same words about a fifth wider, and one line truncated
+                // them to "PERIODE CUT OFF…" — a label that no longer says what it means.
+                //
+                // `minLines = 2` rather than `maxLines = 2` alone: every tile then reserves
+                // the same two lines whether its label needs one or two, so the row keeps
+                // one height. `maxLines` alone would let a one-line label shorten its tile
+                // and the four would disagree.
+                minLines = 2,
+                maxLines = 2,
                 overflow = TextOverflow.Ellipsis,
             )
             Text(
@@ -370,9 +394,13 @@ fun KnKpiTileSkeleton(
     // 10dp, which is how this was caught). The space is transparent; only its background bar
     // is visible, so nothing is read out.
     @Composable
-    fun bar(widthFraction: Float, style: TextStyle, topPadding: Dp = 0.dp) {
+    fun bar(widthFraction: Float, style: TextStyle, topPadding: Dp = 0.dp, lines: Int = 1) {
         Text(
-            text = " ",
+            // One space per line, so the bar reserves the same line boxes the real text
+            // does. The label is two lines in the tile (`minLines = 2`), so the skeleton's
+            // label bar is two as well — otherwise the skeleton is a line short and the
+            // row jumps when the figures land.
+            text = List(lines) { " " }.joinToString("\n"),
             style = style,
             color = Color.Transparent,
             modifier = Modifier
@@ -393,7 +421,7 @@ fun KnKpiTileSkeleton(
                         .background(kn.bgSunken, RoundedCornerShape(MaterialTheme.knRadii.md)),
                 )
             }
-            bar(widthFraction = 0.55f, style = typography.overline)
+            bar(widthFraction = 0.55f, style = typography.overline, lines = 2)
             bar(
                 widthFraction = 0.8f,
                 style = typography.moneyLarge,
@@ -406,7 +434,6 @@ fun KnKpiTileSkeleton(
         }
     }
 }
-
 /** `.kpi-icon` — a 40dp rounded square, 20dp glyph, the tint at 12% behind it. */
 @Composable
 private fun KpiIcon(icon: ImageVector, tint: Color?, modifier: Modifier = Modifier) {
@@ -432,13 +459,25 @@ private fun KpiIcon(icon: ImageVector, tint: Color?, modifier: Modifier = Modifi
 private val KpiCornerIconSize = 40.dp
 
 /**
- * The gap between the text column and the corner glyph.
- *
- * The CSS puts the glyph at `right: 16px` (`shared.css:422`), and the text needs the same
- * 16dp of clearance so the two do not touch. A long label ellipses in the space that is
- * left.
+ * The glyph's inset from the card's corner — `.kpi-icon { top: 16px; right: 16px }`
+ * (`shared.css:422`).
  */
 private val KpiCornerIconGap = 16.dp
+
+/**
+ * How far the text column is inset to clear the corner glyph — **52dp**.
+ *
+ * The glyph is 40dp wide and sits 16dp in from the card's right edge. The card's own
+ * padding (`spacing.xl` = 20dp) already keeps the text 20dp from that edge, so the text
+ * has to be pushed a further `16 + 40 - 20 = 36dp` to stop at the glyph's left edge — and
+ * a further 16dp so the two do not touch.
+ *
+ * A literal rather than a computed value: the three inputs live in three packages (the
+ * glyph's inset and width here, the card's padding in the theme), and `KnSpacing.Clinic`
+ * is `internal` to `ui.theme`. The arithmetic is written down instead, so the number can
+ * be checked rather than trusted.
+ */
+private val KpiCornerTextInset = 52.dp
 
 /**
  * `.kpi-grid` from `shared.css:397-401` — `repeat(auto-fit, minmax(230px, 1fr))`.

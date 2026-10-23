@@ -86,13 +86,15 @@ class PenyewaScreenTest {
         compose.onNodeWithText(
             "Tambahkan penyewa pertama untuk mulai mencatat sewa.",
         ).assertExists()
-        // The action is what makes it an instruction rather than a statement.
-        compose.onNodeWithTag(TAG_ADD).assertExists().assertHasClickAction()
-        // And it carries the copy the AC names, not a bare "Tambah". Scoped to the **empty
-        // state's** action: the top bar carries a "Tambah Penyewa" of its own
-        // (`renters.html:33`), so an unscoped match finds two.
+        // The action is what makes it an instruction rather than a statement — and it is the
+        // **floating** button now, not one inside the empty state.
+        compose.onNodeWithTag(TAG_ADD_ACTION).assertExists().assertHasClickAction()
+        // And it carries the copy the AC names, not a bare "Tambah".
+        // Unmerged: the button is a `Surface(onClick = …)`, which merges its children's
+        // semantics, so the label is a descendant node rather than part of the tagged one.
         compose.onNode(
-            hasText("Tambah Penyewa") and hasAnyAncestor(hasTestTag(TAG_EMPTY_LIST)),
+            hasText("Tambah Penyewa") and hasAnyAncestor(hasTestTag(TAG_ADD_ACTION)),
+            useUnmergedTree = true,
         ).assertExists()
     }
 
@@ -313,12 +315,12 @@ class PenyewaScreenTest {
                     label = "Tambah Penyewa",
                     onClick = {},
                     icon = Lucide.UserPlus,
-                    modifier = Modifier.testTag(TAG_ADD),
+                    modifier = Modifier.testTag(TAG_ADD_ACTION),
                 )
             }
         }
 
-        val action = compose.onNodeWithTag(TAG_ADD)
+        val action = compose.onNodeWithTag(TAG_ADD_ACTION)
         action.assertExists().assertHasClickAction()
         action.assertAtLeast(MIN_TARGET, "empty-state action")
     }
@@ -490,6 +492,7 @@ class PenyewaScreenTest {
 
     private companion object {
         val MIN_TARGET: Dp = 48.dp
+        const val TAG_ADD_ACTION = "penyewa-add-action"
         const val TAG_ADD = "penyewa-add"
         const val TAG_EMPTY_LIST = "penyewa-empty-list"
         const val TAG_EMPTY_SEARCH = "penyewa-empty-search"

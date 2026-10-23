@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -88,14 +89,24 @@ fun IdentityFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_IDENTITY_SHEET),
+        modifier = modifier
+            .testTag(TAG_IDENTITY_SHEET)
+            // The cap belongs on the **sheet**: on the content column it became the scroll
+            // viewport, so the action row below it was laid out and never reachable.
+            .heightIn(max = IdentitySheetMaxHeight),
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .heightIn(max = IdentitySheetMaxHeight),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = IdentitySheetMaxHeight),
+                .weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -165,9 +176,15 @@ fun IdentityFormSheet(
                 )
             }
 
+            } // end of the scrolling column
+
+            // Pinned outside it: as its last child the buttons scrolled with the form and
+            // sat below the cap.
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
                 maxItemsInEachRow = 2,
             ) {
@@ -188,8 +205,8 @@ fun IdentityFormSheet(
                 )
             }
         }
+        }
     }
-}
 
 /**
  * A bound on the sheet's content.

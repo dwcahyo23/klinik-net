@@ -65,9 +65,16 @@ class SetoranScreenTest {
         compose.onNodeWithTag(TAG_SETORAN_HISTORY).assertDoesNotExist()
     }
 
-    /** `SETORAN_INPUT` — the tab's one control reaches the sheet's opener. */
+    /**
+     * `SETORAN_INPUT` — **selecting the Input tab** opens the deposit form.
+     *
+     * The tab is the form (`payments.html`), so selecting it is the act of starting a
+     * deposit. There is no "Catat Setoran" button any more: the screen had one in the
+     * middle *and* the tab in the bar, both reaching this same handler — the duplication
+     * reported from the device.
+     */
     @Test
-    fun `the Input tab's action reaches the deposit sheet opener`() {
+    fun `selecting the Input tab opens the deposit form`() {
         var opened = 0
         compose.setContent {
             theme {
@@ -77,10 +84,14 @@ class SetoranScreenTest {
             }
         }
 
-        compose.onNodeWithTag(TAG_SETORAN_INPUT_ACTION).performClick()
+        // Arriving on the screen already does it — the tab is selected by default.
         compose.waitForIdle()
+        assertEquals("arriving on Input starts a deposit", 1, opened)
 
-        assertEquals("the existing sheet, not a second form", 1, opened)
+        // And re-tapping the tab does not discard the form it opened.
+        compose.onNodeWithTag(setoranTabTag(SetoranTab.Input)).performClick()
+        compose.waitForIdle()
+        assertEquals("re-tapping the tab is a no-op", 1, opened)
     }
 
     // ------------------------------------------------------- the form on the page

@@ -4,6 +4,7 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -89,14 +90,25 @@ fun AccountFormSheet(
     ModalBottomSheet(
         onDismissRequest = onDismissRequest,
         sheetState = sheetState,
-        modifier = modifier.testTag(TAG_ACCOUNT_SHEET),
+        modifier = modifier
+            .testTag(TAG_ACCOUNT_SHEET)
+            // The cap belongs on the **sheet**. On the content column it became the scroll
+            // viewport instead of a bound, so the action row past it was laid out and never
+            // reachable.
+            .heightIn(max = AccountSheetMaxHeight),
     ) {
+        Column(
+            modifier = Modifier
+                .fillMaxWidth()
+                .fillMaxHeight()
+                .heightIn(max = AccountSheetMaxHeight),
+        ) {
         Column(
             modifier = Modifier
                 .fillMaxWidth()
                 .verticalScroll(rememberScrollState())
                 .padding(horizontal = spacing.lg)
-                .heightIn(max = AccountSheetMaxHeight),
+                .weight(1f, fill = false),
             verticalArrangement = Arrangement.spacedBy(spacing.md),
         ) {
             Text(
@@ -165,9 +177,15 @@ fun AccountFormSheet(
                 )
             }
 
+            } // end of the scrolling column
+
+            // Pinned outside it: inside, the buttons scrolled with the form and sat below
+            // the cap.
             @OptIn(ExperimentalLayoutApi::class)
             FlowRow(
-                modifier = Modifier.fillMaxWidth(),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .padding(horizontal = spacing.lg, vertical = spacing.md),
                 horizontalArrangement = Arrangement.spacedBy(spacing.md, Alignment.End),
                 maxItemsInEachRow = 2,
             ) {
@@ -190,8 +208,8 @@ fun AccountFormSheet(
                 )
             }
         }
+        }
     }
-}
 
 /**
  * A bound on the sheet's content.

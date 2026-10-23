@@ -12,7 +12,11 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.windowInsetsPadding
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalConfiguration
@@ -193,7 +197,29 @@ internal fun AppShell(
             // a contract row sets the same form state, and the owner is on the Kontrak
             // screen when they do it — so the sheet must still open there. Only the
             // Setoran screen, on its Input tab, draws the form itself.
-            val isSetoranShowing = backStackEntry?.destination?.route == Destination.Setoran.route
+            val currentRoute = backStackEntry?.destination?.route
+            val isSetoranShowing = currentRoute == Destination.Setoran.route
+
+            // Leaving Setoran closes the form it was holding.
+            //
+            // Without this the form outlived its screen: the owner opened it inline on
+            // Setoran, tapped another rail item, and the **sheet** mounted on the next
+            // screen — the same form, twice, in the presentation the split had just
+            // replaced. Measured on the device before this line existed.
+            //
+            // Keyed on the **route**, not on composition: a rotation recomposes without
+            // changing the route, so a half-filled form survives it. Only a real
+            // navigation closes the form.
+            var previousRoute by remember { mutableStateOf<String?>(null) }
+            LaunchedEffect(currentRoute) {
+                if (previousRoute == Destination.Setoran.route &&
+                    currentRoute != Destination.Setoran.route
+                ) {
+                    screens.deposito.onClose()
+                }
+                previousRoute = currentRoute
+            }
+
             if (!(isSetoranShowing && screens.setoran.state.isShowingForm)) {
                 DepositHost(screens.deposito)
             }

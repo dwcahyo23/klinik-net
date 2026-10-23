@@ -89,18 +89,22 @@ class LaporanScreenTest {
     }
 
     /**
-     * The risk breakdown is **four** numbers, one per level.
+     * The risk breakdown is **four KPI cards**, one per level.
      *
      * The epic rejected a donut in favour of four coloured figures, so the count *is* the
      * requirement — a breakdown that drew three would pass every other assertion here.
+     *
+     * The tiles carry the **tile's own** tag now, not the old per-row count tag: the
+     * breakdown became four cards so it reads as four figures rather than as an appendix of
+     * rows, which is what the device review asked for.
      */
     @Test
-    fun `the risk breakdown shows four numbers not a chart`() {
+    fun `the risk breakdown shows four cards not a chart`() {
         compose.setContent { theme { Screen(state = populated()) } }
 
         compose.onNodeWithTag(TAG_RISK_BREAKDOWN).assertExists()
         for (level in listOf("Lancar", "Ringan", "Perhatian", "Kritis")) {
-            compose.onNodeWithTag("laporan-risk-count-${level.lowercase()}").assertExists()
+            compose.onNodeWithTag("laporan-risk-${level.lowercase()}").assertExists()
         }
         // And each row's colour is its **own level's**, not the count's: three critical
         // tenants is the same state as one, with more of it.

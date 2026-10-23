@@ -30,6 +30,7 @@ import net.klinik.rental.R
 import net.klinik.rental.data.repository.PinLockRepository
 import net.klinik.rental.domain.calculate.CutoffPeriod
 import net.klinik.rental.ui.components.KnAvatar
+import net.klinik.rental.ui.components.KnAddFab
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
@@ -159,24 +160,10 @@ fun PengaturanScreen(
                             R.string.pengaturan_account_count,
                             state.accountCount,
                         ),
-                        actions = {
-                            // The bar's action, so the owner can add an account whether or not any
-                            // exist. `Small` because the bar is 72dp tall and a `Default` button
-                            // would fill it edge to edge; `Small` still carries the 48dp floor
-                            // through `KnButton`.
-                            //
-                            // Its own tag rather than the empty state's, which draws the same
-                            // label: a shared tag would make a test asserting "the empty state's
-                            // action" silently resolve to the top bar's the moment an account
-                            // exists — the trap `KontrakScreen` records.
-                            KnButton(
-                                label = stringResource(R.string.pengaturan_add_action),
-                                onClick = onAdd,
-                                icon = Lucide.Landmark,
-                                size = KnButtonSize.Small,
-                                modifier = Modifier.testTag(TAG_ADD_ACTION),
-                            )
-                        },
+                        // The bar's action is **gone**: it and the empty state's button
+                        // were two doors to one action that existed in different states,
+                        // which is the inconsistency reported from the device. The floating
+                        // button below is this screen's only add control.
                     )
 
                     // ## Why the gutter lives on this one column
@@ -192,12 +179,17 @@ fun PengaturanScreen(
                     // 45% for "Identitas usaha" beside 100% for "Data & cadangan" — and no two
                     // lined up. `KnCard` fills, `KnCard` carries `--el-1`, and this column decides
                     // how wide a card is allowed to be.
+                    //
+                    // The padding is **all four sides**, not horizontal only. With
+                    // `horizontal` alone the first card sat flush against the top bar — no
+                    // gutter above it — while every card below it had one, which is the
+                    // defect reported from the device.
                     Column(
                         modifier = Modifier
                             .fillMaxWidth()
                             // `--sp-6`, the prototype's page gutter (`shared.css:285-289`) — one
                             // gutter for the whole body rather than four.
-                            .padding(horizontal = spacing.xxl)
+                            .padding(spacing.xxl)
                             .align(Alignment.CenterHorizontally),
                         verticalArrangement = Arrangement.spacedBy(spacing.lg),
                     ) {
@@ -256,7 +248,7 @@ fun PengaturanScreen(
                             // it stands in for.
                             state.isLoading -> KnSkeletonList()
 
-                            state.isEmpty -> PengaturanEmpty(onAdd = onAdd)
+                            state.isEmpty -> PengaturanEmpty()
 
                             // A plain `Column` of rows rather than a `LazyColumn`.
                             //
@@ -279,6 +271,18 @@ fun PengaturanScreen(
                         }
                     }
                 }
+
+            // The screen's **only** add control, present in every state — see
+            // `MobilScreen`'s for why the bar's button and the empty state's both went.
+            KnAddFab(
+                label = stringResource(R.string.pengaturan_add_action),
+                icon = Lucide.Landmark,
+                onClick = onAdd,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(spacing.xxl)
+                    .testTag(TAG_ADD_ACTION),
+            )
 
             // One snackbar, never two. Both messages are `BottomCenter` with the same padding,
             // so drawing them independently stacks two bars on the same pixels. They are also
@@ -765,25 +769,18 @@ private fun AccountListRow(
 
 /** The empty state: says what to do, and why it matters. */
 @Composable
-private fun PengaturanEmpty(onAdd: () -> Unit) {
+private fun PengaturanEmpty() {
     val spacing = MaterialTheme.knSpacing
 
     KnEmptyState(
         title = stringResource(R.string.pengaturan_empty_title),
         body = stringResource(R.string.pengaturan_empty_body),
         icon = Lucide.Landmark,
-        action = {
-            KnButton(
-                label = stringResource(R.string.pengaturan_add_action),
-                onClick = onAdd,
-                icon = Lucide.Landmark,
-                variant = KnButtonVariant.Primary,
-                modifier = Modifier.testTag(TAG_ADD),
-            )
-        },
-        // No horizontal padding: the body's capped column owns the gutter now, so padding
-        // it here as well would double the inset and put this one out of line with the
-        // four cards above it.
+        // **No action button.** The screen's floating button is the one door to adding an
+        // account, and it is drawn in every state — see `MobilScreen`'s for the reasoning.
+        // No horizontal padding: the body's column owns the gutter, so padding it here as
+        // well would double the inset and put this one out of line with the four cards
+        // above it.
         modifier = Modifier.testTag(TAG_EMPTY),
     )
 }

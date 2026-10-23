@@ -42,7 +42,9 @@ import net.klinik.rental.R
 import net.klinik.rental.domain.model.Vehicle
 import net.klinik.rental.ui.components.KnAvatar
 import net.klinik.rental.ui.components.KnAvatarSize
+import net.klinik.rental.ui.components.KnAddFab
 import net.klinik.rental.ui.components.KnBadge
+import net.klinik.rental.ui.components.KnAddFab
 import net.klinik.rental.ui.components.KnBadgeTone
 import net.klinik.rental.ui.components.KnButton
 import net.klinik.rental.ui.components.KnButtonSize
@@ -141,15 +143,10 @@ fun MobilScreen(
                                 .testTag(TAG_SEARCH),
                         )
                     },
-                    actions = {
-                        KnButton(
-                            label = stringResource(R.string.kendaraan_add),
-                            onClick = onAdd,
-                            icon = Lucide.Plus,
-                            variant = KnButtonVariant.Primary,
-                            modifier = Modifier.testTag(TAG_ADD_ACTION),
-                        )
-                    },
+                    // **No add button in the bar.** It was here *and* inside the empty
+                    // state, so the screen had two doors to one action in one of its
+                    // states and none in the other. The floating button below is the
+                    // screen's only add control, in every state.
                 )
 
                 // The page body — `shared.css:285-289`, `padding: var(--sp-6)`.
@@ -221,6 +218,23 @@ fun MobilScreen(
                     )
                 }
             }
+
+            // The screen's **only** add control, and it is present in every state —
+            // loading, empty and populated.
+            //
+            // It used to be in the top bar *and* inside the empty state, which meant the
+            // owner saw two doors to one action while the fleet was empty and none once it
+            // had a row. That is the inconsistency reported from the device, and the reason
+            // the empty state below no longer carries a button of its own.
+            KnAddFab(
+                label = stringResource(R.string.kendaraan_add),
+                icon = Lucide.Plus,
+                onClick = onAdd,
+                modifier = Modifier
+                    .align(Alignment.BottomEnd)
+                    .padding(spacing.xxl)
+                    .testTag(TAG_ADD_ACTION),
+            )
 
             // Over the page, not replacing it: a confirmation must not change
             // screen state, so the list behind stays exactly where it was.
@@ -565,14 +579,10 @@ private fun MobilEmptyFleet(onAdd: () -> Unit, modifier: Modifier = Modifier) {
         title = stringResource(R.string.kendaraan_empty_title),
         body = stringResource(R.string.kendaraan_empty_body),
         icon = Lucide.CarFront,
-        action = {
-            KnButton(
-                label = stringResource(R.string.kendaraan_add),
-                onClick = onAdd,
-                icon = Lucide.CarFront,
-                modifier = Modifier.testTag(TAG_ADD),
-            )
-        },
+        // **No action button.** The screen's floating button is the one door to adding a
+        // vehicle, and it is drawn in every state — including this one. A button here was
+        // a second door to the same action, and the two disagreed: this one vanished the
+        // moment the fleet had a row, while the bar's vanished when it was empty.
         modifier = modifier
             .fillMaxSize()
             .testTag(TAG_EMPTY_FLEET),
@@ -593,14 +603,7 @@ private fun MobilEmptySearch(
         title = stringResource(R.string.kendaraan_empty_search_title),
         body = stringResource(R.string.kendaraan_empty_search_body, query),
         icon = Lucide.SearchX,
-        action = {
-            KnButton(
-                label = stringResource(R.string.kendaraan_add),
-                onClick = onAdd,
-                variant = KnButtonVariant.Secondary,
-                modifier = Modifier.testTag(TAG_ADD),
-            )
-        },
+        // No action button here either — see `MobilEmptyFleet`.
         modifier = modifier
             .fillMaxSize()
             .testTag(TAG_EMPTY_SEARCH),

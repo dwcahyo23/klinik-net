@@ -96,13 +96,17 @@ class MobilScreenTest {
         compose.onNodeWithText(
             "Tambahkan mobil pertama untuk mulai mencatat sewa.",
         ).assertExists()
-        // The action is what makes it an instruction rather than a statement.
-        compose.onNodeWithTag(TAG_ADD).assertExists().assertHasClickAction()
-        // And it carries the copy the AC names, not a bare "Tambah". Scoped to the **empty
-        // state's** action: the top bar carries a "Tambah Mobil" of its own (`cars.html:33`),
-        // so an unscoped match finds two and passes for the wrong reason.
+        // The action is what makes it an instruction rather than a statement — and it is the
+        // **floating** button now, not one inside the empty state. The empty state used to
+        // carry its own, which meant two doors to one action while the fleet was empty and
+        // none once it had a row.
+        compose.onNodeWithTag(TAG_ADD_ACTION).assertExists().assertHasClickAction()
+        // And it carries the copy the AC names, not a bare "Tambah".
+        // Unmerged: the button is a `Surface(onClick = …)`, which merges its children's
+        // semantics, so the label is a descendant node rather than part of the tagged one.
         compose.onNode(
-            hasText("Tambah Mobil") and hasAnyAncestor(hasTestTag(TAG_EMPTY_FLEET)),
+            hasText("Tambah Mobil") and hasAnyAncestor(hasTestTag(TAG_ADD_ACTION)),
+            useUnmergedTree = true,
         ).assertExists()
     }
 
@@ -524,12 +528,12 @@ class MobilScreenTest {
                     label = "Tambah Mobil",
                     onClick = {},
                     icon = Lucide.CarFront,
-                    modifier = Modifier.testTag(TAG_ADD),
+                    modifier = Modifier.testTag(TAG_ADD_ACTION),
                 )
             }
         }
 
-        val action = compose.onNodeWithTag(TAG_ADD)
+        val action = compose.onNodeWithTag(TAG_ADD_ACTION)
         action.assertExists().assertHasClickAction()
         action.assertAtLeast(MIN_TARGET, "empty-state action")
     }
@@ -839,6 +843,7 @@ class MobilScreenTest {
 
     private companion object {
         val MIN_TARGET: Dp = 48.dp
+        const val TAG_ADD_ACTION = "kendaraan-add-action"
         const val TAG_ADD = "kendaraan-add"
         const val TAG_EMPTY_FLEET = "kendaraan-empty-fleet"
         const val TAG_EMPTY_SEARCH = "kendaraan-empty-search"

@@ -64,7 +64,8 @@ class PengaturanScreenTest {
         compose.onNodeWithText(
             "Tambahkan rekening yang menerima transfer, supaya saat mencatat setoran tinggal dipilih dari daftar.",
         ).assertExists()
-        compose.onNodeWithTag(TAG_ADD).assertExists()
+        // The empty state has no button of its own — the floating one is the only add control.
+        compose.onNodeWithTag(TAG_ADD_ACTION).assertExists()
     }
 
     /**
@@ -180,16 +181,30 @@ class PengaturanScreenTest {
         assertTrue("the bar's action must reach the ViewModel", added)
     }
 
-    /** And the empty state's action reaches it too. */
+    /**
+     * The **floating** button reaches `onAdd` — the screen's only add control.
+     *
+     * The empty state used to carry its own button as well, so the screen had two doors to
+     * one action while the list was empty and one once it had a row. The floating button is
+     * now the only one, and it is present in every state.
+     */
     @Test
-    fun `the empty state action reaches onAdd`() {
+    fun `the add button reaches onAdd`() {
         var added = false
         compose.setContent { theme { Screen(state = PengaturanUiState(), onAdd = { added = true }) } }
 
-        compose.onNodeWithTag(TAG_ADD).performSemanticsAction(SemanticsActions.OnClick)
+        compose.onNodeWithTag(TAG_ADD_ACTION).performSemanticsAction(SemanticsActions.OnClick)
         compose.waitForIdle()
 
         assertTrue(added)
+    }
+
+    /** And it is there with rows too — the state the empty state's button could not cover. */
+    @Test
+    fun `the add button is present when the list has rows`() {
+        compose.setContent { theme { Screen(state = populatedState()) } }
+
+        compose.onNodeWithTag(TAG_ADD_ACTION).assertExists()
     }
 
     /**
