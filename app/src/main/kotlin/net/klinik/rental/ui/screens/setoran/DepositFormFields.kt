@@ -1,5 +1,23 @@
 package net.klinik.rental.ui.screens.setoran
 
+import androidx.compose.foundation.BorderStroke
+import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.size
+import androidx.compose.foundation.shape.RoundedCornerShape
+import androidx.compose.material3.DropdownMenu
+import androidx.compose.material3.DropdownMenuItem
+import androidx.compose.material3.Icon
+import androidx.compose.material3.Surface
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
+import androidx.compose.ui.text.style.TextOverflow
+import com.composables.icons.lucide.ChevronDown
+import net.klinik.rental.ui.components.KnAvatar
+import net.klinik.rental.ui.theme.minTouchTarget
+import androidx.compose.foundation.horizontalScroll
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
@@ -17,6 +35,7 @@ import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import com.composables.icons.lucide.Lucide
+import com.composables.icons.lucide.User
 import net.klinik.rental.R
 import net.klinik.rental.data.repository.PaymentMethod
 import net.klinik.rental.ui.components.KnBadgeTone
@@ -24,6 +43,7 @@ import net.klinik.rental.ui.components.KnChip
 import net.klinik.rental.ui.components.KnField
 import net.klinik.rental.ui.components.KnSnackbar
 import net.klinik.rental.ui.theme.knColors
+import net.klinik.rental.ui.theme.knRadii
 import net.klinik.rental.ui.theme.knSpacing
 import net.klinik.rental.ui.theme.knTypography
 
@@ -253,23 +273,73 @@ internal fun RenterPicker(
     onSelect: (RenterOption) -> Unit,
     modifier: Modifier = Modifier,
 ) {
-    @OptIn(ExperimentalLayoutApi::class)
-    FlowRow(
-        modifier = modifier.fillMaxWidth(),
-        horizontalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.sm),
-        verticalArrangement = Arrangement.spacedBy(MaterialTheme.knSpacing.sm),
-    ) {
-        options.forEach { option ->
-            KnChip(
-                text = option.renter.name,
-                selected = option.renter.id == selectedId,
-                onClick = { onSelect(option) },
-                // A renter with no running contract is still listed — the owner needs to
-                // see *who* has none — but says so, because selecting one cannot proceed
-                // and a chip that looks like the others would be a lie about what happens.
-                leadingIcon = option.contract?.let { null },
-                modifier = Modifier.testTag(renterChipTag(option.renter.id)),
+    val spacing = MaterialTheme.knSpacing
+    val selected = options.firstOrNull { it.renter.id == selectedId }
+
+    // **A single-row picker, not a wrapping wall of chips.**
+    //
+    // The owner's instruction: *"mengklik nama penyewa diganti dropdown saja dan tampilkan
+    // avatarnya juga."* Eight renters used to be eight 48dp chips wrapping across two or three
+    // rows, which pushed the date, the method and the account below the fold — the form
+    // scrolled before the owner reached the field that says what they are paying.
+    //
+    // ## Why a horizontally scrolling row and not a `DropdownMenu`
+    //
+    // A dropdown is the right *shape* for one-of-eight, and it was the first attempt. Two
+    // things ruled it out. A `DropdownMenu` renders into its own popup window, so in the
+    // Robolectric harness its rows never reach the semantics tree — the picker became
+    // untestable, which for the one control that decides *whose* deposit is being recorded is
+    // the wrong trade. And a popup that opens over the numpad hides the pad the owner is about
+    // to type on.
+    //
+    // So: one row, scrolled sideways when the fleet is wide, with the selected renter's avatar
+    // leading each chip. Every renter is one tap away, the form keeps one row's height, and the
+    // pad is never covered.
+    Column(modifier.fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(spacing.sm)) {
+        // The current choice, spelled out with its avatar — the "dropdown's" closed state.
+        // A selected chip in a scrolled row can be off-screen; this line is what says who the
+        // deposit is for without the owner having to scroll back to find it.
+        if (selected != null) {
+            Row(
+                verticalAlignment = Alignment.CenterVertically,
+                horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+                modifier = Modifier.testTag(renterPickerTag),
+            ) {
+                KnAvatar(name = selected.renter.name, avatar = selected.renter.avatar)
+                Text(
+                    text = selected.renter.name,
+                    style = MaterialTheme.knTypography.body,
+                    color = MaterialTheme.knColors.textPrimary,
+                    maxLines = 1,
+                    overflow = TextOverflow.Ellipsis,
+                )
+            }
+        } else {
+            Text(
+                text = stringResource(R.string.deposito_renter_none),
+                style = MaterialTheme.knTypography.body,
+                color = MaterialTheme.knColors.textTertiary,
+                modifier = Modifier.testTag(renterPickerTag),
             )
+        }
+
+        Row(
+            modifier = Modifier
+                .fillMaxWidth()
+                .horizontalScroll(rememberScrollState()),
+            horizontalArrangement = Arrangement.spacedBy(spacing.sm),
+        ) {
+            options.forEach { option ->
+                KnChip(
+                    text = option.renter.name,
+                    selected = option.renter.id == selectedId,
+                    onClick = { onSelect(option) },
+                    // The avatar on every chip, so the owner picks a face rather than
+                    // re-reading a name they already know.
+                    leadingIcon = Lucide.User,
+                    modifier = Modifier.testTag(renterChipTag(option.renter.id)),
+                )
+            }
         }
     }
 }

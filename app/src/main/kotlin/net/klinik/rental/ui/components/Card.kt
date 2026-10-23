@@ -7,10 +7,12 @@ import androidx.compose.foundation.interaction.collectIsFocusedAsState
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.BoxWithConstraints
+import androidx.compose.foundation.layout.IntrinsicSize
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -542,13 +544,29 @@ fun KnKpiGrid(
         Column(verticalArrangement = Arrangement.spacedBy(gap)) {
             tiles.chunked(perRow).forEach { line ->
                 Row(
-                    modifier = Modifier.fillMaxWidth(),
+                    modifier = Modifier
+                        .fillMaxWidth()
+                        // **Every tile on a line is the same height.**
+                        //
+                        // `IntrinsicSize.Min` makes the row as tall as its tallest tile and
+                        // lets the others stretch to it. Without it each tile was its own
+                        // natural height, and since a tile's height is its content's, a
+                        // one-line label beside a two-line one — or a value that `autoSize`
+                        // shrank — left four cards with four different bottom edges. The
+                        // owner's report: *"sekarang malah jadi tidak rapi tingginya dengan
+                        // card lain, contohnya di screen beranda."*
+                        .height(IntrinsicSize.Min),
                     horizontalArrangement = Arrangement.spacedBy(gap),
                 ) {
                     line.forEach { tile ->
                         // The `Box` carries the weight, not the tile: the tile is a plain
                         // composable and has no business knowing how many siblings it has.
-                        Box(Modifier.weight(1f)) { tile() }
+                        //
+                        // `fillMaxHeight` is what makes the stretch real: the row is at the
+                        // tallest tile's height (see its `IntrinsicSize.Min`) and each box
+                        // takes that height, so a shorter tile's card reaches the same bottom
+                        // edge as its neighbours instead of stopping at its own content.
+                        Box(Modifier.weight(1f).fillMaxHeight()) { tile() }
                     }
                 }
             }

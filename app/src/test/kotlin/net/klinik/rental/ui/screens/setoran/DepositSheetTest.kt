@@ -15,6 +15,7 @@ import androidx.compose.ui.test.assertWidthIsAtLeast
 import androidx.compose.ui.test.hasTestTag
 import androidx.compose.ui.test.hasText
 import androidx.compose.ui.test.junit4.createComposeRule
+import androidx.compose.ui.test.onAllNodesWithText
 import androidx.compose.ui.test.onNodeWithContentDescription
 import androidx.compose.ui.test.onNodeWithTag
 import androidx.compose.ui.test.onNodeWithText
@@ -167,8 +168,11 @@ class DepositSheetTest {
 
         compose.onNodeWithTag(renterChipTag(RENTER_ID)).assertExists()
         compose.onNodeWithTag(renterChipTag(RENTER_NO_CONTRACT)).assertExists()
-        compose.onNodeWithText("Budi Santoso").assertExists()
-        compose.onNodeWithText("Agus Prasetyo").assertExists()
+        // Every renter is on the row at once — no popup to open. The selected one appears
+        // twice: once on the row and once on the summary line above it that names the current
+        // choice, which is what keeps the picker readable when the row has been scrolled.
+        compose.onAllNodesWithText("Budi Santoso").assertCountEquals(2)
+        compose.onAllNodesWithText("Agus Prasetyo").assertCountEquals(1)
     }
 
     /** The account chip says `bank · number`, so two accounts at one bank are told apart. */

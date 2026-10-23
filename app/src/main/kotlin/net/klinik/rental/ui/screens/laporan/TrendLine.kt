@@ -1,10 +1,14 @@
 package net.klinik.rental.ui.screens.laporan
 
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
@@ -16,6 +20,7 @@ import androidx.compose.ui.semantics.contentDescription
 import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 import net.klinik.rental.ui.theme.knColors
+import net.klinik.rental.ui.theme.knTypography
 
 /**
  * The seven-day income trend, drawn with [Modifier.drawBehind].
@@ -63,6 +68,7 @@ fun TrendLine(
     points: List<Long>,
     description: String,
     modifier: Modifier = Modifier,
+    labels: List<String> = emptyList(),
 ) {
     val strokeColour = MaterialTheme.knColors.primaryFill
     val gridColour = MaterialTheme.knColors.border
@@ -110,7 +116,29 @@ fun TrendLine(
                     style = Stroke(width = STROKE_WIDTH, cap = StrokeCap.Round),
                 )
             },
-    )
+    ) {
+        // The x-axis, as real `Text` so the dates are read, not drawn — the same shape
+        // `KnLineChart` uses. Every label is drawn here rather than every other: this chart is
+        // seven points across the full width, which leaves room for all of them.
+        if (labels.isNotEmpty() && labels.size == points.size) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                labels.forEach { label ->
+                    Text(
+                        text = label,
+                        style = MaterialTheme.knTypography.overline,
+                        color = MaterialTheme.knColors.textTertiary,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /**

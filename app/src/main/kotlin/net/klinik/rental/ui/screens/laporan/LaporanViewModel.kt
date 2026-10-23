@@ -24,6 +24,7 @@ import net.klinik.rental.domain.calculate.RiskLevel
 import net.klinik.rental.domain.calculate.riskOf
 import net.klinik.rental.ui.format.CsvWriter
 import net.klinik.rental.ui.format.formatRupiah
+import net.klinik.rental.ui.format.formatTanggalBulan
 import net.klinik.rental.ui.strings.RStrings
 import java.time.Clock
 import java.time.LocalDate
@@ -176,6 +177,11 @@ class LaporanViewModel(
                 income = income,
                 arrears = breakdown.arrears,
                 trend = trend.map { it.total },
+                // The x-axis. Built here rather than in the screen for the same reason every
+                // other formatted string is: the day the point belongs to is a fact about the
+                // query, and a screen that recomputed it from `period.end` would be a second
+                // derivation that could disagree with the data it is labelling.
+                trendLabels = trend.map { day -> formatTanggalBulan(day.date) },
                 breakdown = breakdown.rows,
             )
         }
@@ -323,6 +329,7 @@ class LaporanViewModel(
                 settledRenters = data.settledRenters,
                 risk = data.riskCounts.asRows { level -> strings.laporanRiskLabel(level) },
                 trend = data.trend,
+                trendLabels = data.trendLabels,
                 breakdown = data.breakdown.map { row ->
                     ReportRowUi(
                         renterName = row.renterName,
@@ -595,10 +602,13 @@ class LaporanViewModel(
     }
 
     /** One period's figures, before they are formatted. */
-    private data class PeriodData(        val period: CutoffPeriod,
+    private data class PeriodData(
+        val period: CutoffPeriod,
         val income: Long,
         val arrears: List<ContractArrears>,
         val trend: List<Long>,
+        /** A short `d Mmm` per trend point, for the chart's x-axis. */
+        val trendLabels: List<String>,
         /** The report's own table, before it is formatted. */
         val breakdown: List<ReportRow>,
     ) {

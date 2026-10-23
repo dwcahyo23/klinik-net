@@ -25,6 +25,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.geometry.Size
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
@@ -191,7 +192,46 @@ fun KnLineChart(
                     )
                 }
             },
-    )
+    ) {
+        // The x-axis, drawn as real `Text` rather than in the draw scope.
+        //
+        // ## Why this is a `Box` of labels and not `drawText`
+        //
+        // Because the labels are dates and dates are localised strings — drawing them would
+        // mean carrying a `TextMeasurer` and the theme's typography into a draw lambda for no
+        // gain, and the labels have to be **readable and selectable by a screen reader**, which
+        // a drawn glyph run is not.
+        //
+        // ## Why every other point
+        //
+        // Fourteen labels under a 900dp-wide chart is one label per 64dp, and "24 Okt" is
+        // about 44dp — they touch. The dashboard's own `trendLabels` KDoc says the same thing
+        // for the same reason. The step is computed from the count so the first and last are
+        // always drawn: those are the two the owner reads.
+        if (labels.isNotEmpty() && labels.size == points.size) {
+            Row(
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .align(Alignment.BottomStart)
+                    .padding(top = 4.dp),
+                horizontalArrangement = Arrangement.SpaceBetween,
+            ) {
+                val step = if (labels.size > 7) 2 else 1
+                labels.forEachIndexed { index, label ->
+                    // The last label is always drawn, so the axis ends on a date rather than
+                    // on a gap.
+                    val show = index % step == 0 || index == labels.lastIndex
+                    Text(
+                        text = if (show) label else "",
+                        style = MaterialTheme.knTypography.overline,
+                        color = MaterialTheme.knColors.textTertiary,
+                        maxLines = 1,
+                        softWrap = false,
+                    )
+                }
+            }
+        }
+    }
 }
 
 /** `.chart-line { height: 210px }` — `shared.css:763`. */
@@ -355,29 +395,42 @@ fun KnDonutChart(
                         .background(sunken),
                 )
             } else {
-                // The slices' arcs as gradient stops. The sweep starts at 12 o'clock, which is
-                // what `conic-gradient` does by default and what the arcs did with their
-                // `-90f` start.
-                val stops = buildList {
-                    var start = 0f
+                // The slices, drawn as arcs rather than as gradient stops.
+                //
+                // ## Why not `Brush.sweepGradient`
+                //
+                // Because a sweep gradient **interpolates between its stops**, so a stop list
+                // built as "colour, colour, next colour, next colour" blends each slice into
+                // the one after it — and with six slices of similar hue the whole ring came
+                // out one colour on the device. The stops also cannot express a hard edge
+                // without duplicating every colour at the same offset, which is what the
+                // `alpha = 0f` copies were trying to do and why they read as a single wash.
+                //
+                // `drawArc` per slice has no interpolation at all: each slice is its own
+                // stroke, with a gap between it and the next. That is the prototype's
+                // `conic-gradient` result and the only version where the legend's six colours
+                // are the six colours on the ring.
+                androidx.compose.foundation.Canvas(Modifier.fillMaxSize()) {
+                    val strokeWidth = size.minDimension * DonutRingStrokeFraction
+                    val inset = strokeWidth / 2f
+                    val arcSize = Size(size.width - strokeWidth, size.height - strokeWidth)
+                    var startAngle = -90f // 12 o'clock, as `conic-gradient` begins
                     slices.forEach { slice ->
                         val sweep = (slice.value.toFloat() / total.toFloat()) * 360f
-                        // A stop is an `offset to colour` pair, and the transparent copies
-                        // are the slice's own boundaries — the gradient goes from this
-                        // slice's colour to nothing and back to the next slice's colour.
-                        add(start to slice.colour.copy(alpha = 0f))
-                        add(start to slice.colour)
-                        add((start + sweep - DonutSliceGap).coerceAtLeast(start) to slice.colour)
-                        add((start + sweep).coerceAtLeast(start) to slice.colour.copy(alpha = 0f))
-                        start += sweep
+                        drawArc(
+                            color = slice.colour,
+                            startAngle = startAngle,
+                            // A gap of a couple of degrees between slices, so two adjacent
+                            // slices of similar colour are still two slices.
+                            sweepAngle = (sweep - DonutSliceGapDegrees).coerceAtLeast(0f),
+                            useCenter = false,
+                            topLeft = Offset(inset, inset),
+                            size = arcSize,
+                            style = Stroke(width = strokeWidth),
+                        )
+                        startAngle += sweep
                     }
                 }
-                Box(
-                    Modifier
-                        .fillMaxSize()
-                        .clip(CircleShape)
-                        .background(Brush.sweepGradient(*stops.toTypedArray())),
-                )
             }
             // The hole is a card-coloured disc over the middle — the CSS's `.donut-center`
             // is `position:absolute; inset: 26%` with the card's own background, so the
@@ -467,7 +520,17 @@ data class KnSlice(
 private val DonutSize = 170.dp
 
 /** The gap between slices, in degrees. The prototype leaves none; two touching arcs read as one. */
-private const val DonutSliceGap = 1.5f
+private const val DonutSliceGapDegrees = 1.5f
+
+/**
+ * The ring's thickness as a fraction of the diameter.
+ *
+ * The hole is `inset: 26%`, so the ring occupies the remaining 48% of the radius — but drawn as
+ * a stroke the ring is centred on a circle at the hole's outer edge, so its width is the whole
+ * gap: `(1 - 2 * 0.26) * diameter / 2` of radius, which is `0.24` of the diameter in stroke
+ * width. Kept as a constant so the arcs and the hole cannot drift apart.
+ */
+private const val DonutRingStrokeFraction = 0.24f
 
 /**
  * `.donut-center { inset: 26% }` — the hole, as a fraction of the diameter.

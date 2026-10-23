@@ -628,6 +628,7 @@ private fun Trend(state: LaporanUiState) {
                 points = state.trend,
                 description = stringResource(R.string.laporan_kpi_trend) +
                     ": " + state.trendTotalText,
+                labels = state.trendLabels,
             )
         }
     }

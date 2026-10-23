@@ -64,6 +64,15 @@ data class LaporanUiState(
      * have deposits", because a line through only the busy days is a different chart.
      */
     val trend: List<Long> = emptyList(),
+
+    /**
+     * A short `d Mmm` per trend point, for the chart's x-axis.
+     *
+     * The dashboard's own `trendLabels` is the same field for the same reason: a line with no
+     * dates under it answers how it moved but not when, and the report is read over a period
+     * the owner chose — the days are half the question.
+     */
+    val trendLabels: List<String> = emptyList(),
     /**
      * The per-renter breakdown — the prototype's "Rekap per penyewa & mobil" table.
      *

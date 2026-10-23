@@ -294,6 +294,9 @@ private val DepositSheetMaxHeight = 760.dp
 /** The renter chip's tag, keyed on the renter id so two chips cannot collide. */
 internal fun renterChipTag(renterId: String): String = "deposito-renter-$renterId"
 
+/** The dropdown's trigger, so a test can open it without matching its label. */
+internal const val renterPickerTag = "deposito-renter-picker"
+
 /** The account chip's tag, keyed on the account id. */
 internal fun accountChipTag(accountId: String): String = "deposito-account-$accountId"
 
